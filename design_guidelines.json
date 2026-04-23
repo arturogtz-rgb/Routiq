@@ -1,0 +1,156 @@
+{
+  "project_name": "Routiq",
+  "theme_and_archetype": {
+    "theme": "Light Theme",
+    "archetype": "Archetype 1 (Organic & Earthy) blended with soft business tones",
+    "reasoning": "Tourism B2B requires trust, warmth, and approachability. The provided palette naturally aligns with an earthy, organic yet professional vibe. It avoids the harshness of high-contrast 'tech-bro' dashboards, favoring calming blues, soft mints, and warm peach tones to make complex workflows (quotations, pricing) feel easy."
+  },
+  "colors": {
+    "primary": {
+      "DEFAULT": "#185FA5",
+      "hover": "#144f8a",
+      "light": "#e8eff6"
+    },
+    "accent": {
+      "DEFAULT": "#378ADD",
+      "hover": "#2c70b5"
+    },
+    "background": {
+      "DEFAULT": "#F8F9FA",
+      "pastel_blue": "#E6F1FB"
+    },
+    "status": {
+      "success_mint": "#E1F5EE",
+      "warning_peach": "#FAEEDA",
+      "error_soft": "#FDE8E8"
+    },
+    "text": {
+      "primary": "#0F172A",
+      "secondary": "#475569",
+      "tertiary": "#94A3B8"
+    },
+    "border": {
+      "DEFAULT": "#E2E8F0",
+      "focus": "#378ADD"
+    }
+  },
+  "typography": {
+    "fonts": {
+      "heading": "Outfit, sans-serif",
+      "body": "Manrope, sans-serif"
+    },
+    "scale": {
+      "h1": "text-4xl sm:text-5xl lg:text-6xl tracking-tight leading-none font-bold",
+      "h2": "text-2xl sm:text-3xl lg:text-4xl tracking-tight leading-snug font-semibold",
+      "h3": "text-xl sm:text-2xl tracking-tight leading-snug font-semibold",
+      "h4": "text-lg sm:text-xl font-medium",
+      "body": "text-base leading-relaxed",
+      "small": "text-sm leading-normal",
+      "overline": "text-xs font-bold uppercase tracking-[0.2em]"
+    },
+    "rules": {
+      "heading_color": "text-slate-900",
+      "body_color": "text-slate-600",
+      "no_inter_headings": true
+    }
+  },
+  "spacing_and_layout": {
+    "philosophy": "Generous spacing. Internal padding in cards must be p-6 or p-8 to prevent text collision. Mobile-first design starting at 375px.",
+    "containers": {
+      "max_width": "max-w-7xl mx-auto",
+      "padding_mobile": "px-4 py-8",
+      "padding_desktop": "px-8 py-16"
+    },
+    "grids": {
+      "landing_bento": "grid grid-cols-1 md:grid-cols-12 gap-6 md:gap-8",
+      "dashboard_cards": "grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4",
+      "kanban_board": "flex flex-col md:flex-row gap-4 overflow-x-auto pb-4 snap-x"
+    },
+    "surface_styles": {
+      "dashboard_cards": "bg-white rounded-xl border border-slate-200 shadow-sm hover:shadow-md transition-shadow",
+      "landing_header": "backdrop-blur-xl bg-white/80 border-b border-slate-200/50 sticky top-0 z-50",
+      "glassmorphism": "backdrop-blur-xl bg-white/70 border border-white/40 shadow-[0_8px_32px_rgba(0,0,0,0.05)]"
+    }
+  },
+  "components_strategy": {
+    "libraries": [
+      "shadcn/ui (App/Dashboard core components)",
+      "lucide-react (Icons)",
+      "framer-motion (Landing page animations, micro-interactions)",
+      "react-beautiful-dnd or @dnd-kit/core (Kanban drag-and-drop)",
+      "workbox (PWA Service Worker)"
+    ],
+    "rules": {
+      "landing_page": "Use raw HTML/Tailwind for structural layout and asymmetry. Shadcn for interactive forms only.",
+      "dashboard_app": "Heavily rely on Shadcn UI (Cards, Tables, Dialogs, Select, Tabs). Customize border radius (rounded-xl) and padding.",
+      "buttons": "Primary CTA uses #185FA5. Secondary uses #E6F1FB with #185FA5 text. Always include explicit hover states (e.g., hover:bg-[#144f8a] hover:text-white).",
+      "kanban": "Use soft pastel backgrounds for columns (Mint for Ganada, Peach for En Negociacion) with white cards inside. Snap scroll on mobile."
+    }
+  },
+  "pages_and_views": {
+    "landing_page": {
+      "structure": [
+        "Hero: Value proposition, email capture CTA, Agave field background with bg-white/30 gradient overlay.",
+        "Logos: Social proof (mock partner logos).",
+        "Features: Bento grid highlighting Quotations, CRM, Kanban.",
+        "Pricing Teaser: Simple 3-tier presentation.",
+        "Footer: Large typography, deep blue background (#185FA5) with white text."
+      ]
+    },
+    "dashboard_empresa": {
+      "layout": "Sidebar (collapsible on mobile) + Topbar (user profile) + Main Content area.",
+      "widgets": "4 metric cards (Month Quotes, Conversion Rate, Active Leads, Projected Revenue). F-pattern hierarchy."
+    },
+    "quotation_builder": {
+      "flow": "Wizard style (Tabs or Stepper). 1. Client Details -> 2. Package Selection -> 3. Dates & Occupancy -> 4. Price Engine Calculation -> 5. Review & PDF Gen.",
+      "mobile_adaptability": "Use vertical accordions on mobile instead of horizontal tabs if space is tight."
+    },
+    "kanban_pipeline": {
+      "states": [
+        {"name": "Nueva consulta", "color": "bg-slate-100"},
+        {"name": "Cotizando", "color": "bg-[#E6F1FB]"},
+        {"name": "En negociación", "color": "bg-[#FAEEDA]"},
+        {"name": "Ganada", "color": "bg-[#E1F5EE]"},
+        {"name": "Perdida", "color": "bg-[#FDE8E8]"}
+      ],
+      "card_data": "Client Name, Total Amount, Assigned Exec, 'Days idle' warning badge."
+    },
+    "whatsapp_inbox_mock": {
+      "layout": "Two-pane layout (List on left, Chat on right). On mobile, show list first, click to open chat over it.",
+      "features": "AI summary placeholder at the top of the chat. Assignment dropdown for executives."
+    },
+    "pwa_specifics": {
+      "manifest": "Theme color: #185FA5. Background color: #F8F9FA. Include standard 192x192 and 512x512 icons.",
+      "install_prompt": "Custom styled banner matching the app theme prompting 'Install Routiq for offline access'."
+    }
+  },
+  "motion_and_interaction": {
+    "hover_states": "All interactive elements must change background and explicitly set text color on hover. E.g., hover:-translate-y-1 hover:shadow-lg transition-all duration-200.",
+    "page_transitions": "Subtle fade-in for main content areas when navigating between dashboard routes.",
+    "drag_drop": "Scale card slightly (scale-105) and add shadow while dragging in Kanban."
+  },
+  "testing_and_accessibility": {
+    "contrast": "Ensure text over #185FA5 is pure white. Text over pastel backgrounds (Mint, Peach) must be dark (#0F172A).",
+    "data_testid": "Mandatory on all buttons, inputs, tabs, and kanban cards (e.g., data-testid='login-submit-btn', data-testid='kanban-card-123').",
+    "aria": "Use aria-hidden='true' for decorative icons."
+  },
+  "media": {
+    "hero_background": {
+      "url": "https://images.unsplash.com/photo-1745936720392-20a9af92a025?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NjA1NjZ8MHwxfHNlYXJjaHwyfHxhZ2F2ZSUyMGZpZWxkJTIwbGFuZHNjYXBlJTIwamFsaXNjb3xlbnwwfHx8fDE3NzY5ODQyNzN8MA&ixlib=rb-4.1.0&q=85",
+      "description": "Blue agave plants landscape for landing page hero background. Apply a light gradient overlay to ensure text readability."
+    },
+    "feature_image_1": {
+      "url": "https://images.unsplash.com/photo-1758518729685-f88df7890776?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NTYxODd8MHwxfHNlYXJjaHwzfHxwcm9mZXNzaW9uYWwlMjBidXNpbmVzcyUyMG1lZXRpbmclMjBvZmZpY2V8ZW58MHx8fHwxNzc2OTg0MjczfDA&ixlib=rb-4.1.0&q=85",
+      "description": "Professionals in a business meeting. Good for 'CRM & Follow-up' section."
+    },
+    "feature_image_2": {
+      "url": "https://images.pexels.com/photos/1170412/pexels-photo-1170412.jpeg?auto=compress&cs=tinysrgb&dpr=2&h=650&w=940",
+      "description": "Modern office. Good for 'Agency Management' section."
+    },
+    "landscape_accent": {
+      "url": "https://images.unsplash.com/photo-1751938583903-9fd0dba67f35?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NjA1NjZ8MHwxfHNlYXJjaHwzfHxhZ2F2ZSUyMGZpZWxkJTIwbGFuZHNjYXBlJTIwamFsaXNjb3xlbnwwfHx8fDE3NzY5ODQyNzN8MA&ixlib=rb-4.1.0&q=85",
+      "description": "Expansive agave landscape. Use as subtle background in the Quote PDF generator preview."
+    }
+  },
+  "instructions_to_main_agent": "Use the provided images. Do not use generic placeholders. Implement the PWA manifest and service worker config early. Ensure Shadcn is customized with the provided hex colors instead of the default zinc/slate. Use Outfit for all headings and Manrope for body text. Enforce mobile-first responsive design for the kanban (horizontal scroll on small screens) and quotation builder."
+}
