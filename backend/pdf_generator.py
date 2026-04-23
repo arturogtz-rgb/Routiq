@@ -1,0 +1,166 @@
+"""Generates a professional quotation PDF using ReportLab."""
+from __future__ import annotations
+import io
+from reportlab.lib import colors
+from reportlab.lib.pagesizes import letter
+from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+from reportlab.lib.units import cm
+from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, PageBreak
+from reportlab.lib.enums import TA_LEFT, TA_CENTER
+
+PRIMARY = colors.HexColor("#185FA5")
+ACCENT = colors.HexColor("#378ADD")
+PASTEL = colors.HexColor("#E6F1FB")
+MINT = colors.HexColor("#E1F5EE")
+PEACH = colors.HexColor("#FAEEDA")
+TEXT = colors.HexColor("#0F172A")
+TEXT_SOFT = colors.HexColor("#475569")
+
+
+def _styles():
+    base = getSampleStyleSheet()
+    styles = {
+        "title": ParagraphStyle("t", parent=base["Title"], fontName="Helvetica-Bold", fontSize=22, textColor=PRIMARY, alignment=TA_LEFT, spaceAfter=6),
+        "h2": ParagraphStyle("h2", parent=base["Heading2"], fontName="Helvetica-Bold", fontSize=13, textColor=PRIMARY, spaceBefore=14, spaceAfter=6),
+        "h3": ParagraphStyle("h3", parent=base["Heading3"], fontName="Helvetica-Bold", fontSize=11, textColor=TEXT, spaceBefore=8, spaceAfter=4),
+        "body": ParagraphStyle("b", parent=base["BodyText"], fontName="Helvetica", fontSize=10, textColor=TEXT, leading=14),
+        "soft": ParagraphStyle("s", parent=base["BodyText"], fontName="Helvetica", fontSize=9, textColor=TEXT_SOFT, leading=12),
+        "total": ParagraphStyle("tot", parent=base["BodyText"], fontName="Helvetica-Bold", fontSize=14, textColor=PRIMARY, alignment=TA_LEFT),
+    }
+    return styles
+
+
+def _money(v: float, currency: str = "MXN") -> str:
+    return f"${v:,.2f} {currency}"
+
+
+def generate_quotation_pdf(company: dict, quotation: dict, package: dict, client: dict) -> bytes:
+    buf = io.BytesIO()
+    doc = SimpleDocTemplate(buf, pagesize=letter,
+                            leftMargin=2 * cm, rightMargin=2 * cm,
+                            topMargin=2 * cm, bottomMargin=2 * cm,
+                            title=f"Cotización {quotation.get('code', '')}")
+    s = _styles()
+    story = []
+
+    # Header
+    header_data = [[
+        Paragraph(f"<b>{company['name']}</b><br/><font size=9 color='#475569'>{company.get('contact_email','')}<br/>{company.get('contact_phone','')}<br/>{company.get('address','')}</font>", s["body"]),
+        Paragraph(f"<b><font color='#185FA5' size=16>COTIZACIÓN</font></b><br/><font size=10>{quotation.get('code','')}</font><br/><font size=9 color='#475569'>{quotation.get('created_at','')[:10]}</font>", s["body"]),
+    ]]
+    header = Table(header_data, colWidths=[10 * cm, 7 * cm])
+    header.setStyle(TableStyle([
+        ("VALIGN", (0, 0), (-1, -1), "TOP"),
+        ("ALIGN", (1, 0), (1, 0), "RIGHT"),
+        ("LINEBELOW", (0, 0), (-1, -1), 2, PRIMARY),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 14),
+    ]))
+    story.append(header)
+    story.append(Spacer(1, 12))
+
+    # Client block
+    story.append(Paragraph("Cliente", s["h2"]))
+    story.append(Paragraph(
+        f"<b>{client.get('name','')}</b> &nbsp;&nbsp; <font color='#475569'>{client.get('email','')} · {client.get('phone','')}</font>",
+        s["body"],
+    ))
+
+    # Package block
+    story.append(Paragraph(package.get("name", ""), s["h2"]))
+    if package.get("description"):
+        story.append(Paragraph(package["description"], s["soft"]))
+    dates = quotation.get("dates", {})
+    pax = quotation.get("pax", {})
+    story.append(Spacer(1, 6))
+    meta = Table([
+        ["Hotel", quotation.get("hotel_selected", "")],
+        ["Fechas", f"{dates.get('start','')} → {dates.get('end','')}"],
+        ["Noches", str(package.get("nights", ""))],
+        ["Ocupación", f"{pax.get('ocupacion','')} · {pax.get('adultos',0)} adultos, {pax.get('menores',0)} menores"],
+    ], colWidths=[3.5 * cm, 12 * cm])
+    meta.setStyle(TableStyle([
+        ("BACKGROUND", (0, 0), (0, -1), PASTEL),
+        ("TEXTCOLOR", (0, 0), (0, -1), PRIMARY),
+        ("FONTNAME", (0, 0), (0, -1), "Helvetica-Bold"),
+        ("FONTSIZE", (0, 0), (-1, -1), 10),
+        ("ROWBACKGROUNDS", (1, 0), (1, -1), [colors.white, colors.HexColor("#F8F9FA")]),
+        ("GRID", (0, 0), (-1, -1), 0.5, colors.HexColor("#E2E8F0")),
+        ("LEFTPADDING", (0, 0), (-1, -1), 8),
+        ("RIGHTPADDING", (0, 0), (-1, -1), 8),
+        ("TOPPADDING", (0, 0), (-1, -1), 6),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 6),
+    ]))
+    story.append(meta)
+
+    # Itinerary
+    if package.get("itinerary"):
+        story.append(Paragraph("Itinerario", s["h2"]))
+        for day in package["itinerary"]:
+            story.append(Paragraph(f"<b>Día {day.get('day','')}:</b> {day.get('title','')}", s["h3"]))
+            if day.get("description"):
+                story.append(Paragraph(day["description"], s["body"]))
+
+    # Price items
+    story.append(Paragraph("Desglose de precios", s["h2"]))
+    currency = quotation.get("currency", "MXN")
+    rows = [["Concepto", "P. unitario", "Cant.", "Subtotal"]]
+    for it in quotation.get("items", []):
+        rows.append([it["label"], _money(it["unit_price"], currency), str(it["qty"]), _money(it["subtotal"], currency)])
+    price_table = Table(rows, colWidths=[9 * cm, 3 * cm, 1.5 * cm, 3 * cm])
+    price_table.setStyle(TableStyle([
+        ("BACKGROUND", (0, 0), (-1, 0), PRIMARY),
+        ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
+        ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
+        ("ALIGN", (1, 1), (-1, -1), "RIGHT"),
+        ("FONTSIZE", (0, 0), (-1, -1), 9),
+        ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.white, colors.HexColor("#F8F9FA")]),
+        ("GRID", (0, 0), (-1, -1), 0.3, colors.HexColor("#E2E8F0")),
+        ("LEFTPADDING", (0, 0), (-1, -1), 6),
+        ("RIGHTPADDING", (0, 0), (-1, -1), 6),
+        ("TOPPADDING", (0, 0), (-1, -1), 6),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 6),
+    ]))
+    story.append(price_table)
+    story.append(Spacer(1, 10))
+
+    # Totals
+    tot_rows = [
+        ["Subtotal", _money(quotation.get("subtotal", 0), currency)],
+    ]
+    if quotation.get("commission", 0) > 0:
+        tot_rows.append(["Comisión canal", f"- {_money(quotation['commission'], currency)}"])
+    tot_rows.append(["TOTAL", _money(quotation.get("total", 0), currency)])
+    tot = Table(tot_rows, colWidths=[13 * cm, 3.5 * cm])
+    tot.setStyle(TableStyle([
+        ("ALIGN", (0, 0), (-1, -1), "RIGHT"),
+        ("FONTSIZE", (0, 0), (-1, -1), 10),
+        ("FONTNAME", (0, -1), (-1, -1), "Helvetica-Bold"),
+        ("TEXTCOLOR", (0, -1), (-1, -1), PRIMARY),
+        ("FONTSIZE", (0, -1), (-1, -1), 13),
+        ("LINEABOVE", (0, -1), (-1, -1), 1.5, PRIMARY),
+        ("TOPPADDING", (0, 0), (-1, -1), 6),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 6),
+    ]))
+    story.append(tot)
+
+    # Includes / Excludes
+    if package.get("includes") or package.get("excludes"):
+        story.append(PageBreak())
+        if package.get("includes"):
+            story.append(Paragraph("Incluye", s["h2"]))
+            for x in package["includes"]:
+                story.append(Paragraph(f"✓ {x}", s["body"]))
+        if package.get("excludes"):
+            story.append(Paragraph("No incluye", s["h2"]))
+            for x in package["excludes"]:
+                story.append(Paragraph(f"✗ {x}", s["body"]))
+
+    story.append(Spacer(1, 18))
+    story.append(Paragraph(
+        "<b>Condiciones generales:</b> Cotización válida por 7 días. Precios sujetos a disponibilidad al momento de la reservación. "
+        "Política de cancelación según contrato. Precios por persona en MXN.",
+        s["soft"],
+    ))
+
+    doc.build(story)
+    return buf.getvalue()

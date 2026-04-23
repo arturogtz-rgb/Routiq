@@ -1,54 +1,55 @@
-import { useEffect } from "react";
-import "@/App.css";
-import { BrowserRouter, Routes, Route } from "react-router-dom";
-import axios from "axios";
+import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
+import '@/index.css';
+import { AuthProvider, useAuth } from '@/context/AuthContext';
+import ProtectedRoute from '@/components/ProtectedRoute';
 
-const BACKEND_URL = process.env.REACT_APP_BACKEND_URL;
-const API = `${BACKEND_URL}/api`;
+import Landing from '@/pages/Landing';
+import Login from '@/pages/Login';
+import Dashboard from '@/pages/Dashboard';
+import Kanban from '@/pages/Kanban';
+import Packages from '@/pages/Packages';
+import QuotationBuilder from '@/pages/QuotationBuilder';
+import QuotationsList from '@/pages/QuotationsList';
+import QuotationDetail from '@/pages/QuotationDetail';
+import WhatsAppInbox from '@/pages/WhatsAppInbox';
+import Team from '@/pages/Team';
+import Settings from '@/pages/Settings';
+import MasterAdmin, { MasterCompanies } from '@/pages/Master';
 
-const Home = () => {
-  const helloWorldApi = async () => {
-    try {
-      const response = await axios.get(`${API}/`);
-      console.log(response.data.message);
-    } catch (e) {
-      console.error(e, `errored out requesting / api`);
-    }
-  };
-
-  useEffect(() => {
-    helloWorldApi();
-  }, []);
-
-  return (
-    <div>
-      <header className="App-header">
-        <a
-          className="App-link"
-          href="https://emergent.sh"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <img src="https://avatars.githubusercontent.com/in/1201222?s=120&u=2686cf91179bbafbc7a71bfbc43004cf9ae1acea&v=4" />
-        </a>
-        <p className="mt-5">Building something incredible ~!</p>
-      </header>
-    </div>
-  );
-};
-
-function App() {
-  return (
-    <div className="App">
-      <BrowserRouter>
-        <Routes>
-          <Route path="/" element={<Home />}>
-            <Route index element={<Home />} />
-          </Route>
-        </Routes>
-      </BrowserRouter>
-    </div>
-  );
+function HomeRedirect() {
+  const { user, loading } = useAuth();
+  if (loading) return null;
+  if (user && user.role === 'super_admin') return <Navigate to="/master" replace />;
+  if (user) return <Navigate to="/app/dashboard" replace />;
+  return <Landing />;
 }
 
-export default App;
+export default function App() {
+  return (
+    <AuthProvider>
+      <BrowserRouter>
+        <Routes>
+          <Route path="/" element={<HomeRedirect />} />
+          <Route path="/login" element={<Login />} />
+
+          {/* Company app */}
+          <Route path="/app/dashboard" element={<ProtectedRoute roles={['company_admin', 'executive']}><Dashboard /></ProtectedRoute>} />
+          <Route path="/app/kanban" element={<ProtectedRoute roles={['company_admin', 'executive']}><Kanban /></ProtectedRoute>} />
+          <Route path="/app/packages" element={<ProtectedRoute roles={['company_admin', 'executive']}><Packages /></ProtectedRoute>} />
+          <Route path="/app/quotations" element={<ProtectedRoute roles={['company_admin', 'executive']}><QuotationsList /></ProtectedRoute>} />
+          <Route path="/app/quotations/new" element={<ProtectedRoute roles={['company_admin', 'executive']}><QuotationBuilder /></ProtectedRoute>} />
+          <Route path="/app/quotations/:id" element={<ProtectedRoute roles={['company_admin', 'executive']}><QuotationDetail /></ProtectedRoute>} />
+          <Route path="/app/whatsapp" element={<ProtectedRoute roles={['company_admin', 'executive']}><WhatsAppInbox /></ProtectedRoute>} />
+          <Route path="/app/team" element={<ProtectedRoute roles={['company_admin']}><Team /></ProtectedRoute>} />
+          <Route path="/app/settings" element={<ProtectedRoute roles={['company_admin']}><Settings /></ProtectedRoute>} />
+
+          {/* Master panel */}
+          <Route path="/master" element={<ProtectedRoute roles={['super_admin']}><MasterAdmin /></ProtectedRoute>} />
+          <Route path="/master/companies" element={<ProtectedRoute roles={['super_admin']}><MasterCompanies /></ProtectedRoute>} />
+
+          <Route path="*" element={<Navigate to="/" replace />} />
+        </Routes>
+      </BrowserRouter>
+    </AuthProvider>
+  );
+}

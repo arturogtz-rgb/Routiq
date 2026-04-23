@@ -1,89 +1,501 @@
-from fastapi import FastAPI, APIRouter
+"""Routiq FastAPI server — multi-tenant SaaS for tourism quotations."""
 from dotenv import load_dotenv
-from starlette.middleware.cors import CORSMiddleware
-from motor.motor_asyncio import AsyncIOMotorClient
+from pathlib import Path
+load_dotenv(Path(__file__).parent / ".env")
+
 import os
 import logging
-from pathlib import Path
-from pydantic import BaseModel, Field, ConfigDict
-from typing import List
-import uuid
 from datetime import datetime, timezone
+from fastapi import FastAPI, APIRouter, HTTPException, Depends, Response, Request
+from fastapi.responses import StreamingResponse
+from starlette.middleware.cors import CORSMiddleware
+
+from database import get_db, new_id, now_iso, ensure_indexes, seed_super_admin, seed_demo_tenant, DEFAULT_PRICING_CONFIG
+from auth import (
+    hash_password, verify_password, create_access_token, create_refresh_token,
+    decode_token, set_auth_cookies, clear_auth_cookies,
+    get_current_user, require_roles, require_tenant,
+)
+from models import (
+    LoginInput, UserPublic, CompanyCreate, CompanyPublic, CompanyUpdate, PricingConfig,
+    InviteExecutive, PackageCreate, PackageUpdate, ClientCreate,
+    QuotationCreate, QuotationStateUpdate, QuotationUpdate, WhatsAppNumber,
+)
+from pricing import compute_quotation
+from pdf_generator import generate_quotation_pdf
+import io
+
+logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s - %(message)s")
+log = logging.getLogger("routiq")
+
+app = FastAPI(title="Routiq API", version="1.0.0")
+api = APIRouter(prefix="/api")
+
+# ---------------------------------------------------------------------------
+# Lifecycle
+# ---------------------------------------------------------------------------
+@app.on_event("startup")
+async def _startup():
+    await ensure_indexes()
+    await seed_super_admin()
+    await seed_demo_tenant()
+    log.info("Startup complete — super admin + demo tenant seeded")
 
 
-ROOT_DIR = Path(__file__).parent
-load_dotenv(ROOT_DIR / '.env')
-
-# MongoDB connection
-mongo_url = os.environ['MONGO_URL']
-client = AsyncIOMotorClient(mongo_url)
-db = client[os.environ['DB_NAME']]
-
-# Create the main app without a prefix
-app = FastAPI()
-
-# Create a router with the /api prefix
-api_router = APIRouter(prefix="/api")
-
-
-# Define Models
-class StatusCheck(BaseModel):
-    model_config = ConfigDict(extra="ignore")  # Ignore MongoDB's _id field
-    
-    id: str = Field(default_factory=lambda: str(uuid.uuid4()))
-    client_name: str
-    timestamp: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
-
-class StatusCheckCreate(BaseModel):
-    client_name: str
-
-# Add your routes to the router instead of directly to app
-@api_router.get("/")
+# ---------------------------------------------------------------------------
+# Health
+# ---------------------------------------------------------------------------
+@api.get("/")
 async def root():
-    return {"message": "Hello World"}
+    return {"service": "Routiq API", "status": "ok"}
 
-@api_router.post("/status", response_model=StatusCheck)
-async def create_status_check(input: StatusCheckCreate):
-    status_dict = input.model_dump()
-    status_obj = StatusCheck(**status_dict)
-    
-    # Convert to dict and serialize datetime to ISO string for MongoDB
-    doc = status_obj.model_dump()
-    doc['timestamp'] = doc['timestamp'].isoformat()
-    
-    _ = await db.status_checks.insert_one(doc)
-    return status_obj
 
-@api_router.get("/status", response_model=List[StatusCheck])
-async def get_status_checks():
-    # Exclude MongoDB's _id field from the query results
-    status_checks = await db.status_checks.find({}, {"_id": 0}).to_list(1000)
-    
-    # Convert ISO string timestamps back to datetime objects
-    for check in status_checks:
-        if isinstance(check['timestamp'], str):
-            check['timestamp'] = datetime.fromisoformat(check['timestamp'])
-    
-    return status_checks
+# ---------------------------------------------------------------------------
+# Auth
+# ---------------------------------------------------------------------------
+@api.post("/auth/login", response_model=UserPublic)
+async def login(payload: LoginInput, response: Response):
+    db = get_db()
+    email = payload.email.lower().strip()
+    user = await db.users.find_one({"email": email}, {"_id": 0})
+    if not user or not verify_password(payload.password, user["password_hash"]):
+        raise HTTPException(status_code=401, detail="Correo o contraseña incorrectos")
+    if user.get("status") == "suspended":
+        raise HTTPException(status_code=403, detail="Usuario suspendido")
+    access = create_access_token(user["id"], user["email"], user["role"], user.get("tenant_id"))
+    refresh = create_refresh_token(user["id"])
+    set_auth_cookies(response, access, refresh)
+    user.pop("password_hash", None)
+    return user
 
-# Include the router in the main app
-app.include_router(api_router)
+
+@api.get("/auth/me", response_model=UserPublic)
+async def me(user: dict = Depends(get_current_user)):
+    return user
+
+
+@api.post("/auth/logout")
+async def logout(response: Response):
+    clear_auth_cookies(response)
+    return {"ok": True}
+
+
+@api.post("/auth/refresh")
+async def refresh_token(request: Request, response: Response):
+    import jwt as _jwt
+    token = request.cookies.get("refresh_token")
+    if not token:
+        raise HTTPException(status_code=401, detail="No refresh token")
+    try:
+        payload = decode_token(token)
+        if payload.get("type") != "refresh":
+            raise HTTPException(status_code=401, detail="Invalid token type")
+    except _jwt.PyJWTError:
+        raise HTTPException(status_code=401, detail="Invalid refresh token")
+    db = get_db()
+    user = await db.users.find_one({"id": payload["sub"]}, {"_id": 0})
+    if not user:
+        raise HTTPException(status_code=401, detail="User not found")
+    access = create_access_token(user["id"], user["email"], user["role"], user.get("tenant_id"))
+    new_refresh = create_refresh_token(user["id"])
+    set_auth_cookies(response, access, new_refresh)
+    return {"ok": True}
+
+
+# ---------------------------------------------------------------------------
+# Companies (tenants) — super_admin manages
+# ---------------------------------------------------------------------------
+@api.get("/companies", response_model=list[CompanyPublic])
+async def list_companies(user: dict = Depends(require_roles("super_admin"))):
+    db = get_db()
+    return await db.companies.find({}, {"_id": 0}).to_list(500)
+
+
+@api.post("/companies", response_model=CompanyPublic, status_code=201)
+async def create_company(payload: CompanyCreate, user: dict = Depends(require_roles("super_admin"))):
+    db = get_db()
+    if await db.companies.find_one({"slug": payload.slug}):
+        raise HTTPException(status_code=400, detail="Slug ya en uso")
+    if await db.users.find_one({"email": payload.admin_email.lower()}):
+        raise HTTPException(status_code=400, detail="Email de admin ya registrado")
+    company = {
+        "id": new_id(), "name": payload.name, "slug": payload.slug,
+        "logo_url": "", "primary_color": "#185FA5",
+        "contact_email": payload.contact_email, "contact_phone": payload.contact_phone,
+        "address": payload.address,
+        "pricing_config": DEFAULT_PRICING_CONFIG.copy(),
+        "whatsapp_numbers": [],
+        "status": "active",
+        "created_at": now_iso(),
+    }
+    await db.companies.insert_one(dict(company))
+    await db.users.insert_one({
+        "id": new_id(), "email": payload.admin_email.lower(),
+        "password_hash": hash_password(payload.admin_password),
+        "name": payload.admin_name, "role": "company_admin",
+        "tenant_id": company["id"], "status": "active", "created_at": now_iso(),
+    })
+    return company
+
+
+@api.get("/companies/me", response_model=CompanyPublic)
+async def get_my_company(user: dict = Depends(require_tenant)):
+    db = get_db()
+    company = await db.companies.find_one({"id": user["tenant_id"]}, {"_id": 0})
+    if not company:
+        raise HTTPException(status_code=404, detail="Empresa no encontrada")
+    return company
+
+
+@api.patch("/companies/me", response_model=CompanyPublic)
+async def update_my_company(payload: CompanyUpdate, user: dict = Depends(require_roles("company_admin"))):
+    db = get_db()
+    updates = {k: v for k, v in payload.model_dump(exclude_unset=True).items() if v is not None}
+    if updates:
+        await db.companies.update_one({"id": user["tenant_id"]}, {"$set": updates})
+    company = await db.companies.find_one({"id": user["tenant_id"]}, {"_id": 0})
+    return company
+
+
+@api.patch("/companies/me/pricing", response_model=CompanyPublic)
+async def update_pricing(payload: PricingConfig, user: dict = Depends(require_roles("company_admin"))):
+    db = get_db()
+    await db.companies.update_one(
+        {"id": user["tenant_id"]},
+        {"$set": {"pricing_config": payload.model_dump()}},
+    )
+    company = await db.companies.find_one({"id": user["tenant_id"]}, {"_id": 0})
+    return company
+
+
+@api.patch("/companies/{company_id}/status")
+async def toggle_company_status(company_id: str, status: str, user: dict = Depends(require_roles("super_admin"))):
+    if status not in ("active", "suspended"):
+        raise HTTPException(status_code=400, detail="Status inválido")
+    db = get_db()
+    await db.companies.update_one({"id": company_id}, {"$set": {"status": status}})
+    return {"ok": True, "status": status}
+
+
+# ---------------------------------------------------------------------------
+# WhatsApp numbers (mock for now)
+# ---------------------------------------------------------------------------
+@api.post("/companies/me/whatsapp-numbers", response_model=CompanyPublic)
+async def add_whatsapp_number(number: str, label: str = "", user: dict = Depends(require_roles("company_admin"))):
+    db = get_db()
+    wa = {"id": new_id(), "number": number, "label": label, "status": "disconnected"}
+    await db.companies.update_one({"id": user["tenant_id"]}, {"$push": {"whatsapp_numbers": wa}})
+    return await db.companies.find_one({"id": user["tenant_id"]}, {"_id": 0})
+
+
+@api.delete("/companies/me/whatsapp-numbers/{wa_id}")
+async def remove_whatsapp_number(wa_id: str, user: dict = Depends(require_roles("company_admin"))):
+    db = get_db()
+    await db.companies.update_one({"id": user["tenant_id"]}, {"$pull": {"whatsapp_numbers": {"id": wa_id}}})
+    return {"ok": True}
+
+
+# ---------------------------------------------------------------------------
+# Users (team) — company_admin invites executives
+# ---------------------------------------------------------------------------
+@api.get("/users", response_model=list[UserPublic])
+async def list_tenant_users(user: dict = Depends(require_tenant)):
+    db = get_db()
+    return await db.users.find({"tenant_id": user["tenant_id"]}, {"_id": 0, "password_hash": 0}).to_list(200)
+
+
+@api.post("/users/invite-executive", response_model=UserPublic, status_code=201)
+async def invite_executive(payload: InviteExecutive, user: dict = Depends(require_roles("company_admin"))):
+    db = get_db()
+    email = payload.email.lower().strip()
+    if await db.users.find_one({"email": email}):
+        raise HTTPException(status_code=400, detail="Email ya registrado")
+    new_user = {
+        "id": new_id(), "email": email, "name": payload.name,
+        "password_hash": hash_password(payload.password),
+        "role": "executive", "tenant_id": user["tenant_id"],
+        "status": "active", "created_at": now_iso(),
+    }
+    await db.users.insert_one(dict(new_user))
+    new_user.pop("password_hash", None)
+    return new_user
+
+
+@api.patch("/users/{user_id}/status")
+async def toggle_user_status(user_id: str, status: str, user: dict = Depends(require_roles("company_admin"))):
+    if status not in ("active", "suspended"):
+        raise HTTPException(status_code=400, detail="Status inválido")
+    db = get_db()
+    target = await db.users.find_one({"id": user_id, "tenant_id": user["tenant_id"]}, {"_id": 0})
+    if not target:
+        raise HTTPException(status_code=404, detail="Usuario no encontrado")
+    await db.users.update_one({"id": user_id}, {"$set": {"status": status}})
+    return {"ok": True}
+
+
+# ---------------------------------------------------------------------------
+# Packages catalog
+# ---------------------------------------------------------------------------
+@api.get("/packages")
+async def list_packages(user: dict = Depends(require_tenant)):
+    db = get_db()
+    return await db.packages.find({"tenant_id": user["tenant_id"]}, {"_id": 0}).to_list(500)
+
+
+@api.get("/packages/{package_id}")
+async def get_package(package_id: str, user: dict = Depends(require_tenant)):
+    db = get_db()
+    pack = await db.packages.find_one({"id": package_id, "tenant_id": user["tenant_id"]}, {"_id": 0})
+    if not pack:
+        raise HTTPException(status_code=404, detail="Paquete no encontrado")
+    return pack
+
+
+@api.post("/packages", status_code=201)
+async def create_package(payload: PackageCreate, user: dict = Depends(require_roles("company_admin"))):
+    db = get_db()
+    if await db.packages.find_one({"tenant_id": user["tenant_id"], "code": payload.code}):
+        raise HTTPException(status_code=400, detail="Código de paquete ya existe")
+    doc = {"id": new_id(), "tenant_id": user["tenant_id"], "created_at": now_iso(), **payload.model_dump()}
+    await db.packages.insert_one(dict(doc))
+    return doc
+
+
+@api.patch("/packages/{package_id}")
+async def update_package(package_id: str, payload: PackageUpdate, user: dict = Depends(require_roles("company_admin"))):
+    db = get_db()
+    updates = {k: v for k, v in payload.model_dump(exclude_unset=True).items() if v is not None}
+    if updates:
+        await db.packages.update_one({"id": package_id, "tenant_id": user["tenant_id"]}, {"$set": updates})
+    pack = await db.packages.find_one({"id": package_id, "tenant_id": user["tenant_id"]}, {"_id": 0})
+    if not pack:
+        raise HTTPException(status_code=404, detail="Paquete no encontrado")
+    return pack
+
+
+@api.delete("/packages/{package_id}")
+async def delete_package(package_id: str, user: dict = Depends(require_roles("company_admin"))):
+    db = get_db()
+    await db.packages.delete_one({"id": package_id, "tenant_id": user["tenant_id"]})
+    return {"ok": True}
+
+
+# ---------------------------------------------------------------------------
+# Clients
+# ---------------------------------------------------------------------------
+@api.get("/clients")
+async def list_clients(user: dict = Depends(require_tenant)):
+    db = get_db()
+    return await db.clients.find({"tenant_id": user["tenant_id"]}, {"_id": 0}).to_list(500)
+
+
+@api.post("/clients", status_code=201)
+async def create_client(payload: ClientCreate, user: dict = Depends(require_tenant)):
+    db = get_db()
+    doc = {"id": new_id(), "tenant_id": user["tenant_id"], "created_at": now_iso(), **payload.model_dump()}
+    await db.clients.insert_one(dict(doc))
+    return doc
+
+
+# ---------------------------------------------------------------------------
+# Quotations
+# ---------------------------------------------------------------------------
+async def _next_quotation_code(db, tenant_id: str) -> str:
+    count = await db.quotations.count_documents({"tenant_id": tenant_id})
+    return f"COT-{2026000 + count + 1}"
+
+
+@api.get("/quotations")
+async def list_quotations(state: str | None = None, user: dict = Depends(require_tenant)):
+    db = get_db()
+    q = {"tenant_id": user["tenant_id"]}
+    if state:
+        q["state"] = state
+    items = await db.quotations.find(q, {"_id": 0}).sort("created_at", -1).to_list(500)
+    # enrich with days_idle
+    now = datetime.now(timezone.utc)
+    for it in items:
+        try:
+            last = datetime.fromisoformat(it.get("last_activity_at", it.get("created_at")))
+            it["days_idle"] = (now - last).days
+        except Exception:
+            it["days_idle"] = 0
+    return items
+
+
+@api.get("/quotations/{quotation_id}")
+async def get_quotation(quotation_id: str, user: dict = Depends(require_tenant)):
+    db = get_db()
+    q = await db.quotations.find_one({"id": quotation_id, "tenant_id": user["tenant_id"]}, {"_id": 0})
+    if not q:
+        raise HTTPException(status_code=404, detail="Cotización no encontrada")
+    return q
+
+
+@api.post("/quotations", status_code=201)
+async def create_quotation(payload: QuotationCreate, user: dict = Depends(require_tenant)):
+    db = get_db()
+    client = await db.clients.find_one({"id": payload.client_id, "tenant_id": user["tenant_id"]}, {"_id": 0})
+    if not client:
+        raise HTTPException(status_code=404, detail="Cliente no encontrado")
+    pack = await db.packages.find_one({"id": payload.package_id, "tenant_id": user["tenant_id"]}, {"_id": 0})
+    if not pack:
+        raise HTTPException(status_code=404, detail="Paquete no encontrado")
+    company = await db.companies.find_one({"id": user["tenant_id"]}, {"_id": 0})
+    pricing_config = company.get("pricing_config") or DEFAULT_PRICING_CONFIG
+    calc = compute_quotation(pack, payload.hotel_name, payload.pax.model_dump(),
+                             pack["nights"], client["channel"], pricing_config)
+    code = await _next_quotation_code(db, user["tenant_id"])
+    doc = {
+        "id": new_id(), "tenant_id": user["tenant_id"], "code": code,
+        "client_id": client["id"], "client_snapshot": {"name": client["name"], "channel": client["channel"]},
+        "type": "paquete", "package_id": pack["id"],
+        "package_snapshot": {"name": pack["name"], "code": pack["code"], "nights": pack["nights"]},
+        "hotel_selected": payload.hotel_name,
+        "dates": payload.dates.model_dump(),
+        "pax": payload.pax.model_dump(),
+        "items": calc["items"],
+        "subtotal": calc["subtotal"],
+        "commission": calc["commission"],
+        "commission_rate": calc["commission_rate"],
+        "total": calc["total"],
+        "currency": calc["currency"],
+        "state": "nueva_consulta",
+        "assigned_to": payload.assigned_to or user["id"],
+        "created_by": user["id"],
+        "notes": payload.notes,
+        "last_activity_at": now_iso(),
+        "created_at": now_iso(),
+    }
+    await db.quotations.insert_one(dict(doc))
+    return doc
+
+
+@api.patch("/quotations/{quotation_id}/state")
+async def update_quotation_state(quotation_id: str, payload: QuotationStateUpdate, user: dict = Depends(require_tenant)):
+    db = get_db()
+    q = await db.quotations.find_one({"id": quotation_id, "tenant_id": user["tenant_id"]}, {"_id": 0})
+    if not q:
+        raise HTTPException(status_code=404, detail="Cotización no encontrada")
+    await db.quotations.update_one(
+        {"id": quotation_id, "tenant_id": user["tenant_id"]},
+        {"$set": {"state": payload.state, "last_activity_at": now_iso()}},
+    )
+    return {"ok": True, "state": payload.state}
+
+
+@api.patch("/quotations/{quotation_id}")
+async def update_quotation(quotation_id: str, payload: QuotationUpdate, user: dict = Depends(require_tenant)):
+    db = get_db()
+    updates = {k: v for k, v in payload.model_dump(exclude_unset=True).items() if v is not None}
+    # Recompute totals if pax/hotel/dates changed
+    q = await db.quotations.find_one({"id": quotation_id, "tenant_id": user["tenant_id"]}, {"_id": 0})
+    if not q:
+        raise HTTPException(status_code=404, detail="Cotización no encontrada")
+    if any(k in updates for k in ("pax", "hotel_name")):
+        pack = await db.packages.find_one({"id": q["package_id"], "tenant_id": user["tenant_id"]}, {"_id": 0})
+        client = await db.clients.find_one({"id": q["client_id"], "tenant_id": user["tenant_id"]}, {"_id": 0})
+        company = await db.companies.find_one({"id": user["tenant_id"]}, {"_id": 0})
+        pricing_config = company.get("pricing_config") or DEFAULT_PRICING_CONFIG
+        hotel = updates.get("hotel_name", q["hotel_selected"])
+        pax = updates.get("pax", q["pax"])
+        calc = compute_quotation(pack, hotel, pax, pack["nights"], client["channel"], pricing_config)
+        updates.update({
+            "hotel_selected": hotel,
+            "items": calc["items"], "subtotal": calc["subtotal"],
+            "commission": calc["commission"], "commission_rate": calc["commission_rate"],
+            "total": calc["total"],
+        })
+        updates.pop("hotel_name", None)
+    updates["last_activity_at"] = now_iso()
+    await db.quotations.update_one({"id": quotation_id, "tenant_id": user["tenant_id"]}, {"$set": updates})
+    return await db.quotations.find_one({"id": quotation_id, "tenant_id": user["tenant_id"]}, {"_id": 0})
+
+
+@api.get("/quotations/{quotation_id}/pdf")
+async def download_quotation_pdf(quotation_id: str, user: dict = Depends(require_tenant)):
+    db = get_db()
+    q = await db.quotations.find_one({"id": quotation_id, "tenant_id": user["tenant_id"]}, {"_id": 0})
+    if not q:
+        raise HTTPException(status_code=404, detail="Cotización no encontrada")
+    company = await db.companies.find_one({"id": user["tenant_id"]}, {"_id": 0})
+    pack = await db.packages.find_one({"id": q["package_id"], "tenant_id": user["tenant_id"]}, {"_id": 0})
+    client = await db.clients.find_one({"id": q["client_id"], "tenant_id": user["tenant_id"]}, {"_id": 0})
+    pdf = generate_quotation_pdf(company, q, pack, client or {"name": q.get("client_snapshot", {}).get("name", "")})
+    return StreamingResponse(
+        io.BytesIO(pdf), media_type="application/pdf",
+        headers={"Content-Disposition": f'attachment; filename="{q["code"]}.pdf"'},
+    )
+
+
+# ---------------------------------------------------------------------------
+# Dashboard metrics
+# ---------------------------------------------------------------------------
+@api.get("/metrics/dashboard")
+async def dashboard_metrics(user: dict = Depends(require_tenant)):
+    db = get_db()
+    t = user["tenant_id"]
+    total = await db.quotations.count_documents({"tenant_id": t})
+    won = await db.quotations.count_documents({"tenant_id": t, "state": "ganada"})
+    lost = await db.quotations.count_documents({"tenant_id": t, "state": "perdida"})
+    active = await db.quotations.count_documents({"tenant_id": t, "state": {"$in": ["nueva_consulta", "cotizando", "enviada", "negociacion"]}})
+    closed = won + lost
+    conversion = round((won / closed) * 100, 1) if closed > 0 else 0.0
+    # Projected revenue = sum of total for active + ganada
+    cursor = db.quotations.find({"tenant_id": t, "state": {"$in": ["cotizando", "enviada", "negociacion"]}}, {"_id": 0, "total": 1})
+    projected = 0.0
+    async for doc in cursor:
+        projected += doc.get("total", 0) or 0
+    revenue_cursor = db.quotations.find({"tenant_id": t, "state": "ganada"}, {"_id": 0, "total": 1})
+    revenue = 0.0
+    async for doc in revenue_cursor:
+        revenue += doc.get("total", 0) or 0
+    return {
+        "quotations_total": total,
+        "quotations_active": active,
+        "quotations_won": won,
+        "quotations_lost": lost,
+        "conversion_rate": conversion,
+        "projected_revenue": round(projected, 2),
+        "revenue_won": round(revenue, 2),
+    }
+
+
+@api.get("/metrics/master")
+async def master_metrics(user: dict = Depends(require_roles("super_admin"))):
+    db = get_db()
+    companies = await db.companies.count_documents({})
+    active = await db.companies.count_documents({"status": "active"})
+    quotations = await db.quotations.count_documents({})
+    users = await db.users.count_documents({"role": {"$ne": "super_admin"}})
+    # per-company stats
+    per_company = []
+    async for c in db.companies.find({}, {"_id": 0}):
+        q_total = await db.quotations.count_documents({"tenant_id": c["id"]})
+        q_won = await db.quotations.count_documents({"tenant_id": c["id"], "state": "ganada"})
+        per_company.append({
+            "id": c["id"], "name": c["name"], "slug": c["slug"],
+            "status": c.get("status", "active"),
+            "quotations_total": q_total, "quotations_won": q_won,
+        })
+    return {
+        "companies_total": companies,
+        "companies_active": active,
+        "quotations_total": quotations,
+        "users_total": users,
+        "per_company": per_company,
+    }
+
+
+# ---------------------------------------------------------------------------
+# Router + CORS
+# ---------------------------------------------------------------------------
+app.include_router(api)
 
 app.add_middleware(
     CORSMiddleware,
+    allow_origin_regex=".*",
     allow_credentials=True,
-    allow_origins=os.environ.get('CORS_ORIGINS', '*').split(','),
     allow_methods=["*"],
     allow_headers=["*"],
 )
-
-# Configure logging
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
-)
-logger = logging.getLogger(__name__)
-
-@app.on_event("shutdown")
-async def shutdown_db_client():
-    client.close()
