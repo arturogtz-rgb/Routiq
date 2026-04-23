@@ -237,7 +237,7 @@ function FinalCta() {
 
 function Footer() {
   return (
-    <footer className="bg-ink-900 text-white py-10">
+    <footer className="bg-ink-900 text-white py-10" data-testid="landing-footer">
       <div className="max-w-7xl mx-auto px-4 md:px-8 flex flex-col md:flex-row items-center justify-between gap-4">
         <Logo size={26} white />
         <p className="text-sm text-white/60">© 2026 Routiq. Hecho para tour operadores. GDL 🇲🇽</p>
