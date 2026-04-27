@@ -1,0 +1,63 @@
+name: routiq
+
+services:
+  mongo:
+    image: mongo:7
+    container_name: routiq-mongo
+    restart: unless-stopped
+    volumes:
+      - mongo_data:/data/db
+      - mongo_backups:/backups
+    networks:
+      - routiq_net
+    # No exponemos el puerto al exterior; solo accesible dentro de la red Docker.
+    healthcheck:
+      test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+
+  backend:
+    build:
+      context: ..
+      dockerfile: deploy/backend.Dockerfile
+    container_name: routiq-backend
+    restart: unless-stopped
+    depends_on:
+      mongo:
+        condition: service_healthy
+    environment:
+      MONGO_URL: ${MONGO_URL}
+      DB_NAME: ${DB_NAME}
+      CORS_ORIGINS: ${CORS_ORIGINS}
+      JWT_SECRET: ${JWT_SECRET}
+      SUPER_ADMIN_EMAIL: ${SUPER_ADMIN_EMAIL}
+      SUPER_ADMIN_PASSWORD: ${SUPER_ADMIN_PASSWORD}
+      DEMO_COMPANY_ADMIN_EMAIL: ${DEMO_COMPANY_ADMIN_EMAIL}
+      DEMO_COMPANY_ADMIN_PASSWORD: ${DEMO_COMPANY_ADMIN_PASSWORD}
+      DEMO_EXECUTIVE_EMAIL: ${DEMO_EXECUTIVE_EMAIL}
+      DEMO_EXECUTIVE_PASSWORD: ${DEMO_EXECUTIVE_PASSWORD}
+    ports:
+      # Solo expone a la red local del host. Nginx en el host hace el proxy a este puerto.
+      - "127.0.0.1:8001:8000"
+    networks:
+      - routiq_net
+    deploy:
+      resources:
+        limits:
+          memory: 768M
+
+volumes:
+  mongo_data:
+    name: routiq_mongo_data
+  mongo_backups:
+    name: routiq_mongo_backups
+
+networks:
+  routiq_net:
+    name: routiq_net
+    driver: bridge
