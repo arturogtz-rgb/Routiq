@@ -33,7 +33,7 @@ chown -R www-data:www-data /var/www/routiq
 
 echo "▶ Re-buildeando y reiniciando backend…"
 cd "$DEPLOY_DIR"
-docker compose --env-file "$ENV_FILE" up -d --build backend
+docker compose --env-file "$ENV_FILE" up -d --build --force-recreate backend
 
 echo "▶ Recargando Nginx…"
 nginx -t && systemctl reload nginx
