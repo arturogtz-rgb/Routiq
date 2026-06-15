@@ -5,7 +5,7 @@ import Logo from '@/components/Logo';
 import NotificationBell from '@/components/NotificationBell';
 import api from '@/lib/api';
 import {
-  LayoutDashboard, Kanban, FileText, Package, Users, Settings, MessageCircle, LogOut, Menu, X, ChevronRight, Sparkles, Globe, ShieldCheck,
+  LayoutDashboard, Kanban, FileText, Package, Users, Settings, MessageCircle, LogOut, Menu, X, ChevronRight, Sparkles, Globe, ShieldCheck, Inbox,
 } from 'lucide-react';
 
 const NAV_BY_ROLE = {
@@ -13,6 +13,7 @@ const NAV_BY_ROLE = {
     { to: '/app/dashboard', label: 'Dashboard', icon: LayoutDashboard, testid: 'nav-dashboard' },
     { to: '/app/kanban', label: 'Pipeline', icon: Kanban, testid: 'nav-kanban' },
     { to: '/app/quotations', label: 'Cotizaciones', icon: FileText, testid: 'nav-quotations' },
+    { to: '/app/leads', label: 'Solicitudes', icon: Inbox, testid: 'nav-leads' },
     { to: '/app/packages', label: 'Paquetes', icon: Package, testid: 'nav-packages' },
     { to: '/app/services', label: 'Servicios', icon: Sparkles, testid: 'nav-services' },
     { to: '/app/whatsapp', label: 'WhatsApp', icon: MessageCircle, testid: 'nav-whatsapp' },
@@ -24,6 +25,7 @@ const NAV_BY_ROLE = {
     { to: '/app/dashboard', label: 'Dashboard', icon: LayoutDashboard, testid: 'nav-dashboard' },
     { to: '/app/kanban', label: 'Pipeline', icon: Kanban, testid: 'nav-kanban' },
     { to: '/app/quotations', label: 'Cotizaciones', icon: FileText, testid: 'nav-quotations' },
+    { to: '/app/leads', label: 'Solicitudes', icon: Inbox, testid: 'nav-leads' },
     { to: '/app/packages', label: 'Paquetes', icon: Package, testid: 'nav-packages' },
     { to: '/app/services', label: 'Servicios', icon: Sparkles, testid: 'nav-services' },
     { to: '/app/whatsapp', label: 'WhatsApp', icon: MessageCircle, testid: 'nav-whatsapp' },

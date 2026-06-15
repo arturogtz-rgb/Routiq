@@ -1,0 +1,24 @@
+{
+  "summary": "Iteration 20 — Frontend-only E2E for Settings refactor (no-regression), public package view /p/:slug/:code, lead capture flow, /app/leads management, and packages share button. All 18 critical checks passed. Cleanup of test lead 'cliente@e2e.com' completed (quote_requests + notifications kind=lead).",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": ["/app/test_reports/iteration_20.json"],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "Two elements share data-testid='want-package-btn' (sticky header CTA + aside CTA uses 'want-package-btn-side'). Current selectors pick the first one which works fine; consider documenting this duality to avoid future test ambiguity.",
+    "Honeypot input in PublicPackage uses className='hidden' (Tailwind sets display:none) — works for bots but is also intentionally not testable; acceptable as-is.",
+    "Settings.jsx still acts as orchestrator and is ~160 LoC after refactor — well within the recommended <700 LoC threshold. Sub-components are clean and focused. Refactor looks good."
+  ],
+  "updated_files": [],
+  "success_rate": {"backend": "n/a (skipped per request)", "frontend": "100% (18/18 checks)"},
+  "test_credentials": "admin@aventurate.mx / Demo2026! (used)",
+  "seed_data_creation": "None — used existing GDL-TEQ-3N package and demo company 'aventurate'. Test lead with email cliente@e2e.com was created during test and removed in cleanup step.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "All flows from iteration 20 are green. Verified: (a) Settings refactor preserves data-testids and behavior — margin-divisor save, email-provider toggle (resend/smtp/gmail sections render correctly), invalid notify_email blocks save with error, valid email saves OK, bank-section/bank-enabled-input render, logo-preview/upload-logo-btn render; (b) Public /p/aventurate/GDL-TEQ-3N renders pkg-title 'Guadalajara Clásica + Tequila 4 días', pkg-price '$5,800 MXN', itinerary/includes/excludes; want-package-btn opens modal, invalid email shows request-error, valid email + required fields shows request-success; (c) /p/aventurate/NOEXISTE shows pkg-public-error; (d) /app/leads via nav-leads displays lead, lead-attend-{id} changes pill to 'Atendida', lead-archive-{id} removes from active filter and shows in archived and all filters, lead-quote-{id} present; (e) /app/packages share-package-GDL-TEQ-3N button visible/clickable (dismissed any window.prompt fallback). Cleanup completed. Note: 401/404 console errors during /p navigation are expected (no auth on public route) — not a bug.",
+  "rca of the issue": "n/a — no issues found"
+}

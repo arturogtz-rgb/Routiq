@@ -24,6 +24,8 @@ import Settings from '@/pages/Settings';
 import MasterAdmin, { MasterCompanies } from '@/pages/Master';
 import MasterSite from '@/pages/MasterSite';
 import PublicQuotation from '@/pages/PublicQuotation';
+import PublicPackage from '@/pages/PublicPackage';
+import Leads from '@/pages/Leads';
 
 function HomeRedirect() {
   const { user, loading } = useAuth();
@@ -55,6 +57,7 @@ export default function App() {
           <Route path="/login" element={<Login />} />
           <Route path="/signup" element={<Signup />} />
           <Route path="/q/:token" element={<PublicQuotation />} />
+          <Route path="/p/:slug/:code" element={<PublicPackage />} />
 
           {/* Company app */}
           <Route path="/app/dashboard" element={<ProtectedRoute roles={['company_admin', 'executive']}><Dashboard /></ProtectedRoute>} />
@@ -64,6 +67,7 @@ export default function App() {
           <Route path="/app/packages/:id/edit" element={<ProtectedRoute roles={['company_admin']}><PackageEditor /></ProtectedRoute>} />
           <Route path="/app/services" element={<ProtectedRoute roles={['company_admin', 'executive']}><Services /></ProtectedRoute>} />
           <Route path="/app/quotations" element={<ProtectedRoute roles={['company_admin', 'executive']}><QuotationsList /></ProtectedRoute>} />
+          <Route path="/app/leads" element={<ProtectedRoute roles={['company_admin', 'executive']}><Leads /></ProtectedRoute>} />
           <Route path="/app/quotations/new" element={<ProtectedRoute roles={['company_admin', 'executive']}><QuotationBuilder /></ProtectedRoute>} />
           <Route path="/app/quotations/:id/edit" element={<ProtectedRoute roles={['company_admin', 'executive']}><QuotationBuilder /></ProtectedRoute>} />
           <Route path="/app/quotations/:id" element={<ProtectedRoute roles={['company_admin', 'executive']}><QuotationDetail /></ProtectedRoute>} />

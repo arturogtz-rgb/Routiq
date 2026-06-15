@@ -3,7 +3,7 @@ import { Link, useNavigate } from 'react-router-dom';
 import AppShell from '@/components/AppShell';
 import api, { formatApiError } from '@/lib/api';
 import { useAuth } from '@/context/AuthContext';
-import { Package as PackageIcon, MapPin, Calendar, Plus, Pencil, Trash2, Sun, FileSpreadsheet, Upload, X, CheckCircle2, AlertTriangle, Download } from 'lucide-react';
+import { Package as PackageIcon, MapPin, Calendar, Plus, Pencil, Trash2, Sun, FileSpreadsheet, Upload, X, CheckCircle2, AlertTriangle, Download, Share2 } from 'lucide-react';
 
 export default function Packages() {
   const { user } = useAuth();
@@ -13,6 +13,8 @@ export default function Packages() {
   const [error, setError] = useState('');
   const [importing, setImporting] = useState(false);
   const [report, setReport] = useState(null);
+  const [slug, setSlug] = useState('');
+  const [copiedCode, setCopiedCode] = useState('');
   const fileRef = useRef(null);
 
   const load = async () => {
@@ -20,6 +22,17 @@ export default function Packages() {
     catch (_e) { /* noop */ }
   };
   useEffect(() => { load(); }, []);
+  useEffect(() => { api.get('/companies/me').then(({ data }) => setSlug(data.slug)).catch(() => {}); }, []);
+
+  const sharePackage = async (p) => {
+    if (!slug) return;
+    const url = `${window.location.origin}/p/${slug}/${p.code}`;
+    try {
+      await navigator.clipboard.writeText(url);
+      setCopiedCode(p.code);
+      setTimeout(() => setCopiedCode(''), 2000);
+    } catch { window.prompt('Copia el enlace público del paquete:', url); }
+  };
 
   const remove = async (p) => {
     if (!window.confirm(`¿Eliminar el paquete "${p.name}"?`)) return;
@@ -129,6 +142,9 @@ export default function Packages() {
                     <button className="p-2 rounded-lg text-ink-400 hover:bg-red-50 hover:text-red-600" onClick={() => remove(p)} data-testid={`delete-package-${p.code}`}><Trash2 className="w-4 h-4" /></button>
                   </>
                 )}
+                <button className={`p-2 rounded-lg ${copiedCode === p.code ? 'text-emerald-600 bg-mint-100' : 'text-ink-400 hover:bg-brand-50 hover:text-brand-500'}`} onClick={() => sharePackage(p)} title="Copiar enlace público" data-testid={`share-package-${p.code}`}>
+                  {copiedCode === p.code ? <CheckCircle2 className="w-4 h-4" /> : <Share2 className="w-4 h-4" />}
+                </button>
                 <Link to={`/app/quotations/new?package=${p.id}`} className="btn-secondary text-sm" data-testid={`quote-from-${p.code}`}>Cotizar</Link>
               </div>
             </div>

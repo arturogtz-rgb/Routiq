@@ -733,6 +733,7 @@ from routes import (
     backups as backups_routes,
     catalog_import as catalog_import_routes,
     gmail_oauth as gmail_oauth_routes,
+    public_package as public_package_routes,
 )
 
 api.include_router(quotations_routes.router)
@@ -744,6 +745,7 @@ api.include_router(whatsapp_routes.router)
 api.include_router(backups_routes.router)
 api.include_router(catalog_import_routes.router)
 api.include_router(gmail_oauth_routes.router)
+api.include_router(public_package_routes.router)
 
 app.include_router(api)
 
