@@ -7,6 +7,7 @@ best-effort welcome email is sent, and the credentials are returned so the
 Master can share them manually if email delivery isn't configured.
 """
 import logging
+import os
 
 from fastapi import APIRouter, Depends, HTTPException
 
@@ -19,7 +20,7 @@ import notifications
 log = logging.getLogger("routiq.signup")
 router = APIRouter()
 
-LOGIN_URL = "https://routiq.com.mx/login"
+LOGIN_URL = os.environ.get("PUBLIC_LOGIN_URL", "https://routiq.com.mx/login")
 
 
 async def _unique_slug(db, base: str) -> str:
@@ -133,7 +134,8 @@ async def approve_request(request_id: str, payload: SignupApprove, user: dict = 
     })
     await db.tenant_requests.update_one(
         {"id": request_id},
-        {"$set": {"status": "approved", "decided_at": now_iso(), "company_id": company["id"], "slug": slug}},
+        {"$set": {"status": "approved", "decided_at": now_iso(), "company_id": company["id"], "slug": slug},
+         "$unset": {"password_hash": ""}},
     )
 
     # Best-effort welcome email (uses platform Resend env if configured)
@@ -172,6 +174,7 @@ async def reject_request(request_id: str, payload: SignupReject, user: dict = De
         raise HTTPException(status_code=400, detail="La solicitud ya fue procesada")
     await db.tenant_requests.update_one(
         {"id": request_id},
-        {"$set": {"status": "rejected", "reason": payload.reason or "", "decided_at": now_iso()}},
+        {"$set": {"status": "rejected", "reason": payload.reason or "", "decided_at": now_iso()},
+         "$unset": {"password_hash": ""}},
     )
     return {"ok": True}
