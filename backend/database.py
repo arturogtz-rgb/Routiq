@@ -221,19 +221,19 @@ async def seed_demo_tenant():
         await db.services.insert_many([
             {"id": new_id(), "tenant_id": tenant_id, "name": "Tour privado Tequila con cata",
              "category": "tour", "description": "Visita a destilería con cata guiada y transporte privado.",
-             "net_price": 1200.0, "public_price": round(1200 / 0.76, 2), "per_person": True,
+             "net_price": 1200.0, "public_price": round(1200 / 0.76, 2), "unit": "per_person", "per_person": True,
              "status": "active", "created_at": now_iso()},
             {"id": new_id(), "tenant_id": tenant_id, "name": "Traslado aeropuerto privado",
              "category": "traslado", "description": "Traslado privado aeropuerto–hotel (por trayecto).",
-             "net_price": 650.0, "public_price": round(650 / 0.76, 2), "per_person": False,
+             "net_price": 650.0, "public_price": round(650 / 0.76, 2), "unit": "per_group", "per_person": False,
              "status": "active", "created_at": now_iso()},
             {"id": new_id(), "tenant_id": tenant_id, "name": "Acceso Hospicio Cabañas",
              "category": "acceso", "description": "Entrada al museo Hospicio Cabañas, Patrimonio de la Humanidad.",
-             "net_price": 90.0, "public_price": round(90 / 0.76, 2), "per_person": True,
+             "net_price": 90.0, "public_price": round(90 / 0.76, 2), "unit": "per_access", "per_person": True,
              "status": "active", "created_at": now_iso()},
             {"id": new_id(), "tenant_id": tenant_id, "name": "Guía privado certificado (día completo)",
              "category": "extra", "description": "Guía de turistas certificado por día.",
-             "net_price": 2500.0, "public_price": round(2500 / 0.76, 2), "per_person": False,
+             "net_price": 2500.0, "public_price": round(2500 / 0.76, 2), "unit": "per_day", "per_person": False,
              "status": "active", "created_at": now_iso()},
         ])
 

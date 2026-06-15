@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react';
 import { useParams, useSearchParams } from 'react-router-dom';
 import api, { formatApiError } from '@/lib/api';
-import { CheckCircle2, Calendar, MapPin, Users, FileText, Sparkles, CreditCard, Loader2 } from 'lucide-react';
+import { CheckCircle2, Calendar, MapPin, Users, FileText, Sparkles, CreditCard, Loader2, Moon } from 'lucide-react';
+import { formatDateEs } from '@/lib/dates';
 
 function money(v, c = 'MXN') { return `$${Number(v || 0).toLocaleString('es-MX')} ${c}`; }
 
@@ -170,7 +171,9 @@ export default function PublicQuotation() {
           <div className="flex items-start gap-3">
             <Calendar className="w-5 h-5 mt-0.5" style={{ color: primary }} />
             <div><p className="text-xs uppercase tracking-widest text-ink-400 font-bold">Fechas</p>
-              <p className="font-semibold text-ink-900">{q.dates?.start} → {q.dates?.end}</p></div>
+              <p className="font-semibold text-ink-900">{formatDateEs(q.dates?.start)} → {formatDateEs(q.dates?.end)}</p>
+              {q.nights_total ? <p className="text-xs text-ink-400">{q.nights_total} noches{q.extra_nights > 0 ? ` (${q.package_nights} paquete + ${q.extra_nights} extra)` : ''}</p> : null}
+            </div>
           </div>
           <div className="flex items-start gap-3 sm:col-span-2">
             <Users className="w-5 h-5 mt-0.5" style={{ color: primary }} />
@@ -220,15 +223,15 @@ export default function PublicQuotation() {
           </div>
         )}
 
-        {/* Servicios a la carta */}
-        {(q.items || []).some((it) => it.kind === 'servicio') && (
+        {/* Servicios a la carta + noches extra */}
+        {(q.items || []).some((it) => it.kind === 'servicio' || it.kind === 'noche_extra') && (
           <div className="card-surface p-6" data-testid="public-services">
-            <h2 className="font-display text-xl font-semibold text-ink-900 mb-4">Servicios adicionales incluidos</h2>
+            <h2 className="font-display text-xl font-semibold text-ink-900 mb-4">Servicios y cargos adicionales</h2>
             <div className="space-y-2">
-              {(q.items || []).filter((it) => it.kind === 'servicio').map((it, i) => (
+              {(q.items || []).filter((it) => it.kind === 'servicio' || it.kind === 'noche_extra').map((it, i) => (
                 <div key={i} className="flex items-center justify-between py-2 border-b border-ink-100 last:border-0">
                   <div className="flex items-center gap-3">
-                    <Sparkles className="w-4 h-4" style={{ color: primary }} />
+                    {it.kind === 'noche_extra' ? <Moon className="w-4 h-4" style={{ color: primary }} /> : <Sparkles className="w-4 h-4" style={{ color: primary }} />}
                     <div>
                       <p className="font-medium text-ink-900">{it.label}</p>
                       <p className="text-xs text-ink-400">{money(it.unit_price, q.currency)} × {it.qty}</p>

@@ -3,6 +3,7 @@ import { Link, useParams } from 'react-router-dom';
 import AppShell from '@/components/AppShell';
 import api, { formatApiError } from '@/lib/api';
 import { ArrowLeft, Download, MessageCircle, Mail, FileText, Sparkles, Link2, Copy, CheckCircle2, X, Tag, CreditCard } from 'lucide-react';
+import { formatDateEs } from '@/lib/dates';
 
 const STATES = [
   { id: 'nueva_consulta', label: 'Nueva' },
@@ -167,7 +168,7 @@ export default function QuotationDetail() {
             <h3 className="font-display font-semibold text-ink-900 mb-4">Detalles</h3>
             <div className="grid md:grid-cols-2 gap-4 text-sm">
               <div><p className="text-xs uppercase tracking-widest text-ink-400 font-bold">Hotel</p><p className="text-ink-900 font-medium mt-1">{q.hotel_selected}</p></div>
-              <div><p className="text-xs uppercase tracking-widest text-ink-400 font-bold">Fechas</p><p className="text-ink-900 font-medium mt-1">{q.dates?.start} → {q.dates?.end}</p></div>
+              <div><p className="text-xs uppercase tracking-widest text-ink-400 font-bold">Fechas</p><p className="text-ink-900 font-medium mt-1">{formatDateEs(q.dates?.start)} → {formatDateEs(q.dates?.end)}</p></div>
               <div><p className="text-xs uppercase tracking-widest text-ink-400 font-bold">Habitaciones / Pax</p><p className="text-ink-900 font-medium mt-1">{paxDesc}</p></div>
             </div>
             {q.notes && <><p className="text-xs uppercase tracking-widest text-ink-400 font-bold mt-6">Notas</p><p className="text-ink-700 mt-1 text-sm">{q.notes}</p></>}
@@ -258,7 +259,7 @@ export default function QuotationDetail() {
                 </button>
                 {q.public_link?.accepted_at && (
                   <p className="text-xs text-emerald-700 bg-mint-100 rounded p-2" data-testid="public-accepted">
-                    ✓ Aceptada por el cliente el {q.public_link.accepted_at.slice(0, 10)}
+                    ✓ Aceptada por el cliente el {formatDateEs(q.public_link.accepted_at)}
                   </p>
                 )}
               </div>

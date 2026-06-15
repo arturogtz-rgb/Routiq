@@ -136,6 +136,8 @@ class PackageCreate(BaseModel):
     excludes: List[str] = []
     season_start: Optional[str] = None
     season_end: Optional[str] = None
+    allowed_start_days: List[int] = []  # 0=Mon .. 6=Sun; empty => any day
+    special_departure_dates: List[str] = []  # ISO dates with fixed departures
     status: str = "active"
 
 
@@ -149,11 +151,14 @@ class PackageUpdate(BaseModel):
     excludes: Optional[List[str]] = None
     season_start: Optional[str] = None
     season_end: Optional[str] = None
+    allowed_start_days: Optional[List[int]] = None
+    special_departure_dates: Optional[List[str]] = None
     status: Optional[str] = None
 
 
 # ---------- Services (a la carte) ----------
 ServiceCategory = Literal["tour", "traslado", "acceso", "extra"]
+ServiceUnit = Literal["per_person", "per_group", "per_day", "per_access"]
 
 
 class ServiceCreate(BaseModel):
@@ -162,7 +167,8 @@ class ServiceCreate(BaseModel):
     description: str = ""
     net_price: float = 0.0
     public_price: float = 0.0  # if 0, server auto-computes from net via margin_divisor
-    per_person: bool = False
+    unit: ServiceUnit = "per_group"
+    per_person: bool = False  # legacy, kept for back-compat
     status: str = "active"
 
 
@@ -172,13 +178,14 @@ class ServiceUpdate(BaseModel):
     description: Optional[str] = None
     net_price: Optional[float] = None
     public_price: Optional[float] = None
+    unit: Optional[ServiceUnit] = None
     per_person: Optional[bool] = None
     status: Optional[str] = None
 
 
 class SelectedService(BaseModel):
     service_id: str
-    qty: int = Field(default=1, ge=1)
+    qty: int = Field(default=0, ge=0)  # 0 => server computes default by unit
 
 
 # ---------- Clients ----------
@@ -218,6 +225,11 @@ class QuotationDates(BaseModel):
     end: str
 
 
+class ExtraNights(BaseModel):
+    cost_per_night: float = Field(default=0.0, ge=0)
+    unit: Literal["per_person", "per_room", "per_reservation"] = "per_reservation"
+
+
 class QuotationCreate(BaseModel):
     client_id: str
     package_id: str
@@ -225,6 +237,7 @@ class QuotationCreate(BaseModel):
     dates: QuotationDates
     pax: QuotationPax
     services: List[SelectedService] = []
+    extra_nights: Optional[ExtraNights] = None
     notes: str = ""
     assigned_to: Optional[str] = None
 
@@ -238,5 +251,6 @@ class QuotationUpdate(BaseModel):
     pax: Optional[QuotationPax] = None
     hotel_name: Optional[str] = None
     services: Optional[List[SelectedService]] = None
+    extra_nights: Optional[ExtraNights] = None
     notes: Optional[str] = None
     assigned_to: Optional[str] = None

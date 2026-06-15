@@ -70,9 +70,8 @@ export default function AppShell({ children }) {
     <div className="min-h-screen bg-cream flex">
       {/* Sidebar (desktop) */}
       <aside className="hidden md:flex w-64 shrink-0 border-r border-ink-100 bg-white flex-col">
-        <div className="px-6 py-5 border-b border-ink-100 flex items-center justify-between">
+        <div className="px-6 py-5 border-b border-ink-100">
           <CompanyBrand size={30} />
-          {user?.tenant_id && <NotificationBell />}
         </div>
         <nav className="flex-1 px-3 py-4 space-y-1">
           {items.map(({ to, label, icon: Icon, testid }) => (
@@ -153,6 +152,12 @@ export default function AppShell({ children }) {
 
       {/* Main */}
       <main className="flex-1 min-w-0 pt-14 md:pt-0">
+        {/* Desktop top header */}
+        {user?.tenant_id && (
+          <div className="hidden md:flex items-center justify-end gap-2 h-14 px-8 border-b border-ink-100 bg-white/70 backdrop-blur-sm sticky top-0 z-30">
+            <NotificationBell />
+          </div>
+        )}
         <div className="max-w-7xl mx-auto px-4 sm:px-6 md:px-8 py-6 md:py-10">
           {children}
         </div>

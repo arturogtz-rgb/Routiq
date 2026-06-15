@@ -11,7 +11,15 @@ const CATEGORIES = [
   { key: 'extra', label: 'Extra', icon: Sparkles },
 ];
 
-const EMPTY = { name: '', category: 'tour', description: '', net_price: 0, public_price: 0, per_person: false, status: 'active' };
+const UNITS = [
+  { key: 'per_person', label: 'Por persona' },
+  { key: 'per_group', label: 'Por grupo' },
+  { key: 'per_day', label: 'Por día' },
+  { key: 'per_access', label: 'Por acceso' },
+];
+const UNIT_ES = { per_person: 'por persona', per_group: 'por grupo', per_day: 'por día', per_access: 'por acceso' };
+
+const EMPTY = { name: '', category: 'tour', description: '', net_price: 0, public_price: 0, unit: 'per_group', status: 'active' };
 
 function money(v) { return `$${Number(v || 0).toLocaleString('es-MX', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`; }
 
@@ -96,7 +104,7 @@ export default function Services() {
                   <p className="text-xs text-ink-400">Neto: {money(svc.net_price)}</p>
                   <p className="font-display text-xl font-bold text-brand-500">{money(svc.public_price)}</p>
                 </div>
-                {svc.per_person && <span className="text-xs text-ink-400">por persona</span>}
+                {svc.unit && <span className="text-xs text-ink-400">{UNIT_ES[svc.unit] || ''}</span>}
               </div>
             </div>
           );
@@ -128,11 +136,10 @@ export default function Services() {
                     {CATEGORIES.map((c) => <option key={c.key} value={c.key}>{c.label}</option>)}
                   </select>
                 </div>
-                <div className="flex items-end">
-                  <label className="flex items-center gap-2 input-field cursor-pointer">
-                    <input type="checkbox" checked={form.per_person} onChange={(e) => setForm((f) => ({ ...f, per_person: e.target.checked }))} data-testid="service-perperson-input" />
-                    <span className="text-sm">Por persona</span>
-                  </label>
+                <div><label className="label-text">Unidad de cobro</label>
+                  <select className="input-field" value={form.unit || 'per_group'} onChange={(e) => setForm((f) => ({ ...f, unit: e.target.value }))} data-testid="service-unit-input">
+                    {UNITS.map((u) => <option key={u.key} value={u.key}>{u.label}</option>)}
+                  </select>
                 </div>
               </div>
               <div><label className="label-text">Descripción</label>

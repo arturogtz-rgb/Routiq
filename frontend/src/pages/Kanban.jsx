@@ -5,6 +5,7 @@ import api from '@/lib/api';
 import { DndContext, PointerSensor, useSensor, useSensors, closestCorners, DragOverlay } from '@dnd-kit/core';
 import { useDraggable, useDroppable } from '@dnd-kit/core';
 import { Clock, AlertCircle, Plus } from 'lucide-react';
+import { formatDateEs } from '@/lib/dates';
 
 const COLUMNS = [
   { id: 'nueva_consulta', label: 'Nueva consulta', cls: 'kanban-col-nueva' },
@@ -39,7 +40,7 @@ function Card({ q }) {
       <p className="text-xs text-ink-500 mt-1 line-clamp-2">{q.package_snapshot?.name}</p>
       <div className="flex items-center justify-between mt-3 pt-2 border-t border-ink-100">
         <span className="text-[11px] text-ink-400 inline-flex items-center gap-1">
-          <Clock className="w-3 h-3" />{new Date(q.created_at).toLocaleDateString('es-MX', { day: '2-digit', month: 'short' })}
+          <Clock className="w-3 h-3" />{q.dates?.start ? formatDateEs(q.dates.start) : formatDateEs(q.created_at)}
         </span>
         <span className="font-display font-semibold text-ink-900 text-sm">{money(q.total, q.currency)}</span>
       </div>

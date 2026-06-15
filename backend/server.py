@@ -498,15 +498,17 @@ async def create_quotation(payload: QuotationCreate, user: dict = Depends(requir
     pricing_config = company.get("pricing_config") or DEFAULT_PRICING_CONFIG
     services_sel = [s.model_dump() for s in payload.services]
     services_catalog = await _load_services_catalog(db, user["tenant_id"], services_sel)
-    calc = compute_quotation(pack, payload.hotel_name, payload.pax.model_dump(),
-                             pack["nights"], client["channel"], pricing_config,
-                             services_catalog, services_sel)
-    code = await _next_quotation_code(db, user["tenant_id"])
     # Defensive: swap dates if start > end
     d_start = payload.dates.start
     d_end = payload.dates.end
     if d_start and d_end and d_start > d_end:
         d_start, d_end = d_end, d_start
+    extra_cfg = payload.extra_nights.model_dump() if payload.extra_nights else None
+    calc = compute_quotation(pack, payload.hotel_name, payload.pax.model_dump(),
+                             pack["nights"], client["channel"], pricing_config,
+                             services_catalog, services_sel,
+                             dates={"start": d_start, "end": d_end}, extra_nights_cfg=extra_cfg)
+    code = await _next_quotation_code(db, user["tenant_id"])
     doc = {
         "id": new_id(), "tenant_id": user["tenant_id"], "code": code,
         "client_id": client["id"], "client_snapshot": {"name": client["name"], "channel": client["channel"]},
@@ -516,6 +518,9 @@ async def create_quotation(payload: QuotationCreate, user: dict = Depends(requir
         "dates": {"start": d_start, "end": d_end},
         "pax": payload.pax.model_dump(),
         "services": services_sel,
+        "extra_nights_cfg": extra_cfg,
+        "nights_total": calc["nights_total"],
+        "extra_nights": calc["extra_nights"],
         "items": calc["items"],
         "subtotal": calc["subtotal"],
         "commission": calc["commission"],
@@ -583,7 +588,7 @@ async def update_quotation(quotation_id: str, payload: QuotationUpdate, user: di
     q = await db.quotations.find_one({"id": quotation_id, "tenant_id": user["tenant_id"]}, {"_id": 0})
     if not q:
         raise HTTPException(status_code=404, detail="Cotización no encontrada")
-    if any(k in updates for k in ("pax", "hotel_name", "services")):
+    if any(k in updates for k in ("pax", "hotel_name", "services", "dates", "extra_nights")):
         pack = await db.packages.find_one({"id": q["package_id"], "tenant_id": user["tenant_id"]}, {"_id": 0})
         client = await db.clients.find_one({"id": q["client_id"], "tenant_id": user["tenant_id"]}, {"_id": 0})
         company = await db.companies.find_one({"id": user["tenant_id"]}, {"_id": 0})
@@ -591,12 +596,21 @@ async def update_quotation(quotation_id: str, payload: QuotationUpdate, user: di
         hotel = updates.get("hotel_name", q["hotel_selected"])
         pax = updates.get("pax", q["pax"])
         services_sel = updates.get("services", q.get("services", []))
+        new_dates = updates.get("dates", q.get("dates"))
+        if new_dates and new_dates.get("start") and new_dates.get("end") and new_dates["start"] > new_dates["end"]:
+            new_dates = {"start": new_dates["end"], "end": new_dates["start"]}
+        extra_cfg = updates.get("extra_nights", q.get("extra_nights_cfg"))
         services_catalog = await _load_services_catalog(db, user["tenant_id"], services_sel)
         calc = compute_quotation(pack, hotel, pax, pack["nights"], client["channel"], pricing_config,
-                                 services_catalog, services_sel)
+                                 services_catalog, services_sel,
+                                 dates=new_dates, extra_nights_cfg=extra_cfg)
         updates.update({
             "hotel_selected": hotel,
             "services": services_sel,
+            "dates": new_dates,
+            "extra_nights_cfg": extra_cfg,
+            "nights_total": calc["nights_total"],
+            "extra_nights": calc["extra_nights"],
             "items": calc["items"], "subtotal": calc["subtotal"],
             "commission": calc["commission"], "commission_rate": calc["commission_rate"],
             "total": calc["total"],
@@ -791,6 +805,8 @@ async def get_public_quotation(token: str):
             "hotel_selected": q["hotel_selected"], "dates": q["dates"], "pax": q["pax"],
             "items": q["items"], "subtotal": q["subtotal"], "commission": q.get("commission", 0),
             "total": q["total"], "currency": q.get("currency", "MXN"), "state": q["state"],
+            "nights_total": q.get("nights_total"), "extra_nights": q.get("extra_nights", 0),
+            "package_nights": q.get("package_snapshot", {}).get("nights"),
             "discount": q.get("discount"),
             "final_total": round(final_total, 2),
             "amount_paid": round(amount_paid, 2),

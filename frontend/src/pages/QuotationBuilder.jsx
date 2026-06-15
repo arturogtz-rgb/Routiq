@@ -2,7 +2,8 @@ import { useEffect, useState } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import AppShell from '@/components/AppShell';
 import api, { formatApiError } from '@/lib/api';
-import { ArrowLeft, ArrowRight, Check, User, Package, CalendarDays, Calculator, FileText, Plus, Sparkles } from 'lucide-react';
+import { ArrowLeft, ArrowRight, Check, User, Package, CalendarDays, Calculator, FileText, Plus, Sparkles, AlertTriangle, Moon } from 'lucide-react';
+import { formatDateEs, nightsBetween, addDays, weekdayMon0, WEEKDAYS_ES } from '@/lib/dates';
 
 const STEPS = [
   { key: 'client', label: 'Cliente', icon: User },
@@ -11,6 +12,8 @@ const STEPS = [
   { key: 'services', label: 'Servicios', icon: Sparkles },
   { key: 'review', label: 'Revisión', icon: Calculator },
 ];
+
+const SERVICE_UNIT_ES = { per_person: 'por persona', per_group: 'por grupo', per_day: 'por día', per_access: 'por acceso' };
 
 function money(v, c = 'MXN') { return `$${Number(v || 0).toLocaleString('es-MX')} ${c}`; }
 
@@ -33,6 +36,7 @@ export default function QuotationBuilder() {
     dates: { start: '', end: '' },
     pax: { rooms: [{ ocupacion: 'doble', count: 1 }], menores: 0 },
     services: [],
+    extra_nights: { cost_per_night: 0, unit: 'per_reservation' },
     notes: '',
   });
 
@@ -61,6 +65,29 @@ export default function QuotationBuilder() {
 
   const totalAdults = (form.pax.rooms || []).reduce((s, r) => s + OCC_COUNT[r.ocupacion] * (r.count || 0), 0);
   const totalPax = totalAdults + (form.pax.menores || 0);
+  const numRooms = (form.pax.rooms || []).reduce((s, r) => s + (r.count || 0), 0);
+
+  const packNights = pack?.nights || 0;
+  const tripNights = nightsBetween(form.dates.start, form.dates.end);
+  const extraNights = Math.max(0, tripNights - packNights);
+  const extraCfg = form.extra_nights || { cost_per_night: 0, unit: 'per_reservation' };
+  const extraMult = extraCfg.unit === 'per_person' ? totalPax : extraCfg.unit === 'per_room' ? numRooms : 1;
+  const extraNightsSubtotal = extraNights > 0 ? (Number(extraCfg.cost_per_night) || 0) * extraNights * extraMult : 0;
+
+  // Allowed departure days warning
+  const allowedDays = pack?.allowed_start_days || [];
+  const specialDates = pack?.special_departure_dates || [];
+  const hasDayRule = allowedDays.length > 0 || specialDates.length > 0;
+  const startWeekday = form.dates.start ? weekdayMon0(form.dates.start) : null;
+  const startInvalid = !!form.dates.start && hasDayRule
+    && !(allowedDays.includes(startWeekday) || specialDates.includes(form.dates.start));
+
+  const serviceDefaultQty = (svc) => {
+    const unit = svc.unit || (svc.per_person ? 'per_person' : 'per_group');
+    if (unit === 'per_person' || unit === 'per_access') return Math.max(1, totalPax);
+    if (unit === 'per_day') return Math.max(1, packNights);
+    return 1;
+  };
 
   const servicesSubtotal = (() => {
     let s = 0;
@@ -73,14 +100,14 @@ export default function QuotationBuilder() {
   })();
 
   const subtotal = (() => {
-    if (!hotel) return servicesSubtotal;
-    let s = 0;
+    let s = servicesSubtotal + extraNightsSubtotal;
+    if (!hotel) return s;
     for (const r of (form.pax.rooms || [])) {
       const price = Number(hotel.prices_by_occupancy?.[r.ocupacion] || 0);
       s += price * OCC_COUNT[r.ocupacion] * (r.count || 0);
     }
     s += Number(hotel.minor_price || 0) * (form.pax.menores || 0);
-    return s + servicesSubtotal;
+    return s;
   })();
   const commission = Math.round(subtotal * commissionRate * 100) / 100;
   const total = subtotal - commission;
@@ -89,18 +116,29 @@ export default function QuotationBuilder() {
   const toggleService = (svc) => setForm((f) => {
     const exists = (f.services || []).some((s) => s.service_id === svc.id);
     if (exists) return { ...f, services: f.services.filter((s) => s.service_id !== svc.id) };
-    const defaultQty = svc.per_person && totalPax > 0 ? totalPax : 1;
-    return { ...f, services: [...(f.services || []), { service_id: svc.id, qty: defaultQty }] };
+    return { ...f, services: [...(f.services || []), { service_id: svc.id, qty: serviceDefaultQty(svc) }] };
   });
   const setServiceQty = (id, qty) => setForm((f) => ({
     ...f, services: f.services.map((s) => s.service_id === id ? { ...s, qty: Math.max(1, qty) } : s),
   }));
+
+  // Setting check-in auto-suggests check-out based on package nights.
+  const setStart = (start) => setForm((f) => {
+    const nights = packages.find((p) => p.id === f.package_id)?.nights || 0;
+    const end = start && nights > 0 ? addDays(start, nights) : f.dates.end;
+    return { ...f, dates: { start, end } };
+  });
+  const setEnd = (end) => setForm((f) => ({ ...f, dates: { ...f.dates, end } }));
+  const setExtra = (patch) => setForm((f) => ({ ...f, extra_nights: { ...f.extra_nights, ...patch } }));
 
   const canNext = () =>
     (step === 0 && !!form.client_id) ||
     (step === 1 && !!form.package_id && !!form.hotel_name) ||
     (step === 2 && form.dates.start && form.dates.end && (form.pax.rooms?.length > 0) && totalAdults > 0) ||
     (step === 3);
+
+  // Free navigation: allow jumping to any step without losing data.
+  const goToStep = (i) => setStep(i);
 
   const addRoom = (ocupacion) => setForm((f) => ({ ...f, pax: { ...f.pax, rooms: [...(f.pax.rooms || []), { ocupacion, count: 1 }] } }));
   const updateRoom = (idx, patch) => setForm((f) => ({ ...f, pax: { ...f.pax, rooms: f.pax.rooms.map((r, i) => i === idx ? { ...r, ...patch } : r) } }));
@@ -139,20 +177,21 @@ export default function QuotationBuilder() {
         </Link>
       </div>
       <h1 className="font-display text-3xl font-semibold text-ink-900 tracking-tight mb-2">Nueva cotización</h1>
-      <p className="text-ink-500 mb-8">Construye una cotización de paquete armado en 4 pasos.</p>
+      <p className="text-ink-500 mb-8">Construye una cotización de paquete armado. Navega libremente entre los pasos.</p>
 
-      {/* Stepper */}
+      {/* Stepper — free navigation */}
       <div className="grid grid-cols-5 gap-2 mb-8">
         {STEPS.map((s, i) => (
-          <div key={s.key} className={`rounded-xl p-3 border text-xs font-semibold uppercase tracking-wider text-center transition-all
+          <button key={s.key} type="button" onClick={() => goToStep(i)}
+            className={`rounded-xl p-3 border text-xs font-semibold uppercase tracking-wider text-center transition-all cursor-pointer hover:shadow-sm
               ${i === step ? 'bg-brand-500 text-white border-brand-500'
-                : i < step ? 'bg-mint-100 text-emerald-700 border-mint-200' : 'bg-white text-ink-400 border-ink-100'}`}
+                : i < step ? 'bg-mint-100 text-emerald-700 border-mint-200' : 'bg-white text-ink-400 border-ink-100 hover:border-brand-300'}`}
               data-testid={`step-${s.key}`}>
             <div className="flex items-center justify-center gap-2">
               {i < step ? <Check className="w-4 h-4" /> : <s.icon className="w-4 h-4" />}
               <span className="hidden sm:inline">{s.label}</span>
             </div>
-          </div>
+          </button>
         ))}
       </div>
 
@@ -243,14 +282,57 @@ export default function QuotationBuilder() {
         {step === 2 && (
           <div className="space-y-5" data-testid="step-dates-panel">
             <h2 className="font-display text-xl font-semibold text-ink-900">Fechas y habitaciones</h2>
+            {packNights > 0 && (
+              <p className="text-sm text-ink-500">El paquete incluye <b className="text-ink-900">{packNights} noches</b>. Al elegir el check-in se sugiere el check-out automáticamente.</p>
+            )}
             <div className="grid md:grid-cols-2 gap-4">
               <div><label className="label-text">Check-in</label>
-                <input type="date" className="input-field" value={form.dates.start} onChange={(e) => setForm((f) => ({ ...f, dates: { ...f.dates, start: e.target.value } }))} data-testid="date-start" />
+                <input type="date" className="input-field" value={form.dates.start} onChange={(e) => setStart(e.target.value)} data-testid="date-start" />
+                {form.dates.start && <p className="text-xs text-ink-400 mt-1">{WEEKDAYS_ES[startWeekday]} · {formatDateEs(form.dates.start)}</p>}
               </div>
               <div><label className="label-text">Check-out</label>
-                <input type="date" className="input-field" value={form.dates.end} onChange={(e) => setForm((f) => ({ ...f, dates: { ...f.dates, end: e.target.value } }))} data-testid="date-end" />
+                <input type="date" className="input-field" value={form.dates.end} onChange={(e) => setEnd(e.target.value)} data-testid="date-end" />
+                {form.dates.end && <p className="text-xs text-ink-400 mt-1">{formatDateEs(form.dates.end)} · {tripNights} noche(s)</p>}
               </div>
             </div>
+
+            {startInvalid && (
+              <div className="rounded-xl border border-amber-300 bg-peach-100 text-amber-800 px-4 py-3 text-sm flex items-start gap-2" data-testid="start-day-warning">
+                <AlertTriangle className="w-4 h-4 mt-0.5 shrink-0" />
+                <div>
+                  <b>Día de salida no habitual para este paquete.</b>{' '}
+                  {allowedDays.length > 0 && <>Salidas válidas: {allowedDays.map((d) => WEEKDAYS_ES[d]).join(', ')}. </>}
+                  {specialDates.length > 0 && <>Fechas especiales: {specialDates.map((d) => formatDateEs(d)).join(', ')}. </>}
+                  Puedes continuar de todos modos.
+                </div>
+              </div>
+            )}
+
+            {extraNights > 0 && (
+              <div className="rounded-xl border border-brand-200 bg-brand-50 p-4 space-y-3" data-testid="extra-nights-box">
+                <p className="text-sm text-ink-700 flex items-center gap-2"><Moon className="w-4 h-4 text-brand-500" /> Se agregan <b className="text-brand-600">{extraNights} noche(s) extra</b> sobre las {packNights} del paquete.</p>
+                <div className="grid sm:grid-cols-2 gap-3">
+                  <div>
+                    <label className="label-text">Costo por noche extra ({extraCfg.unit === 'per_person' ? 'por persona' : extraCfg.unit === 'per_room' ? 'por habitación' : 'por reservación'})</label>
+                    <input type="number" min="0" step="0.01" className="input-field" value={extraCfg.cost_per_night}
+                      onChange={(e) => setExtra({ cost_per_night: +e.target.value || 0 })} data-testid="extra-night-cost" />
+                  </div>
+                  <div>
+                    <label className="label-text">Unidad de cobro</label>
+                    <select className="input-field" value={extraCfg.unit} onChange={(e) => setExtra({ unit: e.target.value })} data-testid="extra-night-unit">
+                      <option value="per_person">Por persona</option>
+                      <option value="per_room">Por habitación</option>
+                      <option value="per_reservation">Por reservación completa</option>
+                    </select>
+                  </div>
+                </div>
+                {extraNightsSubtotal > 0 && (
+                  <p className="text-sm font-medium text-emerald-800" data-testid="extra-nights-subtotal">
+                    Noches extra: {extraNights} × {money(extraCfg.cost_per_night)} × {extraMult} = <b>{money(extraNightsSubtotal)}</b>
+                  </p>
+                )}
+              </div>
+            )}
 
             <div>
               <div className="flex items-center justify-between mb-2">
@@ -348,7 +430,7 @@ export default function QuotationBuilder() {
                             {selected && <Check className="w-3 h-3 text-white" />}
                           </div>
                         </div>
-                        <p className="font-display font-bold text-brand-500 mt-2">${Number(svc.public_price).toLocaleString('es-MX')}{svc.per_person ? ' / persona' : ''}</p>
+                        <p className="font-display font-bold text-brand-500 mt-2">${Number(svc.public_price).toLocaleString('es-MX')} <span className="text-xs font-medium text-ink-400">{SERVICE_UNIT_ES[svc.unit || (svc.per_person ? 'per_person' : 'per_group')]}</span></p>
                       </button>
                       {selected && (
                         <div className="flex items-center gap-2 mt-3 pt-3 border-t border-brand-200">
@@ -391,8 +473,8 @@ export default function QuotationBuilder() {
               </div>
               <div className="rounded-xl border border-ink-100 p-4">
                 <p className="text-xs uppercase tracking-widest font-bold text-ink-400 mb-1">Fechas</p>
-                <p className="font-semibold text-ink-900">{form.dates.start} → {form.dates.end}</p>
-                <p className="text-ink-500">{pack?.nights} noches</p>
+                <p className="font-semibold text-ink-900">{formatDateEs(form.dates.start)} → {formatDateEs(form.dates.end)}</p>
+                <p className="text-ink-500">{tripNights} noches{extraNights > 0 ? ` (${packNights} paquete + ${extraNights} extra)` : ''}</p>
               </div>
               <div className="rounded-xl border border-ink-100 p-4">
                 <p className="text-xs uppercase tracking-widest font-bold text-ink-400 mb-1">Pasajeros</p>
@@ -402,6 +484,9 @@ export default function QuotationBuilder() {
             </div>
 
             <div className="rounded-xl bg-gradient-to-br from-brand-500 to-accent text-white p-5" data-testid="builder-totals">
+              {extraNightsSubtotal > 0 && (
+                <div className="flex justify-between text-sm mb-1 opacity-90"><span>Noches extra ({extraNights})</span><span>{money(extraNightsSubtotal)}</span></div>
+              )}
               {servicesSubtotal > 0 && (
                 <div className="flex justify-between text-sm mb-1 opacity-90"><span>Servicios a la carta</span><span>{money(servicesSubtotal)}</span></div>
               )}

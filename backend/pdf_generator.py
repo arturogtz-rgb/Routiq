@@ -34,6 +34,18 @@ def _money(v: float, currency: str = "MXN") -> str:
     return f"${v:,.2f} {currency}"
 
 
+_MESES_ABBR = ["ENE", "FEB", "MAR", "ABR", "MAY", "JUN", "JUL", "AGO", "SEP", "OCT", "NOV", "DIC"]
+
+
+def _fmt_date(iso: str) -> str:
+    from datetime import date as _date
+    try:
+        d = _date.fromisoformat((iso or "")[:10])
+        return f"{d.day:02d} {_MESES_ABBR[d.month - 1]} {d.year}"
+    except Exception:
+        return iso or ""
+
+
 def generate_quotation_pdf(company: dict, quotation: dict, package: dict, client: dict) -> bytes:
     buf = io.BytesIO()
     doc = SimpleDocTemplate(buf, pagesize=letter,
@@ -66,7 +78,7 @@ def generate_quotation_pdf(company: dict, quotation: dict, package: dict, client
         s["body"],
     )
     cot_text = Paragraph(
-        f"<b><font color='#185FA5' size=16>COTIZACIÓN</font></b><br/><font size=10>{quotation.get('code','')}</font><br/><font size=9 color='#475569'>{quotation.get('created_at','')[:10]}</font>",
+        f"<b><font color='#185FA5' size=16>COTIZACIÓN</font></b><br/><font size=10>{quotation.get('code','')}</font><br/><font size=9 color='#475569'>{_fmt_date(quotation.get('created_at',''))}</font>",
         s["body"],
     )
     if logo_cell:
@@ -115,10 +127,15 @@ def generate_quotation_pdf(company: dict, quotation: dict, package: dict, client
     else:
         pax_desc = f"{pax.get('ocupacion','')} · {pax.get('adultos',0)} adultos, {pax.get('menores',0)} menores"
 
+    nights_total = quotation.get("nights_total") or package.get("nights", "")
+    extra_nights = quotation.get("extra_nights", 0) or 0
+    nights_label = str(nights_total)
+    if extra_nights > 0:
+        nights_label += f"  ({package.get('nights','')} del paquete + {extra_nights} extra)"
     meta = Table([
         ["Hotel", quotation.get("hotel_selected", "")],
-        ["Fechas", f"{d_start} → {d_end}"],
-        ["Noches", str(package.get("nights", ""))],
+        ["Fechas", f"{_fmt_date(d_start)}  →  {_fmt_date(d_end)}"],
+        ["Noches", nights_label],
         ["Habitaciones / Pax", pax_desc],
     ], colWidths=[3.5 * cm, 12 * cm])
     meta.setStyle(TableStyle([
