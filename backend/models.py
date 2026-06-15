@@ -92,6 +92,28 @@ class CompanyIntegrationsUpdate(BaseModel):
     base_currency: Optional[Literal["MXN", "USD"]] = None
     deposit_percent: Optional[float] = Field(default=None, ge=1, le=100)
     notify_email: Optional[str] = None
+    # Bank transfer (Opción B de pago) — datos mostrados al cliente
+    bank_enabled: Optional[bool] = None
+    bank_name: Optional[str] = None
+    bank_holder: Optional[str] = None
+    bank_clabe: Optional[str] = None
+    bank_account: Optional[str] = None
+    bank_usd_account: Optional[str] = None
+    bank_swift: Optional[str] = None
+    bank_aba: Optional[str] = None
+    bank_address: Optional[str] = None
+
+
+class ManualPaymentInput(BaseModel):
+    amount: float = Field(gt=0)
+    method: Literal["transfer", "cash", "card", "other"] = "transfer"
+    note: str = ""
+
+
+class SendPaymentInput(BaseModel):
+    channel: Literal["email"] = "email"
+    to_email: Optional[str] = None
+    public_url: Optional[str] = None
 
 
 class QuotationPricingAdjust(BaseModel):

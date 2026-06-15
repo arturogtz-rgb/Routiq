@@ -1,0 +1,31 @@
+{
+  "summary": "Iteration 11 — Fase C (enlace público y cobro) end-to-end PASS. Backend pytest 9/9 in test_iteration11_fase_c.py covers: (1) PATCH /companies/me/integrations persists bank.{enabled,name,holder,clabe,account,usd_account,swift,aba,address} round-trip via GET, (2) GET /public/quotations/{token} returns payment.enabled=true (Stripe demo key), payment.transfer_enabled=true and full bank{} block on a package quotation, (3) POST /public/quotations/{token}/request-transfer returns ok+bank (email_sent=false as designed since Resend unset), (4) PATCH /quotations/{id}/mark-paid partial → payment_status='partial' + state='ganada' + history.action='payment' entry, then remainder → 'paid' + audit-log 'won' row present, (5) POST /quotations/{id}/send-payment returns ok + link starting with preview URL, (6) public POST /accept transitions to ganada + adds 'won' audit entry, (7) GET /metrics/audit returns won_this_month/won_total/amount_recovered/currency/top_executive shape, (8) /metrics/audit is 403 for executive, (9) servicios-a-la-carta public link still renders (package_snapshot=None guarded) and transfer_enabled propagates. Frontend UI executed as company_admin (admin@aventurate.mx): Settings /app/settings shows bank-section with bank-enabled-input + all 8 bank-* inputs; saving fires settings-ok and values persist after reload (CLABE 012345678901234567, USD 9876543210). On the quotation detail public-link-panel both send-pay-whatsapp-btn and send-pay-email-btn are present; clicking send-pay-email-btn fires send-pay-msg='Configura Resend en Ajustes para enviar correos. Enlace listo: https://…/q/<token>' as expected. mark-paid-control accepts a partial amount → payment-badge becomes 'Pago parcial', history-panel gains 'Pago manual de MXN $X (transferencia) — Registrado manualmente', then a remainder turns the badge into 'Pagado' AND hides mark-paid-control (count=0). State auto-transitions to Ganada. On a separate quotation opened logged-out at /q/<token>, the public-total-card shows pay-total-btn + pay-deposit-btn + transfer-section + transfer-toggle-btn; clicking transfer-toggle-btn reveals transfer-details containing Banco/Titular/CLABE/Cuenta/Cuenta USD/SWIFT/ABA/Domicilio populated from settings. Audit page /app/audit renders audit-metrics with metric-won-month (4 ganadas del mes), metric-recovered ($17,800 MXN), metric-top-exec (María González), above the existing audit-table + audit-filter. No real Stripe payment was attempted (per instructions). All test data cleaned up via DELETE.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_iteration11_fase_c.py",
+    "/app/test_reports/pytest/iter11_fase_c.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "server.py is now ~1556 lines — getting close to the 700-line soft cap. Splitting the file into modules (quotations.py, public_payments.py, audit.py, integrations.py) would dramatically improve maintainability before further phases land.",
+    "PATCH /quotations/{id}/mark-paid takes a raw amount with no upper guard against overpayment — amount_paid can exceed final_total without warning. Recommend clamping to remaining or returning 400 if amount > remaining.",
+    "POST /public/quotations/{token}/request-transfer currently writes a single fixed history entry per click; rapid double-clicks will spam history. Consider rate-limiting per token or de-duping consecutive identical actions within 30s.",
+    "POST /quotations/{id}/send-payment falls back to the contacts.traveler_email but does not validate the address format before attempting Resend. A pydantic EmailStr on SendPaymentInput.to_email would short-circuit obvious typos.",
+    "Frontend: send-pay-msg currently shows the raw URL when Resend is unset — a 'Copiar enlace' action button next to it would close the loop for offline-only tenants."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_iteration11_fase_c.py (new — 9 tests, all PASS)"
+  ],
+  "success_rate": {"backend": "100% (9/9)", "frontend": "100% on every required Fase C testid (bank-section, bank-enabled-input, bank-{name,holder,clabe,account,usd,swift,aba,address}-input, save-integrations-btn, settings-ok, pay-total-btn, pay-deposit-btn, transfer-section, transfer-toggle-btn, transfer-details, mark-paid-control, mark-paid-amount, mark-paid-btn, payment-badge, history-panel, send-pay-whatsapp-btn, send-pay-email-btn, send-pay-msg, audit-metrics, metric-won-month, metric-recovered, metric-top-exec, audit-table, audit-filter)"},
+  "test_credentials": "admin@aventurate.mx / Demo2026! (company_admin) + ejecutivo@aventurate.mx / Demo2026! (executive, used to assert 403 on /api/metrics/audit). Matches /app/memory/test_credentials.md.",
+  "seed_data_creation": "Tenant 'Aventúrate por Jalisco' now has persistent bank.* fields populated (BBVA México, CLABE 012345678901234567, USD 9876543210, SWIFT BCMRMXMM, ABA 026009593) — left in place because the public payment options UI depends on transfer_enabled=true. All test quotations created during the run (3 package + 1 servicios) were DELETEd at the end.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Fase C is green end-to-end. Bank settings are seeded on the demo tenant so transfer_enabled stays true; if a future iteration tests the 'transfer disabled' fallback, first PATCH /companies/me/integrations with bank_enabled=false. To re-run quickly: `pytest /app/backend/tests/test_iteration11_fase_c.py /app/backend/tests/test_iteration10_regression.py /app/backend/tests/test_fase_b_quotations.py -v` (15 tests, ~6s). Stripe sessions can be CREATED in preview but webhooks aren't wired, so never assert on payment_status going to 'paid' via the public Stripe button — use PATCH /mark-paid instead. Resend is NOT configured in the demo tenant: every email-send action returns email_sent=false by design and that is NOT a bug — assert on .ok and .link instead.",
+  "rca of the issue": "n/a — no bugs found in Fase C scope."
+}

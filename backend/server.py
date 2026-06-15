@@ -25,7 +25,7 @@ from models import (
     InviteExecutive, PackageCreate, PackageUpdate, ClientCreate,
     QuotationCreate, QuotationStateUpdate, QuotationUpdate, WhatsAppNumber,
     ServiceCreate, ServiceUpdate, CompanyIntegrationsUpdate, QuotationPricingAdjust,
-    PublicCheckoutRequest, QuotationArchive,
+    PublicCheckoutRequest, QuotationArchive, ManualPaymentInput, SendPaymentInput,
 )
 from pricing import compute_quotation
 from pdf_generator import generate_quotation_pdf
@@ -211,6 +211,16 @@ def _integrations_view(company: dict) -> dict:
         "base_currency": company.get("base_currency", "MXN"),
         "deposit_percent": company.get("deposit_percent", 50),
         "notify_email": company.get("notify_email", ""),
+        # Bank transfer
+        "bank_enabled": bool((company.get("bank") or {}).get("enabled", False)),
+        "bank_name": (company.get("bank") or {}).get("name", ""),
+        "bank_holder": (company.get("bank") or {}).get("holder", ""),
+        "bank_clabe": (company.get("bank") or {}).get("clabe", ""),
+        "bank_account": (company.get("bank") or {}).get("account", ""),
+        "bank_usd_account": (company.get("bank") or {}).get("usd_account", ""),
+        "bank_swift": (company.get("bank") or {}).get("swift", ""),
+        "bank_aba": (company.get("bank") or {}).get("aba", ""),
+        "bank_address": (company.get("bank") or {}).get("address", ""),
     }
 
 
@@ -251,6 +261,16 @@ async def update_my_integrations(payload: CompanyIntegrationsUpdate, user: dict 
         updates["deposit_percent"] = float(data["deposit_percent"])
     if "notify_email" in data:
         updates["notify_email"] = data["notify_email"] or ""
+    _BANK_FIELDS = {
+        "bank_name": "bank.name", "bank_holder": "bank.holder", "bank_clabe": "bank.clabe",
+        "bank_account": "bank.account", "bank_usd_account": "bank.usd_account",
+        "bank_swift": "bank.swift", "bank_aba": "bank.aba", "bank_address": "bank.address",
+    }
+    for key, path in _BANK_FIELDS.items():
+        if key in data:
+            updates[path] = data[key] or ""
+    if "bank_enabled" in data:
+        updates["bank.enabled"] = bool(data["bank_enabled"])
     if updates:
         await db.companies.update_one({"id": user["tenant_id"]}, {"$set": updates})
     company = await db.companies.find_one({"id": user["tenant_id"]}, {"_id": 0})
@@ -773,6 +793,39 @@ async def get_audit_log(action: str | None = None, user: dict = Depends(require_
     return await db.audit_log.find(q, {"_id": 0}).sort("at", -1).to_list(500)
 
 
+@api.get("/metrics/audit")
+async def get_audit_metrics(user: dict = Depends(require_roles("company_admin"))):
+    """Mini-dashboard: won this month, amount recovered, top executive."""
+    db = get_db()
+    tid = user["tenant_id"]
+    now = datetime.now(timezone.utc)
+    month_prefix = now.strftime("%Y-%m")
+    quotations = await db.quotations.find(
+        {"tenant_id": tid, "deleted": {"$ne": True}}, {"_id": 0}).to_list(2000)
+    won = [q for q in quotations if q.get("state") == "ganada"]
+    won_month = [q for q in won if (q.get("last_activity_at", "") or "").startswith(month_prefix)]
+    amount_recovered = round(sum(float(q.get("amount_paid", 0) or 0) for q in quotations), 2)
+    # top executive by won count
+    counts: dict = {}
+    for q in won:
+        counts[q.get("assigned_to")] = counts.get(q.get("assigned_to"), 0) + 1
+    top_id, top_count = (None, 0)
+    if counts:
+        top_id, top_count = max(counts.items(), key=lambda kv: kv[1])
+    top_name = ""
+    if top_id:
+        u = await db.users.find_one({"id": top_id}, {"_id": 0, "name": 1})
+        top_name = (u or {}).get("name", "")
+    currency_code = (await db.companies.find_one({"id": tid}, {"_id": 0, "base_currency": 1}) or {}).get("base_currency", "MXN")
+    return {
+        "won_this_month": len(won_month),
+        "won_total": len(won),
+        "amount_recovered": amount_recovered,
+        "currency": currency_code,
+        "top_executive": {"name": top_name, "won": top_count} if top_name else None,
+    }
+
+
 @api.get("/quotations/{quotation_id}/pdf")
 async def download_quotation_pdf(quotation_id: str, user: dict = Depends(require_tenant)):
     db = get_db()
@@ -944,23 +997,29 @@ async def get_public_quotation(token: str):
     if expires and datetime.fromisoformat(expires) < datetime.now(timezone.utc):
         raise HTTPException(status_code=410, detail="Enlace expirado")
     company = await db.companies.find_one({"id": q["tenant_id"]}, {"_id": 0, "pricing_config": 0})
-    pack = await db.packages.find_one({"id": q["package_id"]}, {"_id": 0})
+    pack = None
+    if q.get("package_id"):
+        pack = await db.packages.find_one({"id": q["package_id"]}, {"_id": 0})
     base_currency = company.get("base_currency", q.get("currency", "MXN"))
     final_total = q.get("final_total")
     if final_total is None:
         final_total = q.get("total", 0)
     amount_paid = q.get("amount_paid", 0) or 0
     payment_enabled = bool(((company.get("stripe") or {}).get("secret_key")) or os.environ.get("STRIPE_API_KEY"))
+    bank = company.get("bank") or {}
+    transfer_enabled = bool(bank.get("enabled")) and any(
+        bank.get(k) for k in ("name", "clabe", "account", "usd_account"))
     rates = await currency.get_rates()
     total_usd = currency.convert(final_total, base_currency, "USD", rates) if base_currency == "MXN" else None
     return {
         "quotation": {
-            "code": q["code"], "package_snapshot": q["package_snapshot"],
-            "hotel_selected": q["hotel_selected"], "dates": q["dates"], "pax": q["pax"],
+            "code": q["code"], "type": q.get("type", "paquete"),
+            "package_snapshot": q.get("package_snapshot"),
+            "hotel_selected": q.get("hotel_selected", ""), "dates": q["dates"], "pax": q["pax"],
             "items": q["items"], "subtotal": q["subtotal"], "commission": q.get("commission", 0),
             "total": q["total"], "currency": q.get("currency", "MXN"), "state": q["state"],
             "nights_total": q.get("nights_total"), "extra_nights": q.get("extra_nights", 0),
-            "package_nights": q.get("package_snapshot", {}).get("nights"),
+            "package_nights": (q.get("package_snapshot") or {}).get("nights"),
             "discount": q.get("discount"),
             "final_total": round(final_total, 2),
             "amount_paid": round(amount_paid, 2),
@@ -977,10 +1036,17 @@ async def get_public_quotation(token: str):
         },
         "payment": {
             "enabled": payment_enabled,
+            "transfer_enabled": transfer_enabled,
             "base_currency": base_currency,
             "deposit_percent": company.get("deposit_percent", 50),
             "total_usd_equivalent": total_usd,
             "rate_mxn_per_usd": rates.get("mxn_per_usd"),
+            "bank": {
+                "name": bank.get("name", ""), "holder": bank.get("holder", ""),
+                "clabe": bank.get("clabe", ""), "account": bank.get("account", ""),
+                "usd_account": bank.get("usd_account", ""), "swift": bank.get("swift", ""),
+                "aba": bank.get("aba", ""), "address": bank.get("address", ""),
+            } if transfer_enabled else None,
         },
         "itinerary": (pack or {}).get("itinerary", []),
         "includes": (pack or {}).get("includes", []),
@@ -1023,6 +1089,122 @@ async def accept_public_quotation(token: str):
     except Exception:
         log.exception("acceptance notification failed")
     return {"ok": True, "accepted_at": accepted_at}
+
+
+async def _client_email(db, q: dict) -> str:
+    """Best-effort recipient email for the end client of a quotation."""
+    contacts = q.get("contacts") or {}
+    cl = await db.clients.find_one({"id": q.get("client_id")}, {"_id": 0, "email": 1})
+    return (cl or {}).get("email") or contacts.get("agency", {}).get("email") or ""
+
+
+def _bank_html(bank: dict, ccy: str, amount: float) -> str:
+    rows = [
+        ("Banco", bank.get("name")), ("Titular", bank.get("holder")),
+        ("CLABE", bank.get("clabe")), ("Cuenta", bank.get("account")),
+        ("Cuenta USD", bank.get("usd_account")), ("SWIFT/BIC", bank.get("swift")),
+        ("ABA/Routing", bank.get("aba")), ("Domicilio del banco", bank.get("address")),
+    ]
+    body = "".join(f"<tr><td style='padding:4px 12px;color:#64748b'>{k}</td><td style='padding:4px 12px;font-weight:600'>{v}</td></tr>"
+                   for k, v in rows if v)
+    return (f"<p>Importe a transferir: <b>${amount:,.2f} {ccy}</b></p>"
+            f"<table style='border-collapse:collapse'>{body}</table>"
+            f"<p style='color:#64748b;font-size:12px'>Una vez realizada la transferencia, envíanos tu comprobante para confirmar la reserva.</p>")
+
+
+@api.post("/public/quotations/{token}/request-transfer")
+async def request_bank_transfer(token: str):
+    """Client chose bank transfer: email them the bank details (best-effort)."""
+    db = get_db()
+    q = await db.quotations.find_one({"public_link.token": token}, {"_id": 0})
+    if not q:
+        raise HTTPException(status_code=404, detail="Enlace inválido")
+    company = await db.companies.find_one({"id": q["tenant_id"]}, {"_id": 0})
+    bank = company.get("bank") or {}
+    if not bank.get("enabled"):
+        raise HTTPException(status_code=400, detail="La transferencia bancaria no está habilitada")
+    final_total = q.get("final_total")
+    if final_total is None:
+        final_total = q.get("total", 0)
+    amount_due = round(max(0.0, final_total - (q.get("amount_paid", 0) or 0)), 2)
+    to = await _client_email(db, q)
+    sent = False
+    if to:
+        title = f"Datos para transferencia — {q.get('code')}"
+        html = f"<h2>Datos bancarios de {company.get('name','')}</h2>" + _bank_html(bank, q.get("currency", "MXN"), amount_due)
+        sent = await notifications.send_email(company, to, title, html)
+    try:
+        await _append_history(db, q["id"], {"id": None, "name": "Cliente (enlace público)"},
+                              "transfer_requested", "El cliente solicitó pagar por transferencia bancaria")
+    except Exception:
+        log.exception("transfer history failed")
+    return {"ok": True, "email_sent": sent, "to": to, "bank": {k: bank.get(k, "") for k in ("name", "holder", "clabe", "account", "usd_account", "swift", "aba", "address")}}
+
+
+@api.patch("/quotations/{quotation_id}/mark-paid")
+async def mark_quotation_paid(quotation_id: str, payload: ManualPaymentInput, user: dict = Depends(require_tenant)):
+    """Executive manually registers a received payment (e.g. bank transfer)."""
+    db = get_db()
+    q = await db.quotations.find_one({"id": quotation_id, "tenant_id": user["tenant_id"]}, {"_id": 0})
+    if not q:
+        raise HTTPException(status_code=404, detail="Cotización no encontrada")
+    amount_paid = round((q.get("amount_paid", 0) or 0) + float(payload.amount), 2)
+    final_total = q.get("final_total")
+    if final_total is None:
+        final_total = q.get("total", 0)
+    pay_status = "paid" if amount_paid >= round(final_total, 2) - 0.01 else "partial"
+    was_won = q.get("state") == "ganada"
+    updates = {"amount_paid": amount_paid, "payment_status": pay_status, "last_activity_at": now_iso()}
+    if not was_won:
+        updates["state"] = "ganada"
+    await db.quotations.update_one({"id": quotation_id, "tenant_id": user["tenant_id"]}, {"$set": updates})
+    METHOD_ES = {"transfer": "transferencia", "cash": "efectivo", "card": "tarjeta", "other": "otro"}
+    detail = f"Pago manual de {q.get('currency','MXN')} ${float(payload.amount):,.2f} ({METHOD_ES.get(payload.method, payload.method)})"
+    if payload.note:
+        detail += f" — {payload.note}"
+    await _append_history(db, quotation_id, user, "payment", detail)
+    if not was_won:
+        await _record_audit(db, user["tenant_id"], user, "won", q, f"Ganada por {detail}")
+    try:
+        q2 = await db.quotations.find_one({"id": quotation_id}, {"_id": 0})
+        txn = {"amount": float(payload.amount), "currency": q.get("currency", "MXN")}
+        await notifications.notify_payment(db, q2, txn, amount_paid, pay_status)
+    except Exception:
+        log.exception("manual payment notification failed")
+    return await db.quotations.find_one({"id": quotation_id, "tenant_id": user["tenant_id"]}, {"_id": 0})
+
+
+@api.post("/quotations/{quotation_id}/send-payment")
+async def send_payment_link(quotation_id: str, payload: SendPaymentInput, user: dict = Depends(require_tenant)):
+    """Email the client the public payment link (Stripe + transfer options)."""
+    db = get_db()
+    q = await db.quotations.find_one({"id": quotation_id, "tenant_id": user["tenant_id"]}, {"_id": 0})
+    if not q:
+        raise HTTPException(status_code=404, detail="Cotización no encontrada")
+    # ensure a public link exists
+    public = q.get("public_link")
+    if not public or not public.get("token"):
+        token = secrets.token_urlsafe(18)
+        expires_at = (datetime.now(timezone.utc) + timedelta(days=7)).isoformat()
+        public = {"token": token, "expires_at": expires_at, "created_at": now_iso(), "accepted_at": None}
+        await db.quotations.update_one({"id": quotation_id}, {"$set": {"public_link": public}})
+    base = (payload.public_url or "").rstrip("/")
+    link = f"{base}/q/{public['token']}" if base else f"/q/{public['token']}"
+    company = await db.companies.find_one({"id": user["tenant_id"]}, {"_id": 0})
+    to = payload.to_email or await _client_email(db, q)
+    if not to:
+        raise HTTPException(status_code=400, detail="No hay correo del cliente. Agrega uno en el cliente o en los contactos.")
+    final_total = q.get("final_total")
+    if final_total is None:
+        final_total = q.get("total", 0)
+    title = f"Tu cotización {q.get('code')} — opciones de pago"
+    html = (f"<h2>{company.get('name','')}</h2><p>Hola {q.get('client_snapshot',{}).get('name','')}, "
+            f"aquí tienes tu cotización por <b>${float(final_total):,.2f} {q.get('currency','MXN')}</b>.</p>"
+            f"<p><a href='{link}' style='background:#185FA5;color:#fff;padding:12px 20px;border-radius:10px;text-decoration:none'>Ver y pagar mi cotización</a></p>"
+            f"<p style='color:#64748b;font-size:12px'>Podrás pagar con tarjeta o por transferencia bancaria.</p>")
+    sent = await notifications.send_email(company, to, title, html)
+    await _append_history(db, quotation_id, user, "sent_payment", f"Enlace de cobro enviado por correo a {to}")
+    return {"ok": True, "email_sent": sent, "to": to, "link": link}
 
 
 # ---------------------------------------------------------------------------

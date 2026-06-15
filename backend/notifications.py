@@ -91,7 +91,7 @@ async def notify_acceptance(db, q: dict):
     await _store_inapp(db, q, "acceptance", title, body)
     await _send_push(db, q, title, body)
     to = await _recipient(db, company, q)
-    html = f"<h2>{title}</h2><p>{body}</p><p>Paquete: {q.get('package_snapshot', {}).get('name', '')}</p>"
+    html = f"<h2>{title}</h2><p>{body}</p><p>Paquete: {(q.get('package_snapshot') or {}).get('name', '')}</p>"
     await send_email(company, to, title, html)
 
 

@@ -29,6 +29,9 @@ export default function QuotationDetail() {
   const [discount, setDiscount] = useState({ discount_type: 'none', discount_value: 0 });
   const [clientPhone, setClientPhone] = useState('');
   const [companyName, setCompanyName] = useState('Routiq');
+  const [payAmount, setPayAmount] = useState('');
+  const [payMsg, setPayMsg] = useState('');
+  const [sendingEmail, setSendingEmail] = useState(false);
 
   const load = async () => {
     const { data } = await api.get(`/quotations/${id}`);
@@ -116,13 +119,34 @@ export default function QuotationDetail() {
     const amount = money(q?.final_total != null ? q.final_total : q?.total, q?.currency);
     let msg;
     if (kind === 'pay') {
-      msg = `Hola ${name} 👋\nTu cotización *${code}* está lista. Total: *${amount}*.\nPuedes confirmar y *pagar de forma segura* aquí:\n${url}\n\n— ${companyName}`;
+      msg = `Hola ${name} 👋\nTu cotización *${code}* está lista. Total: *${amount}*.\nPuedes confirmar y *pagar de forma segura* (tarjeta o transferencia) aquí:\n${url}\n\n— ${companyName}`;
     } else {
       msg = `Hola ${name} 👋\nTe comparto tu cotización *${code}* de ${companyName}.\n${pkg ? `Paquete: ${pkg}\n` : ''}Total: *${amount}*\nMírala y confírmala aquí:\n${url}`;
     }
     const phone = (clientPhone || '').replace(/[^0-9]/g, '');
     const base = phone ? `https://wa.me/${phone}` : 'https://wa.me/';
     window.open(`${base}?text=${encodeURIComponent(msg)}`, '_blank');
+  };
+
+  const markPaid = async () => {
+    const amt = parseFloat(payAmount);
+    if (!amt || amt <= 0) return;
+    setPayMsg('');
+    try {
+      await api.patch(`/quotations/${id}/mark-paid`, { amount: amt, method: 'transfer', note: 'Registrado manualmente' });
+      setPayAmount('');
+      await load();
+    } catch (e) { setPayMsg(formatApiError(e)); }
+  };
+
+  const sendPaymentEmail = async () => {
+    setSendingEmail(true); setPayMsg('');
+    try {
+      const { data } = await api.post(`/quotations/${id}/send-payment`, { channel: 'email', public_url: window.location.origin });
+      setPayMsg(data.email_sent ? `✓ Correo de cobro enviado a ${data.to}` : `Configura Resend en Ajustes para enviar correos. Enlace listo: ${data.link}`);
+      await load();
+    } catch (e) { setPayMsg(formatApiError(e)); }
+    finally { setSendingEmail(false); }
   };
 
   if (!q) return <AppShell><div className="p-8 text-ink-400">Cargando…</div></AppShell>;
@@ -311,8 +335,12 @@ export default function QuotationDetail() {
                   <MessageCircle className="w-3.5 h-3.5" /> Enviar cotización por WhatsApp
                 </button>
                 <button className="w-full text-xs font-semibold justify-center inline-flex items-center gap-1.5 py-2.5 rounded-xl border-2 border-[#25D366] text-[#128C7E] hover:bg-[#25D366]/10 transition" onClick={() => sendWhatsApp('pay')} data-testid="send-pay-whatsapp-btn">
-                  <MessageCircle className="w-3.5 h-3.5" /> Enviar enlace de pago por WhatsApp
+                  <MessageCircle className="w-3.5 h-3.5" /> Enviar a cobrar por WhatsApp
                 </button>
+                <button className="w-full text-xs font-semibold justify-center inline-flex items-center gap-1.5 py-2.5 rounded-xl bg-brand-500 text-white hover:brightness-95 transition disabled:opacity-60" onClick={sendPaymentEmail} disabled={sendingEmail} data-testid="send-pay-email-btn">
+                  <Mail className="w-3.5 h-3.5" /> {sendingEmail ? 'Enviando…' : 'Enviar a cobrar por correo'}
+                </button>
+                {payMsg && <p className="text-xs text-ink-600 bg-cream rounded p-2 break-words" data-testid="send-pay-msg">{payMsg}</p>}
                 {q.public_link?.accepted_at && (
                   <p className="text-xs text-emerald-700 bg-mint-100 rounded p-2" data-testid="public-accepted">
                     ✓ Aceptada por el cliente el {formatDateEs(q.public_link.accepted_at)}
@@ -365,7 +393,19 @@ export default function QuotationDetail() {
                 </span>
                 <span className="text-ink-700">Pagado: <b>{money(q.amount_paid || 0, q.currency)}</b></span>
               </div>
-              <p className="text-xs text-ink-400 mt-2">El cliente paga desde el enlace público. Comparte el enlace por WhatsApp o correo.</p>
+              {q.payment_status !== 'paid' && (
+                <div className="mt-3" data-testid="mark-paid-control">
+                  <p className="text-xs text-ink-500 mb-1.5">Registrar pago recibido (transferencia/efectivo):</p>
+                  <div className="flex gap-2">
+                    <input type="number" min="0" step="0.01" className="input-field text-sm flex-1" placeholder="Monto" value={payAmount}
+                      onChange={(e) => setPayAmount(e.target.value)} data-testid="mark-paid-amount" />
+                    <button className="btn-primary text-sm whitespace-nowrap" onClick={markPaid} data-testid="mark-paid-btn">
+                      <CheckCircle2 className="w-4 h-4" /> Marcar
+                    </button>
+                  </div>
+                </div>
+              )}
+              <p className="text-xs text-ink-400 mt-2">El cliente paga con tarjeta o transferencia desde el enlace público. También puedes registrar pagos manualmente aquí.</p>
             </div>
           </div>
         </div>

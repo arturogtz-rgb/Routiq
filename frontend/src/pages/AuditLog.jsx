@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import AppShell from '@/components/AppShell';
 import api from '@/lib/api';
 import { formatDateEs } from '@/lib/dates';
-import { ShieldCheck, Trophy, Archive, Trash2, RotateCcw, Filter } from 'lucide-react';
+import { ShieldCheck, Trophy, Archive, Trash2, RotateCcw, Filter, TrendingUp, Wallet, Crown } from 'lucide-react';
 
 const ACTION_META = {
   won: { label: 'Ganada', icon: Trophy, tone: 'bg-mint-100 text-emerald-700' },
@@ -15,14 +15,19 @@ function money(v, c = 'MXN') { return `$${Number(v || 0).toLocaleString('es-MX')
 
 export default function AuditLog() {
   const [items, setItems] = useState([]);
+  const [metrics, setMetrics] = useState(null);
   const [action, setAction] = useState('');
   const [loading, setLoading] = useState(true);
 
   const load = async () => {
     setLoading(true);
     try {
-      const { data } = await api.get('/audit-log', { params: action ? { action } : {} });
-      setItems(data);
+      const [a, m] = await Promise.all([
+        api.get('/audit-log', { params: action ? { action } : {} }),
+        api.get('/metrics/audit'),
+      ]);
+      setItems(a.data);
+      setMetrics(m.data);
     } catch (_e) { /* noop */ }
     finally { setLoading(false); }
   };
@@ -35,6 +40,31 @@ export default function AuditLog() {
         <h1 className="font-display text-3xl md:text-4xl font-semibold text-ink-900 tracking-tight">Auditoría</h1>
         <p className="text-ink-500 mt-1">Registro de cotizaciones ganadas, archivadas, restauradas y eliminadas. Quién y cuándo.</p>
       </div>
+
+      {/* Mini-dashboard */}
+      {metrics && (
+        <div className="grid sm:grid-cols-3 gap-4 mb-6" data-testid="audit-metrics">
+          <div className="card-surface p-5" data-testid="metric-won-month">
+            <div className="flex items-center gap-2 text-ink-400 text-xs uppercase tracking-widest font-bold"><TrendingUp className="w-4 h-4" /> Ganadas del mes</div>
+            <p className="font-display text-4xl font-bold text-ink-900 mt-2">{metrics.won_this_month}</p>
+            <p className="text-xs text-ink-400 mt-1">{metrics.won_total} ganadas en total</p>
+          </div>
+          <div className="card-surface p-5" data-testid="metric-recovered">
+            <div className="flex items-center gap-2 text-ink-400 text-xs uppercase tracking-widest font-bold"><Wallet className="w-4 h-4" /> Monto recuperado</div>
+            <p className="font-display text-3xl font-bold text-emerald-700 mt-2">{money(metrics.amount_recovered, metrics.currency)}</p>
+            <p className="text-xs text-ink-400 mt-1">Pagos registrados (Stripe + transferencia)</p>
+          </div>
+          <div className="card-surface p-5" data-testid="metric-top-exec">
+            <div className="flex items-center gap-2 text-ink-400 text-xs uppercase tracking-widest font-bold"><Crown className="w-4 h-4" /> Ejecutivo top</div>
+            {metrics.top_executive ? (
+              <>
+                <p className="font-display text-2xl font-bold text-ink-900 mt-2">{metrics.top_executive.name}</p>
+                <p className="text-xs text-ink-400 mt-1">{metrics.top_executive.won} cotizaciones ganadas</p>
+              </>
+            ) : <p className="text-ink-400 mt-2 text-sm">Sin datos aún</p>}
+          </div>
+        </div>
+      )}
 
       <div className="flex items-center gap-2 mb-5">
         <Filter className="w-4 h-4 text-ink-400" />

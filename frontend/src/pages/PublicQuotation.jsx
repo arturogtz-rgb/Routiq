@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useParams, useSearchParams } from 'react-router-dom';
 import api, { formatApiError } from '@/lib/api';
-import { CheckCircle2, Calendar, MapPin, Users, FileText, Sparkles, CreditCard, Loader2, Moon } from 'lucide-react';
+import { CheckCircle2, Calendar, MapPin, Users, FileText, Sparkles, CreditCard, Loader2, Moon, Landmark, Copy } from 'lucide-react';
 import { formatDateEs } from '@/lib/dates';
 
 function money(v, c = 'MXN') { return `$${Number(v || 0).toLocaleString('es-MX')} ${c}`; }
@@ -20,6 +20,8 @@ export default function PublicQuotation() {
   const [payMsg, setPayMsg] = useState(null); // { type, text }
   const [lastSession, setLastSession] = useState(null);
   const [verifying, setVerifying] = useState(false);
+  const [showTransfer, setShowTransfer] = useState(false);
+  const [transferMsg, setTransferMsg] = useState('');
 
   const load = async () => {
     try {
@@ -102,6 +104,14 @@ export default function PublicQuotation() {
     } catch (e) { setPayMsg({ type: 'error', text: formatApiError(e) }); setPaying(false); }
   };
 
+  const requestTransfer = async () => {
+    setShowTransfer(true); setTransferMsg('');
+    try {
+      const { data: res } = await api.post(`/public/quotations/${token}/request-transfer`);
+      if (res.email_sent) setTransferMsg(`Te enviamos los datos a ${res.to}. Revisa tu correo.`);
+    } catch (_e) { /* still show on-screen data */ }
+  };
+
   if (error) {
     return (
       <div className="min-h-screen bg-cream flex items-center justify-center p-6">
@@ -156,7 +166,7 @@ export default function PublicQuotation() {
             ¡Hola{q.client_name ? `, ${q.client_name.split(' ')[0]}` : ''}!<br />
             Tu viaje está casi listo. ✨
           </h1>
-          <p className="text-ink-500 mt-3 text-lg">{q.package_snapshot?.name}</p>
+          <p className="text-ink-500 mt-3 text-lg">{q.package_snapshot?.name || (q.type === 'servicios' ? 'Servicios a la carta' : '')}</p>
         </div>
         {data.package_image_url && (
           <div className="max-w-3xl mx-auto px-4 pb-2">
@@ -169,21 +179,25 @@ export default function PublicQuotation() {
       <main className="max-w-3xl mx-auto px-4 pb-20 space-y-6">
         {/* Summary */}
         <div className="card-surface p-6 grid sm:grid-cols-2 gap-4">
-          <div className="flex items-start gap-3">
-            <MapPin className="w-5 h-5 mt-0.5" style={{ color: primary }} />
-            <div><p className="text-xs uppercase tracking-widest text-ink-400 font-bold">Hotel</p>
-              <p className="font-semibold text-ink-900">{q.hotel_selected}</p></div>
-          </div>
-          <div className="flex items-start gap-3">
-            <Calendar className="w-5 h-5 mt-0.5" style={{ color: primary }} />
-            <div><p className="text-xs uppercase tracking-widest text-ink-400 font-bold">Fechas</p>
-              <p className="font-semibold text-ink-900">{formatDateEs(q.dates?.start)} → {formatDateEs(q.dates?.end)}</p>
-              {q.nights_total ? <p className="text-xs text-ink-400">{q.nights_total} noches{q.extra_nights > 0 ? ` (${q.package_nights} paquete + ${q.extra_nights} extra)` : ''}</p> : null}
+          {q.hotel_selected && (
+            <div className="flex items-start gap-3">
+              <MapPin className="w-5 h-5 mt-0.5" style={{ color: primary }} />
+              <div><p className="text-xs uppercase tracking-widest text-ink-400 font-bold">Hotel</p>
+                <p className="font-semibold text-ink-900">{q.hotel_selected}</p></div>
             </div>
-          </div>
+          )}
+          {(q.dates?.start || q.dates?.end) && (
+            <div className="flex items-start gap-3">
+              <Calendar className="w-5 h-5 mt-0.5" style={{ color: primary }} />
+              <div><p className="text-xs uppercase tracking-widest text-ink-400 font-bold">Fechas</p>
+                <p className="font-semibold text-ink-900">{formatDateEs(q.dates?.start)} → {formatDateEs(q.dates?.end)}</p>
+                {q.nights_total ? <p className="text-xs text-ink-400">{q.nights_total} noches{q.extra_nights > 0 ? ` (${q.package_nights} paquete + ${q.extra_nights} extra)` : ''}</p> : null}
+              </div>
+            </div>
+          )}
           <div className="flex items-start gap-3 sm:col-span-2">
             <Users className="w-5 h-5 mt-0.5" style={{ color: primary }} />
-            <div><p className="text-xs uppercase tracking-widest text-ink-400 font-bold">Habitaciones / Pax</p>
+            <div><p className="text-xs uppercase tracking-widest text-ink-400 font-bold">{q.type === 'servicios' ? 'Personas' : 'Habitaciones / Pax'}</p>
               <p className="font-semibold text-ink-900">{paxDesc}</p></div>
           </div>
         </div>
@@ -301,6 +315,38 @@ export default function PublicQuotation() {
                     style={{ borderColor: primary, color: primary }} data-testid="pay-deposit-btn">
                     Pagar anticipo ({payment.deposit_percent}%)
                   </button>
+                </div>
+              )}
+              {payment?.transfer_enabled && payment?.bank && (
+                <div className="mb-3 rounded-2xl border-2 border-ink-100 p-4" data-testid="transfer-section">
+                  {!showTransfer ? (
+                    <button onClick={requestTransfer}
+                      className="w-full font-display font-semibold py-3 rounded-xl border-2 transition-all hover:bg-cream flex items-center justify-center gap-2"
+                      style={{ borderColor: primary, color: primary }} data-testid="transfer-toggle-btn">
+                      <Landmark className="w-5 h-5" /> Pagar por transferencia bancaria
+                    </button>
+                  ) : (
+                    <div data-testid="transfer-details">
+                      <p className="font-semibold text-ink-900 flex items-center gap-2 mb-3"><Landmark className="w-4 h-4" style={{ color: primary }} /> Datos para tu transferencia</p>
+                      <div className="space-y-1.5 text-sm">
+                        {[
+                          ['Banco', payment.bank.name], ['Titular', payment.bank.holder],
+                          ['CLABE', payment.bank.clabe], ['Cuenta', payment.bank.account],
+                          ['Cuenta USD', payment.bank.usd_account], ['SWIFT/BIC', payment.bank.swift],
+                          ['ABA/Routing', payment.bank.aba], ['Domicilio del banco', payment.bank.address],
+                        ].filter(([, v]) => v).map(([k, v]) => (
+                          <div key={k} className="flex items-center justify-between gap-3 py-1 border-b border-ink-100 last:border-0">
+                            <span className="text-ink-400">{k}</span>
+                            <span className="font-medium text-ink-900 text-right break-all">{v}
+                              <button className="ml-2 text-ink-300 hover:text-ink-600 align-middle" onClick={() => navigator.clipboard.writeText(v)} title="Copiar"><Copy className="w-3 h-3 inline" /></button>
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+                      <p className="text-xs text-ink-500 mt-3">Importe: <b>{money(amountDue, q.currency)}</b>. Envía tu comprobante a {company.contact_email || company.name} para confirmar.</p>
+                      {transferMsg && <p className="text-xs text-emerald-700 bg-mint-100 rounded p-2 mt-2" data-testid="transfer-msg">{transferMsg}</p>}
+                    </div>
+                  )}
                 </div>
               )}
               {accepted ? (
