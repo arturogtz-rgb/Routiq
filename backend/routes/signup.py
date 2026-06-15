@@ -24,6 +24,8 @@ router = APIRouter()
 
 LOGIN_URL = os.environ.get("PUBLIC_LOGIN_URL", "https://routiq.com.mx/login")
 TURNSTILE_SECRET_KEY = os.environ.get("TURNSTILE_SECRET_KEY", "")
+if not TURNSTILE_SECRET_KEY:
+    log.warning("TURNSTILE_SECRET_KEY no configurada — el captcha de /api/signup está DESACTIVADO (solo rate-limit + honeypot activos).")
 
 # Rate-limit: per public IP
 SIGNUP_MAX_PER_HOUR = 5
@@ -58,12 +60,10 @@ async def _verify_turnstile(token: str | None, ip: str) -> bool:
 
 async def _rate_limited(db, ip: str) -> bool:
     now = datetime.now(timezone.utc)
-    hour_ago = (now - timedelta(hours=1)).isoformat()
-    day_ago = (now - timedelta(days=1)).isoformat()
-    per_hour = await db.signup_attempts.count_documents({"ip": ip, "at": {"$gte": hour_ago}})
+    per_hour = await db.signup_attempts.count_documents({"ip": ip, "at": {"$gte": now - timedelta(hours=1)}})
     if per_hour >= SIGNUP_MAX_PER_HOUR:
         return True
-    per_day = await db.signup_attempts.count_documents({"ip": ip, "at": {"$gte": day_ago}})
+    per_day = await db.signup_attempts.count_documents({"ip": ip, "at": {"$gte": now - timedelta(days=1)}})
     return per_day >= SIGNUP_MAX_PER_DAY
 
 
@@ -130,7 +130,7 @@ async def submit_signup(payload: SignupRequest, request: Request):
         "decided_at": "",
     }
     await db.tenant_requests.insert_one(dict(req))
-    await db.signup_attempts.insert_one({"ip": ip, "at": now_iso()})
+    await db.signup_attempts.insert_one({"ip": ip, "at": datetime.now(timezone.utc)})
     return {"ok": True, "id": req["id"]}
 
 

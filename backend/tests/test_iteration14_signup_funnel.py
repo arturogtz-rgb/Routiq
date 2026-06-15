@@ -50,7 +50,21 @@ def master_session():
 
 @pytest.fixture(scope="module")
 def public_session():
-    return requests.Session()
+    """A session that injects a unique X-Forwarded-For per /signup call so the
+    iter15 rate-limit (5/IP/hour) doesn't make this suite flaky."""
+    import random
+    s = requests.Session()
+    _orig = s.request
+
+    def _req(method, url, **kw):
+        if str(url).endswith("/signup"):
+            headers = dict(kw.get("headers") or {})
+            headers["X-Forwarded-For"] = f"198.51.{random.randint(1, 254)}.{random.randint(1, 254)}"
+            kw["headers"] = headers
+        return _orig(method, url, **kw)
+
+    s.request = _req
+    return s
 
 
 @pytest.fixture(scope="module")
