@@ -1148,10 +1148,13 @@ async def mark_quotation_paid(quotation_id: str, payload: ManualPaymentInput, us
     q = await db.quotations.find_one({"id": quotation_id, "tenant_id": user["tenant_id"]}, {"_id": 0})
     if not q:
         raise HTTPException(status_code=404, detail="Cotización no encontrada")
-    amount_paid = round((q.get("amount_paid", 0) or 0) + float(payload.amount), 2)
     final_total = q.get("final_total")
     if final_total is None:
         final_total = q.get("total", 0)
+    remaining = round(max(0.0, final_total - (q.get("amount_paid", 0) or 0)), 2)
+    if float(payload.amount) > remaining + 0.01:
+        raise HTTPException(status_code=400, detail=f"El monto excede lo pendiente ({q.get('currency','MXN')} ${remaining:,.2f})")
+    amount_paid = round((q.get("amount_paid", 0) or 0) + float(payload.amount), 2)
     pay_status = "paid" if amount_paid >= round(final_total, 2) - 0.01 else "partial"
     was_won = q.get("state") == "ganada"
     updates = {"amount_paid": amount_paid, "payment_status": pay_status, "last_activity_at": now_iso()}
