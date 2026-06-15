@@ -94,6 +94,7 @@ export function MasterCompanies() {
   const [backups, setBackups] = useState(null);
   const [backupStatus, setBackupStatus] = useState(null);
   const [downloading, setDownloading] = useState(false);
+  const [generating, setGenerating] = useState(false);
   const [admins, setAdmins] = useState([]);
   const [editCompany, setEditCompany] = useState(null);
   const [editCompanyForm, setEditCompanyForm] = useState({ name: '', contact_email: '', contact_phone: '' });
@@ -168,6 +169,16 @@ export function MasterCompanies() {
     } catch (e) {
       alert(formatApiError(e));
     } finally { setDownloading(false); }
+  };
+
+  const generateBackup = async () => {
+    setError(''); setGenerating(true);
+    try {
+      await api.post('/backups/run');
+      const [b, s] = await Promise.all([api.get('/backups'), api.get('/backups/status').catch(() => ({ data: null }))]);
+      setBackups(b.data); if (s.data) setBackupStatus(s.data);
+    } catch (e) { setError(formatApiError(e)); }
+    finally { setGenerating(false); }
   };
 
   const openApprove = (r) => { setReqError(''); setApproveResult(null); setApproveTarget(r); setApproveSlug(r.slug || ''); };
@@ -371,6 +382,9 @@ export function MasterCompanies() {
           </div>
           <button className="btn-primary" onClick={downloadBackup} disabled={downloading || !backups || backups.available === 0} data-testid="download-backup-btn">
             <Download className="w-4 h-4" /> {downloading ? 'Descargando…' : 'Descargar último respaldo'}
+          </button>
+          <button className="btn-secondary" onClick={generateBackup} disabled={generating} data-testid="generate-backup-btn">
+            <Database className="w-4 h-4" /> {generating ? 'Generando…' : 'Generar respaldo ahora'}
           </button>
         </div>
         {backupStatus && backupStatus.stale && (

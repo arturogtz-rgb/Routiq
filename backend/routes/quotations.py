@@ -315,7 +315,7 @@ async def ai_chat_summary(payload: dict, user: dict = Depends(require_tenant)):
     if not messages:
         raise HTTPException(status_code=400, detail="Sin mensajes")
     try:
-        summary = await ai_service.summarize_chat(messages)
+        summary = await ai_service.summarize_chat(messages, tenant_id=user['tenant_id'])
         return {"summary": summary}
     except Exception as e:
         log.exception("AI summary failed")
@@ -342,7 +342,7 @@ async def ai_next_step(quotation_id: str, user: dict = Depends(require_tenant)):
     await _check_ai_enabled(user["tenant_id"])
     q, pack, client = await _load_quotation_context(quotation_id, user["tenant_id"])
     try:
-        suggestion = await ai_service.suggest_next_step(q, pack, client)
+        suggestion = await ai_service.suggest_next_step(q, pack, client, tenant_id=user['tenant_id'])
         return {"suggestion": suggestion}
     except Exception as e:
         log.exception("AI next-step failed")
@@ -354,7 +354,7 @@ async def ai_missing_fields(quotation_id: str, user: dict = Depends(require_tena
     await _check_ai_enabled(user["tenant_id"])
     q, pack, client = await _load_quotation_context(quotation_id, user["tenant_id"])
     try:
-        fields = await ai_service.detect_missing_fields(q, pack, client)
+        fields = await ai_service.detect_missing_fields(q, pack, client, tenant_id=user['tenant_id'])
         return {"fields": fields}
     except Exception as e:
         log.exception("AI missing-fields failed")
@@ -366,7 +366,7 @@ async def ai_client_message(quotation_id: str, user: dict = Depends(require_tena
     await _check_ai_enabled(user["tenant_id"])
     q, pack, client = await _load_quotation_context(quotation_id, user["tenant_id"])
     try:
-        msg = await ai_service.generate_client_message(q, pack, client)
+        msg = await ai_service.generate_client_message(q, pack, client, tenant_id=user['tenant_id'])
         return {"message": msg}
     except Exception as e:
         log.exception("AI client-message failed")

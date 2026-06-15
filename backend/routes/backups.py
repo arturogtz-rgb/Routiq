@@ -6,7 +6,9 @@ These endpoints let the Master list and download them from the panel.
 """
 import os
 import glob
+import asyncio
 import logging
+import subprocess
 from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -61,6 +63,39 @@ def freshness() -> dict:
 @router.get("/backups/status")
 async def backup_status(user: dict = Depends(require_roles("super_admin"))):
     return freshness()
+
+
+def _run_mongodump(path: str) -> tuple[int, str]:
+    mongo_url = os.environ["MONGO_URL"]
+    db_name = os.environ["DB_NAME"]
+    cmd = ["mongodump", f"--uri={mongo_url}", f"--db={db_name}", f"--archive={path}", "--gzip"]
+    proc = subprocess.run(cmd, capture_output=True, timeout=110)
+    return proc.returncode, (proc.stderr.decode("utf-8", "ignore")[:500])
+
+
+@router.post("/backups/run")
+async def run_backup(user: dict = Depends(require_roles("super_admin"))):
+    """Genera un respaldo de MongoDB al instante (sin SSH) en BACKUP_DIR."""
+    import shutil
+    if not shutil.which("mongodump"):
+        raise HTTPException(status_code=503, detail="mongodump no está disponible en el servidor.")
+    try:
+        os.makedirs(BACKUP_DIR, exist_ok=True)
+    except Exception:
+        raise HTTPException(status_code=500, detail="El volumen de respaldos es de solo lectura. Habilita escritura en el backend para generar respaldos desde el panel.")
+    ts = datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%S")
+    path = os.path.join(BACKUP_DIR, f"routiq-{ts}.gz")
+    try:
+        rc, err = await asyncio.to_thread(_run_mongodump, path)
+    except subprocess.TimeoutExpired:
+        raise HTTPException(status_code=504, detail="El respaldo tardó demasiado. Intenta de nuevo o genera desde el VPS.")
+    except Exception as e:  # noqa: BLE001
+        log.exception("backup run failed")
+        raise HTTPException(status_code=500, detail=f"No se pudo generar el respaldo: {str(e)[:200]}")
+    if rc != 0 or not os.path.isfile(path):
+        log.error("mongodump rc=%s err=%s", rc, err)
+        raise HTTPException(status_code=500, detail="No se pudo generar el respaldo. Revisa permisos del volumen de backups.")
+    return {"ok": True, **_meta(path)}
 
 
 @router.get("/backups")

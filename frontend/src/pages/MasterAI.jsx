@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import AppShell from '@/components/AppShell';
 import api, { formatApiError } from '@/lib/api';
-import { Sparkles, Save, Plug, CheckCircle2, AlertTriangle, KeyRound } from 'lucide-react';
+import { Sparkles, Save, Plug, CheckCircle2, AlertTriangle, KeyRound, TrendingUp } from 'lucide-react';
 
 const PROVIDERS = [
   { id: 'anthropic', label: 'Anthropic (Claude)', hint: 'Recomendado para resúmenes en español', keyUrl: 'https://console.anthropic.com/settings/keys', keyPrefix: 'sk-ant-...' },
@@ -20,12 +20,14 @@ export default function MasterAI() {
   const [testResult, setTestResult] = useState(null);
   const [saving, setSaving] = useState(false);
   const [testing, setTesting] = useState(false);
+  const [usage, setUsage] = useState(null);
 
   const load = async () => {
     try {
       const { data } = await api.get('/master/ai-settings');
       setSettings(data); setProvider(data.provider); setModel(data.model); setDefaults(data.default_models || {});
     } catch (e) { setError(formatApiError(e)); }
+    api.get('/master/ai-usage').then(({ data }) => setUsage(data)).catch(() => {});
   };
   useEffect(() => { load(); }, []);
 
@@ -125,6 +127,61 @@ export default function MasterAI() {
           </button>
         </div>
       </div>
+
+      {usage && (
+        <div className="max-w-4xl mt-6" data-testid="ai-usage-section">
+          <h2 className="font-display font-semibold text-lg text-ink-900 flex items-center gap-2 mb-3"><TrendingUp className="w-5 h-5 text-brand-500" /> Uso y costo estimado de IA</h2>
+          <div className="grid grid-cols-3 gap-4 mb-5">
+            {[
+              { label: 'Llamadas totales', v: usage.totals.calls },
+              { label: 'Tokens', v: usage.totals.tokens.toLocaleString('es-MX') },
+              { label: 'Costo estimado', v: `$${usage.totals.cost_usd.toFixed(2)} USD` },
+            ].map((s) => (
+              <div key={s.label} className="card-surface p-5" data-testid={`ai-usage-total-${s.label}`}>
+                <p className="text-xs uppercase tracking-widest text-ink-400 font-bold">{s.label}</p>
+                <p className="font-display text-2xl font-bold text-ink-900 mt-1">{s.v}</p>
+              </div>
+            ))}
+          </div>
+
+          {usage.totals.calls === 0 ? (
+            <p className="text-sm text-ink-400">Aún no hay uso registrado. Las llamadas de IA (resúmenes de chat, siguiente paso, mensajes) se contabilizarán aquí. El costo es <b>estimado</b> según tarifas públicas del proveedor.</p>
+          ) : (
+            <div className="grid lg:grid-cols-2 gap-5">
+              <div className="card-surface p-5">
+                <p className="text-xs uppercase tracking-widest text-ink-400 font-bold mb-3">Por empresa</p>
+                <table className="w-full text-sm" data-testid="ai-usage-by-company">
+                  <thead><tr className="text-ink-400 text-xs"><th className="text-left font-medium pb-2">Empresa</th><th className="text-right font-medium">Llamadas</th><th className="text-right font-medium">Costo</th></tr></thead>
+                  <tbody>
+                    {usage.by_company.map((c) => (
+                      <tr key={c.tenant_id} className="border-t border-ink-50">
+                        <td className="py-2 text-ink-900">{c.company}</td>
+                        <td className="py-2 text-right">{c.calls}</td>
+                        <td className="py-2 text-right font-semibold">${c.cost_usd.toFixed(2)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+              <div className="card-surface p-5">
+                <p className="text-xs uppercase tracking-widest text-ink-400 font-bold mb-3">Por mes</p>
+                <table className="w-full text-sm" data-testid="ai-usage-by-month">
+                  <thead><tr className="text-ink-400 text-xs"><th className="text-left font-medium pb-2">Mes</th><th className="text-right font-medium">Llamadas</th><th className="text-right font-medium">Costo</th></tr></thead>
+                  <tbody>
+                    {usage.by_month.map((m) => (
+                      <tr key={m.month} className="border-t border-ink-50">
+                        <td className="py-2 text-ink-900">{m.month}</td>
+                        <td className="py-2 text-right">{m.calls}</td>
+                        <td className="py-2 text-right font-semibold">${m.cost_usd.toFixed(2)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
     </AppShell>
   );
 }

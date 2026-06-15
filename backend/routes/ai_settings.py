@@ -88,3 +88,34 @@ async def test_ai_settings(payload: AITestInput, user: dict = Depends(require_ro
     except Exception as e:  # noqa: BLE001
         log.exception("AI test failed")
         raise HTTPException(status_code=400, detail=f"Error: {str(e)[:200]}")
+
+
+@router.get("/master/ai-usage")
+async def ai_usage(user: dict = Depends(require_roles("super_admin"))):
+    """Uso de IA agregado por mes y por empresa (llamadas, tokens, costo estimado USD)."""
+    db = get_db()
+    rows = await db.ai_usage.find({}, {"_id": 0}).to_list(50000)
+    companies = await db.companies.find({}, {"_id": 0, "id": 1, "name": 1}).to_list(1000)
+    names = {c["id"]: c["name"] for c in companies}
+
+    by_month, by_company = {}, {}
+    totals = {"calls": 0, "tokens": 0, "cost_usd": 0.0}
+    for r in rows:
+        month = (r.get("created_at") or "")[:7] or "—"
+        cost = float(r.get("cost_usd", 0) or 0)
+        tok = int(r.get("total_tokens", 0) or 0)
+        tid = r.get("tenant_id") or "—"
+
+        m = by_month.setdefault(month, {"month": month, "calls": 0, "tokens": 0, "cost_usd": 0.0})
+        m["calls"] += 1; m["tokens"] += tok; m["cost_usd"] = round(m["cost_usd"] + cost, 4)
+
+        c = by_company.setdefault(tid, {"tenant_id": tid, "company": names.get(tid, "—"), "calls": 0, "tokens": 0, "cost_usd": 0.0})
+        c["calls"] += 1; c["tokens"] += tok; c["cost_usd"] = round(c["cost_usd"] + cost, 4)
+
+        totals["calls"] += 1; totals["tokens"] += tok; totals["cost_usd"] = round(totals["cost_usd"] + cost, 4)
+
+    return {
+        "totals": totals,
+        "by_month": sorted(by_month.values(), key=lambda x: x["month"], reverse=True),
+        "by_company": sorted(by_company.values(), key=lambda x: -x["cost_usd"]),
+    }

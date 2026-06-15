@@ -1,0 +1,40 @@
+{
+  "summary": "Iteración 24 frontend-only: validados (1) registro de uso/costo de IA en /master/ai, (2) botón Generar respaldo ahora en /master/companies y (3) no-regresión de la config IA. Los 3 escenarios pasaron sin errores en consola ni en UI.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "tests_executed": [
+    {
+      "name": "AI usage section en /master/ai",
+      "result": "PASS",
+      "details": "ai-usage-section presente. Tarjetas totales: Llamadas=1, Tokens=1,500, Costo=$0.01 USD. ai-usage-by-company muestra 'Aventúrate por Jalisco | 1 | $0.01'. ai-usage-by-month muestra '2026-06 | 1 | $0.01'. Costo en formato $X.XX USD correcto."
+    },
+    {
+      "name": "Generar respaldo ahora en backups-card",
+      "result": "PASS",
+      "details": "backups-card, generate-backup-btn y download-backup-btn presentes. Antes: '1 respaldo(s) · último: 15 jun 2026, 8:28 p.m.'. Tras click en generate-backup-btn (espera 8s): '2 respaldo(s) · último: 15 jun 2026, 8:32 p.m.' — cuenta incrementó y fecha cambió. download-backup-btn habilitado tras generar. Sin errores en consola ni en UI."
+    },
+    {
+      "name": "No-regresión config IA",
+      "result": "PASS",
+      "details": "ai-provider-anthropic/openai/google, ai-model-input, ai-save-btn, ai-test-btn presentes. Probar conexión con key falsa ('sk-ant-fakekey...') devolvió ai-test-result con mensaje amistoso en español: 'La API key de Anthropic no es válida o no tiene permisos. Actualízala en el Panel Master.' (HTTP 400 esperado, manejado correctamente)."
+    }
+  ],
+  "test_report_links": [],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "Sidebar: el review pidió usar 'nav-ai' como data-testid del item de sidebar, pero el query selector [data-testid='nav-ai'] devolvió null (se navegó manualmente a /master/ai). Verificar si el ítem 'Inteligencia Artificial' del sidebar tiene el data-testid correcto en AppShell.jsx; no bloqueante porque la página es accesible.",
+    "Master.jsx (569 líneas) > 700 no aún, pero acercándose: la página combina lista de empresas, historial de solicitudes, backups, modales de approve/reject/plan/reset. Considerar extraer BackupsCard, RequestsHistory y modales a componentes propios para facilitar mantenimiento.",
+    "Master.jsx: la tarjeta 'backups-card' técnicamente vive en /master/companies (export MasterCompanies), no en /master (MasterAdmin). El review menciona 'Panel Master' de forma general — funciona, pero conviene aclarar en docs/UX si esperaban que estuviera en el dashboard principal /master."
+  ],
+  "updated_files": [],
+  "success_rate": {"backend": "n/a (skipped)", "frontend": "100% (3/3)"},
+  "test_credentials": "owner@routiq.mx / Routiq2026! (super_admin, seed)",
+  "seed_data_creation": "No (consumido el seed existente de ai_usage: 1 doc anthropic claude-sonnet-4-5 1500 tokens $0.0081).",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Iter24 verificó UI de uso de IA y backup-on-demand en /master/companies. Tras la prueba se generó un respaldo real adicional (ahora hay 2 archivos .gz en BACKUP_DIR). El seed de ai_usage (1 doc) sigue presente; main agent lo limpiará. Si se reejecuta, los totales podrían diferir."
+}

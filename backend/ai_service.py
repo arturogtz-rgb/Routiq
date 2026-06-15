@@ -23,6 +23,35 @@ NOT_CONFIGURED_MSG = (
     "proveedor y la API key en el Panel Master (Ajustes → Inteligencia Artificial)."
 )
 
+# Precio aproximado USD por 1M de tokens (entrada, salida). Coincidencia por substring del modelo.
+PRICING = {
+    "claude-sonnet-4-5": (3.0, 15.0),
+    "claude-3-5-sonnet": (3.0, 15.0),
+    "claude-3-5-haiku": (0.8, 4.0),
+    "claude-haiku": (0.8, 4.0),
+    "claude-opus": (15.0, 75.0),
+    "gpt-4o-mini": (0.15, 0.6),
+    "gpt-4o": (2.5, 10.0),
+    "gpt-4.1": (2.0, 8.0),
+    "gemini-1.5-pro": (1.25, 5.0),
+    "gemini-2.0-flash": (0.1, 0.4),
+    "gemini-1.5-flash": (0.075, 0.3),
+}
+DEFAULT_PRICE = (3.0, 15.0)
+
+
+def _price_for(model: str) -> tuple[float, float]:
+    m = (model or "").lower()
+    for key, price in PRICING.items():
+        if key in m:
+            return price
+    return DEFAULT_PRICE
+
+
+def _estimate_cost(model: str, in_tok: int, out_tok: int) -> float:
+    pin, pout = _price_for(model)
+    return round((in_tok / 1_000_000) * pin + (out_tok / 1_000_000) * pout, 6)
+
 
 class AINotConfigured(Exception):
     pass
@@ -53,8 +82,8 @@ def _map_provider_error(provider: str, e: Exception) -> Exception:
     return AIError(f"No se pudo conectar con {provider.capitalize()}: {str(e)[:200]}")
 
 
-async def _complete(provider: str, model: str, api_key: str, system: str, prompt: str, max_tokens: int = 700) -> str:
-    """Llamada de completado para el proveedor indicado. Lanza AIError en fallo."""
+async def _complete(provider: str, model: str, api_key: str, system: str, prompt: str, max_tokens: int = 700) -> tuple[str, dict]:
+    """Llamada de completado. Devuelve (texto, usage{input,output}). Lanza AIError en fallo."""
     try:
         if provider == "anthropic":
             import anthropic
@@ -63,7 +92,10 @@ async def _complete(provider: str, model: str, api_key: str, system: str, prompt
                 model=model, max_tokens=max_tokens, system=system,
                 messages=[{"role": "user", "content": prompt}],
             )
-            return (resp.content[0].text if resp.content else "").strip()
+            text = (resp.content[0].text if resp.content else "").strip()
+            u = getattr(resp, "usage", None)
+            usage = {"input": getattr(u, "input_tokens", 0) or 0, "output": getattr(u, "output_tokens", 0) or 0}
+            return text, usage
 
         if provider == "openai":
             import openai
@@ -72,7 +104,10 @@ async def _complete(provider: str, model: str, api_key: str, system: str, prompt
                 model=model, max_tokens=max_tokens,
                 messages=[{"role": "system", "content": system}, {"role": "user", "content": prompt}],
             )
-            return (resp.choices[0].message.content or "").strip()
+            text = (resp.choices[0].message.content or "").strip()
+            u = getattr(resp, "usage", None)
+            usage = {"input": getattr(u, "prompt_tokens", 0) or 0, "output": getattr(u, "completion_tokens", 0) or 0}
+            return text, usage
 
         if provider == "google":
             from google import genai
@@ -82,7 +117,10 @@ async def _complete(provider: str, model: str, api_key: str, system: str, prompt
                 model=model, contents=prompt,
                 config=types.GenerateContentConfig(system_instruction=system, max_output_tokens=max_tokens),
             )
-            return (resp.text or "").strip()
+            text = (resp.text or "").strip()
+            um = getattr(resp, "usage_metadata", None)
+            usage = {"input": getattr(um, "prompt_token_count", 0) or 0, "output": getattr(um, "candidates_token_count", 0) or 0}
+            return text, usage
 
         raise AIError(f"Proveedor de IA desconocido: {provider}")
     except (AINotConfigured, AIError):
@@ -92,11 +130,26 @@ async def _complete(provider: str, model: str, api_key: str, system: str, prompt
         raise _map_provider_error(provider, e)
 
 
-async def _ask(system: str, prompt: str, max_tokens: int = 700) -> str:
+async def _log_usage(tenant_id: str | None, feature: str, provider: str, model: str, usage: dict):
+    try:
+        from database import now_iso
+        it, ot = int(usage.get("input", 0)), int(usage.get("output", 0))
+        await get_db().ai_usage.insert_one({
+            "tenant_id": tenant_id, "feature": feature, "provider": provider, "model": model,
+            "input_tokens": it, "output_tokens": ot, "total_tokens": it + ot,
+            "cost_usd": _estimate_cost(model, it, ot), "created_at": now_iso(),
+        })
+    except Exception as e:  # noqa: BLE001
+        log.warning("ai usage log failed: %s", e)
+
+
+async def _ask(system: str, prompt: str, max_tokens: int = 700, tenant_id: str | None = None, feature: str = "general") -> str:
     cfg = await get_ai_config()
     if not cfg:
         raise AINotConfigured(NOT_CONFIGURED_MSG)
-    return await _complete(cfg["provider"], cfg["model"], cfg["api_key"], system, prompt, max_tokens)
+    text, usage = await _complete(cfg["provider"], cfg["model"], cfg["api_key"], system, prompt, max_tokens)
+    await _log_usage(tenant_id, feature, cfg["provider"], cfg["model"], usage)
+    return text
 
 
 async def test_connection(provider: str, model: str, api_key: str) -> str:
@@ -107,8 +160,8 @@ async def test_connection(provider: str, model: str, api_key: str) -> str:
     if not model:
         raise AIError("Falta el nombre del modelo.")
     system = "Eres un asistente que responde en español de México, breve y claro."
-    out = await _complete(provider, model, api_key, system,
-                          "Responde solo con: 'Conexión exitosa con Routiq.'", max_tokens=64)
+    out, _usage = await _complete(provider, model, api_key, system,
+                                  "Responde solo con: 'Conexión exitosa con Routiq.'", max_tokens=64)
     return out or "OK"
 
 
@@ -136,33 +189,33 @@ def _quotation_brief(q: dict, pack: dict | None = None, client: dict | None = No
     return "\n".join(parts)
 
 
-async def summarize_chat(messages: list[dict], language: str = "es") -> str:
+async def summarize_chat(messages: list[dict], language: str = "es", tenant_id: str | None = None) -> str:
     system = (
         "Eres un asistente de ventas para una empresa de turismo en México. "
         "Tu trabajo es leer conversaciones cortas de WhatsApp y resumirlas en máximo 2 frases en español, "
         "capturando: intención del cliente, fechas o pax mencionados, y cualquier objeción o duda."
     )
     conv = "\n".join(f"{'Cliente' if not m.get('me') else 'Ejecutivo'}: {m.get('body','')}" for m in messages)
-    return await _ask(system, f"Resume esta conversación:\n\n{conv}", max_tokens=300)
+    return await _ask(system, f"Resume esta conversación:\n\n{conv}", max_tokens=300, tenant_id=tenant_id, feature="chat_summary")
 
 
-async def suggest_next_step(q: dict, pack: dict | None = None, client: dict | None = None) -> str:
+async def suggest_next_step(q: dict, pack: dict | None = None, client: dict | None = None, tenant_id: str | None = None) -> str:
     system = (
         "Eres coach de ventas para un tour operador en México. Sugiere el siguiente paso concreto y accionable "
         "que el ejecutivo debe hacer, en 1 o 2 frases. Tono cercano, profesional y directo. Español de México."
     )
     brief = _quotation_brief(q, pack, client)
-    return await _ask(system, f"Cotización actual:\n{brief}\n\n¿Cuál es el siguiente paso recomendado?", max_tokens=300)
+    return await _ask(system, f"Cotización actual:\n{brief}\n\n¿Cuál es el siguiente paso recomendado?", max_tokens=300, tenant_id=tenant_id, feature="next_step")
 
 
-async def detect_missing_fields(q: dict, pack: dict | None = None, client: dict | None = None) -> list[str]:
+async def detect_missing_fields(q: dict, pack: dict | None = None, client: dict | None = None, tenant_id: str | None = None) -> list[str]:
     system = (
         "Eres asistente operativo de un tour operador. Devuelve SOLO un JSON array de strings (sin texto extra) "
         "listando los campos críticos que faltan o son débiles en esta cotización y que el ejecutivo debería "
         "aclarar con el cliente antes de cerrar. Máximo 5 ítems. Español, frases cortas."
     )
     brief = _quotation_brief(q, pack, client)
-    raw = await _ask(system, f"Cotización:\n{brief}\n\nDevuelve JSON array de campos faltantes.", max_tokens=300)
+    raw = await _ask(system, f"Cotización:\n{brief}\n\nDevuelve JSON array de campos faltantes.", max_tokens=300, tenant_id=tenant_id, feature="missing_fields")
     try:
         raw = raw.replace("```json", "").replace("```", "").strip()
         result = json.loads(raw)
@@ -173,7 +226,7 @@ async def detect_missing_fields(q: dict, pack: dict | None = None, client: dict 
     return [raw[:200]] if raw else []
 
 
-async def generate_client_message(q: dict, pack: dict | None = None, client: dict | None = None) -> str:
+async def generate_client_message(q: dict, pack: dict | None = None, client: dict | None = None, tenant_id: str | None = None) -> str:
     system = (
         "Eres ejecutivo de ventas amable y profesional de un tour operador en México. "
         "Redacta un mensaje de WhatsApp de unas 80 palabras, en español de México, tono cercano (tutea), "
@@ -181,4 +234,4 @@ async def generate_client_message(q: dict, pack: dict | None = None, client: dic
         "No uses emojis excesivos (máximo 2). Empieza con un saludo personalizado."
     )
     brief = _quotation_brief(q, pack, client)
-    return await _ask(system, f"Cotización:\n{brief}\n\nRedacta el mensaje:", max_tokens=400)
+    return await _ask(system, f"Cotización:\n{brief}\n\nRedacta el mensaje:", max_tokens=400, tenant_id=tenant_id, feature="client_message")
