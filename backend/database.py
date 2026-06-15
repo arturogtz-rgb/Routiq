@@ -49,6 +49,9 @@ async def ensure_indexes():
     await db.tenant_requests.create_index([("status", 1), ("created_at", -1)])
     await db.signup_attempts.create_index("at", expireAfterSeconds=86400)
     await db.signup_attempts.create_index([("ip", 1), ("at", -1)])
+    # WhatsApp (Baileys) inbound/outbound messages
+    await db.whatsapp_messages.create_index([("tenant_id", 1), ("number_id", 1), ("chat_id", 1), ("timestamp", 1)])
+    await db.whatsapp_messages.create_index([("tenant_id", 1), ("number_id", 1), ("message_id", 1)], unique=True)
     # Migration: legacy logo URLs (without /api prefix) → /api/uploads/...
     async for c in db.companies.find({"logo_url": {"$regex": "^/uploads/"}}, {"_id": 0, "id": 1, "logo_url": 1}):
         await db.companies.update_one(

@@ -1,0 +1,35 @@
+{
+  "summary": "Iteración 16 — KPI de conversión del funnel (Master) + Integración WhatsApp (proxy Baileys + webhook). Backend: 10/10 tests pasan en /app/backend/tests/test_iteration16_whatsapp_funnel.py. (1) GET /api/tenant-requests/metrics como super_admin devuelve {month, received, approved, rejected, active, conversion_pct} con tipos correctos y conversion_pct = round(approved/received*100); como company_admin devuelve 403; tras insertar tenant_request y aprobarla, received/approved/active incrementan en +1 y conversion_pct se recalcula. (2) WhatsApp gestión números: lista incluye seed 'Ventas GDL', POST agrega número {status:'disconnected'}, DELETE lo elimina, ambos verificados con GET. (3) Connect sin microservicio: POST /api/whatsapp/numbers/{id}/connect devuelve 503 con detail 'El servicio de WhatsApp no está configurado…' (ESPERADO, BAILEYS_URL=''). (4) Webhook: sin header → 401, con header incorrecto → 401, con BAILEYS_SHARED_SECRET correcto y event 'status' marca número conectado, event 'message' inserta documento, idempotencia por message_id (segundo POST con mismo id NO duplica), session_id sin '_' devuelve {ok:true} sin escribir. (5) Chats/messages: GET /api/whatsapp/chats agrupa por chat_id (phone, contact_name, last_text, unread); GET /api/whatsapp/messages devuelve ordenado y marca inbound como leídos (unread vuelve a 0 en la siguiente consulta). (6) Send sin microservicio: POST /api/whatsapp/send devuelve 502/503 sin tumbar el backend. (7) Aislamiento multi-tenant: super_admin sin tenant_id no puede acceder a /api/whatsapp/numbers (401/403). Frontend: /master/companies muestra funnel-kpi con las 4 tarjetas (Solicitudes/Aprobadas/Empresas activas/Conversión %). /app/whatsapp muestra wa-numbers-bar con seed 'Ventas GDL' desconectado; wa-add-number-btn abre wa-add-modal, guardar agrega tile (wa-number-{id} + wa-number-status-{id} 'Desconectado'); pulsar wa-connect-{id} muestra wa-error con el mensaje 503 y cierra el modal QR (comportamiento esperado). Cleanup ejecutado: número TEST_ui eliminado, sin TEST_ numbers/messages/tenant_requests/companies/users residuales; seed 'Ventas GDL' intacto y reset a 'disconnected'.",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_iteration16_whatsapp_funnel.py",
+    "/app/test_reports/pytest/iter16.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "routes/whatsapp.py:_sid usa rsplit('_',1) sobre session_id; tenant_id y number_id son UUIDs con guiones (no contienen '_'), así que es seguro. Documentar este invariante (ya lo está en el docstring del módulo).",
+    "routes/whatsapp.py:webhook NO valida que tenant_id/number_id existan antes de insertar el mensaje. Un microservicio mal configurado o un session_id apuntando a un tenant/número eliminado generará documentos huérfanos en whatsapp_messages. Sugerido: verificar que la compañía y el número existen antes del upsert (1 find_one extra) o limpiar con un cron.",
+    "routes/whatsapp.py:list_messages siempre marca todos los entrantes como leídos al consultarlos. Si el frontend hace polling cada 6s (como en WhatsAppInbox.jsx) el contador 'unread' nunca acumulará realmente — sólo refleja mensajes llegados en la ventana entre dos polls del MISMO chat. Considera marcar como leído solo cuando el usuario abre explícitamente el chat (endpoint POST /chat/{id}/read) en vez de en GET /messages.",
+    "routes/whatsapp.py:send no captura excepciones del _call cuando Baileys devuelve 5xx: ahora _call devuelve un Response y send convierte >=400 a 502 → OK. Pero connect_number, number_qr, number_status y logout_number devuelven directamente r.json() sin verificar r.status_code, así que si Baileys responde 500 el cliente recibirá lo que sea (posiblemente un JSON de error con HTTP 200 desde FastAPI). Sugerido: chequear r.status_code en estos endpoints.",
+    "routes/whatsapp.py:add_number NO valida formato del campo 'number' (puede ser cualquier string). Considerar usar pydantic con un validador opcional para detectar typos.",
+    "WhatsAppInbox.jsx: polling fijo cada 6s sin pausa cuando la pestaña está oculta — consume API innecesariamente. Considerar `document.visibilityState === 'visible'` antes de hacer fetch."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_iteration16_whatsapp_funnel.py"
+  ],
+  "success_rate": {"backend": "100% (10/10)", "frontend": "100% (funnel-kpi visible con 4 tarjetas, gestión de números OK, connect→wa-error con cierre de modal OK)"},
+  "test_credentials": "owner@routiq.mx / Routiq2026!  ·  admin@aventurate.mx / Demo2026!  ·  BAILEYS_SHARED_SECRET leído de /app/backend/.env",
+  "seed_data_creation": "Todos los datos de prueba (números TEST_, mensajes TEST_wamid_/TEST_iso, tenant_requests TEST_iter16_, companies test-iter16-*, users TEST_iter16_*) fueron eliminados al finalizar. Seed 'Ventas GDL' intacto y reset a status='disconnected'. owner@routiq.mx y admin@aventurate.mx no se tocaron.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Iter16 cubre: GET /api/tenant-requests/metrics (KPI funnel mensual con conversion_pct), gestión de números WhatsApp (CRUD), connect→503 cuando BAILEYS_URL='', webhook con header x-baileys-secret (status+message events, idempotencia por message_id, session_id parser con rsplit('_',1)), listing chats/messages con unread, send→502/503 sin Baileys. data-testid: funnel-kpi (Master), wa-numbers-bar, wa-number-{id}, wa-number-status-{id}, wa-add-number-btn, wa-add-modal, wa-add-label, wa-add-number, wa-add-submit, wa-connect-{id}, wa-error, wa-qr-modal, wa-chat-{chat_id}, wa-messages, wa-message-input, wa-send-btn. Si TURNSTILE_SECRET_KEY está SET en preview, /api/signup requiere captcha real → insertar tenant_requests directamente vía pymongo para probar el flujo de aprobación (como hace este iter16). Limpia siempre tras tus pruebas (números TEST_, whatsapp_messages por tenant_id, tenant_requests/companies/users TEST_iter16_).",
+  "rca of the issue": "N/A — todos los criterios de aceptación de iter16 se cumplen. El microservicio Baileys NO corre en preview (BAILEYS_URL=''), por lo que connect/qr/status/send devuelven 503/502, lo cual es comportamiento ESPERADO y manejado correctamente por el frontend (wa-error visible + modal QR cerrado). El webhook funciona contra BAILEYS_SHARED_SECRET real."
+}

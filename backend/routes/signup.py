@@ -153,6 +153,27 @@ async def pending_count(user: dict = Depends(require_roles("super_admin"))):
     return {"pending": await db.tenant_requests.count_documents({"status": "pending"})}
 
 
+@router.get("/tenant-requests/metrics")
+async def funnel_metrics(user: dict = Depends(require_roles("super_admin"))):
+    """Conversion KPI for the Master panel: received → approved → active (this month)."""
+    db = get_db()
+    month = datetime.now(timezone.utc).strftime("%Y-%m")
+    rx = {"$regex": f"^{month}"}
+    received = await db.tenant_requests.count_documents({"created_at": rx})
+    approved = await db.tenant_requests.count_documents({"status": "approved", "decided_at": rx})
+    rejected = await db.tenant_requests.count_documents({"status": "rejected", "decided_at": rx})
+    active = await db.companies.count_documents({"status": "active", "created_at": rx})
+    conv = round((approved / received) * 100) if received else 0
+    return {
+        "month": month,
+        "received": received,
+        "approved": approved,
+        "rejected": rejected,
+        "active": active,
+        "conversion_pct": conv,
+    }
+
+
 @router.post("/tenant-requests/{request_id}/approve")
 async def approve_request(request_id: str, payload: SignupApprove, user: dict = Depends(require_roles("super_admin"))):
     db = get_db()

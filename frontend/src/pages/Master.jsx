@@ -90,6 +90,7 @@ export function MasterCompanies() {
   // Request history (approved / rejected)
   const [history, setHistory] = useState([]);
   const [historyFilter, setHistoryFilter] = useState('all');
+  const [funnel, setFunnel] = useState(null);
 
   const loadHistory = async (filter = historyFilter) => {
     try {
@@ -111,6 +112,7 @@ export function MasterCompanies() {
     setCompanies(comp.data);
     setRequests(reqs.data || []);
     loadHistory();
+    api.get('/tenant-requests/metrics').then(({ data }) => setFunnel(data)).catch(() => {});
   };
   useEffect(() => { load(); }, []);
 
@@ -189,6 +191,22 @@ export function MasterCompanies() {
         </div>
         <button className="btn-primary" onClick={() => setOpen(true)} data-testid="new-company-btn"><Plus className="w-4 h-4" /> Nueva empresa</button>
       </div>
+
+      {funnel && (
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6" data-testid="funnel-kpi">
+          {[
+            { label: 'Solicitudes (mes)', v: funnel.received, tone: 'bg-brand-50 text-brand-500', tip: 'Recibidas este mes' },
+            { label: 'Aprobadas (mes)', v: funnel.approved, tone: 'bg-mint-100 text-emerald-700', tip: 'Aprobadas este mes' },
+            { label: 'Empresas activas (mes)', v: funnel.active, tone: 'bg-peach-100 text-amber-800', tip: 'Tenants activos creados este mes' },
+            { label: 'Conversión', v: `${funnel.conversion_pct}%`, tone: 'bg-brand-500 text-white', tip: 'Aprobadas ÷ recibidas' },
+          ].map(({ label, v, tone, tip }) => (
+            <div key={label} className="card-surface p-5" data-testid={`funnel-${label}`} title={tip}>
+              <p className="text-xs uppercase tracking-widest text-ink-400 font-bold">{label}</p>
+              <p className={`font-display text-3xl font-bold mt-1 inline-flex px-2 rounded-lg ${tone}`}>{v}</p>
+            </div>
+          ))}
+        </div>
+      )}
 
       {requests.length > 0 && (
         <div className="card-surface overflow-hidden mb-6 border-2 border-peach-100" data-testid="signup-requests-card">
