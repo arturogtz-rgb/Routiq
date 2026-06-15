@@ -345,12 +345,20 @@ async def get_package(package_id: str, user: dict = Depends(require_tenant)):
     return pack
 
 
+def _ensure_season_ids(data: dict) -> dict:
+    for s in (data.get("seasons") or []):
+        if not s.get("id"):
+            s["id"] = new_id()
+    return data
+
+
 @api.post("/packages", status_code=201)
 async def create_package(payload: PackageCreate, user: dict = Depends(require_roles("company_admin"))):
     db = get_db()
     if await db.packages.find_one({"tenant_id": user["tenant_id"], "code": payload.code}):
         raise HTTPException(status_code=400, detail="Código de paquete ya existe")
-    doc = {"id": new_id(), "tenant_id": user["tenant_id"], "created_at": now_iso(), **payload.model_dump()}
+    data = _ensure_season_ids(payload.model_dump())
+    doc = {"id": new_id(), "tenant_id": user["tenant_id"], "created_at": now_iso(), **data}
     await db.packages.insert_one(dict(doc))
     return doc
 
@@ -359,12 +367,31 @@ async def create_package(payload: PackageCreate, user: dict = Depends(require_ro
 async def update_package(package_id: str, payload: PackageUpdate, user: dict = Depends(require_roles("company_admin"))):
     db = get_db()
     updates = {k: v for k, v in payload.model_dump(exclude_unset=True).items() if v is not None}
+    if "seasons" in updates:
+        _ensure_season_ids(updates)
     if updates:
         await db.packages.update_one({"id": package_id, "tenant_id": user["tenant_id"]}, {"$set": updates})
     pack = await db.packages.find_one({"id": package_id, "tenant_id": user["tenant_id"]}, {"_id": 0})
     if not pack:
         raise HTTPException(status_code=404, detail="Paquete no encontrado")
     return pack
+
+
+@api.post("/packages/upload-image")
+async def upload_package_image(file: UploadFile = File(...), user: dict = Depends(require_roles("company_admin"))):
+    if not file.content_type or not file.content_type.startswith("image/"):
+        raise HTTPException(status_code=400, detail="El archivo debe ser una imagen")
+    content = await file.read()
+    if len(content) > 5 * 1024 * 1024:
+        raise HTTPException(status_code=400, detail="Imagen muy grande (máx 5 MB)")
+    ext = (file.filename or "").rsplit(".", 1)[-1].lower()
+    if ext not in ("png", "jpg", "jpeg", "webp", "gif"):
+        ext = "png"
+    pkg_dir = UPLOAD_DIR / "packages"
+    pkg_dir.mkdir(parents=True, exist_ok=True)
+    filename = f"{new_id()}.{ext}"
+    (pkg_dir / filename).write_bytes(content)
+    return {"url": f"/api/uploads/packages/{filename}"}
 
 
 @api.delete("/packages/{package_id}")
@@ -521,6 +548,7 @@ async def create_quotation(payload: QuotationCreate, user: dict = Depends(requir
         "extra_nights_cfg": extra_cfg,
         "nights_total": calc["nights_total"],
         "extra_nights": calc["extra_nights"],
+        "season_applied": calc.get("season_applied"),
         "items": calc["items"],
         "subtotal": calc["subtotal"],
         "commission": calc["commission"],
@@ -611,6 +639,7 @@ async def update_quotation(quotation_id: str, payload: QuotationUpdate, user: di
             "extra_nights_cfg": extra_cfg,
             "nights_total": calc["nights_total"],
             "extra_nights": calc["extra_nights"],
+            "season_applied": calc.get("season_applied"),
             "items": calc["items"], "subtotal": calc["subtotal"],
             "commission": calc["commission"], "commission_rate": calc["commission_rate"],
             "total": calc["total"],
@@ -831,6 +860,8 @@ async def get_public_quotation(token: str):
         "itinerary": (pack or {}).get("itinerary", []),
         "includes": (pack or {}).get("includes", []),
         "excludes": (pack or {}).get("excludes", []),
+        "package_image_url": (pack or {}).get("image_url", ""),
+        "season_applied": q.get("season_applied"),
     }
 
 

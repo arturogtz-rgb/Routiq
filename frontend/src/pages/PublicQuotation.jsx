@@ -158,6 +158,12 @@ export default function PublicQuotation() {
           </h1>
           <p className="text-ink-500 mt-3 text-lg">{q.package_snapshot?.name}</p>
         </div>
+        {data.package_image_url && (
+          <div className="max-w-3xl mx-auto px-4 pb-2">
+            <img src={data.package_image_url.startsWith('http') ? data.package_image_url : `${backend}${data.package_image_url}`}
+              alt={q.package_snapshot?.name} className="w-full h-48 md:h-64 object-cover rounded-2xl shadow-sm" data-testid="public-package-image" />
+          </div>
+        )}
       </section>
 
       <main className="max-w-3xl mx-auto px-4 pb-20 space-y-6">

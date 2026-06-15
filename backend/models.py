@@ -121,8 +121,21 @@ class ItineraryDay(BaseModel):
 class PackageHotel(BaseModel):
     name: str
     category: str = ""
-    prices_by_occupancy: Dict[str, float]  # sencilla, doble, triple, cuadruple
+    prices_by_occupancy: Dict[str, float]  # base/default: sencilla, doble, triple, cuadruple
     minor_price: float = 0.0
+    # Optional per-season overrides: {season_id: {sencilla, doble, triple, cuadruple, minor_price}}
+    season_prices: Dict[str, Dict[str, float]] = {}
+
+
+class SeasonRange(BaseModel):
+    start: str  # ISO YYYY-MM-DD
+    end: str
+
+
+class PackageSeason(BaseModel):
+    id: Optional[str] = None
+    name: str
+    ranges: List[SeasonRange] = []
 
 
 class PackageCreate(BaseModel):
@@ -130,8 +143,10 @@ class PackageCreate(BaseModel):
     name: str
     nights: int
     description: str = ""
+    image_url: str = ""
     itinerary: List[ItineraryDay] = []
     hotels: List[PackageHotel] = []
+    seasons: List[PackageSeason] = []
     includes: List[str] = []
     excludes: List[str] = []
     season_start: Optional[str] = None
@@ -145,8 +160,10 @@ class PackageUpdate(BaseModel):
     name: Optional[str] = None
     nights: Optional[int] = None
     description: Optional[str] = None
+    image_url: Optional[str] = None
     itinerary: Optional[List[ItineraryDay]] = None
     hotels: Optional[List[PackageHotel]] = None
+    seasons: Optional[List[PackageSeason]] = None
     includes: Optional[List[str]] = None
     excludes: Optional[List[str]] = None
     season_start: Optional[str] = None

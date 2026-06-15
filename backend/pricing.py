@@ -38,6 +38,36 @@ def _service_default_qty(unit: str, total_pax: int, pack_nights: int) -> int:
     return 1  # per_group
 
 
+def resolve_hotel_prices(pack: dict, hotel: dict, checkin: str | None):
+    """Return (prices_by_occupancy, minor_price, season_name) effective for the
+    given check-in date. Applies a season override when the date falls inside one
+    of the package's season ranges; otherwise uses the hotel's base prices."""
+    base_prices = hotel.get("prices_by_occupancy", {})
+    base_minor = float(hotel.get("minor_price", 0) or 0)
+    seasons = pack.get("seasons") or []
+    season_id = None
+    season_name = None
+    if checkin and seasons:
+        ci = str(checkin)[:10]
+        for s in seasons:
+            for r in (s.get("ranges") or []):
+                st = str(r.get("start") or "")[:10]
+                en = str(r.get("end") or "")[:10]
+                if st and en and st <= ci <= en:
+                    season_id = s.get("id")
+                    season_name = s.get("name")
+                    break
+            if season_id:
+                break
+    if season_id:
+        sp = (hotel.get("season_prices") or {}).get(season_id)
+        if sp:
+            occ = {k: float(sp.get(k, base_prices.get(k, 0)) or 0) for k in ("sencilla", "doble", "triple", "cuadruple")}
+            minor = float(sp.get("minor_price", base_minor) or 0)
+            return occ, minor, season_name
+    return base_prices, base_minor, season_name
+
+
 def compute_quotation(pack: dict, hotel_name: str, pax: dict, nights: int,
                       client_channel: str, pricing_config: dict,
                       services_catalog: dict | None = None,
@@ -49,6 +79,9 @@ def compute_quotation(pack: dict, hotel_name: str, pax: dict, nights: int,
     if hotel is None:
         raise ValueError(f"Hotel '{hotel_name}' not found in package")
 
+    checkin = dates.get("start") if dates else None
+    eff_prices, eff_minor, season_name = resolve_hotel_prices(pack, hotel, checkin)
+
     rooms: List[dict] = pax.get("rooms") or []
     menores = int(pax.get("menores", 0))
     items: List[dict] = []
@@ -59,7 +92,7 @@ def compute_quotation(pack: dict, hotel_name: str, pax: dict, nights: int,
             ocupacion = room["ocupacion"]
             count = int(room.get("count", 1))
             occ_count = OCCUPANCY_COUNT[ocupacion]
-            price_per_pax = float(hotel["prices_by_occupancy"].get(ocupacion, 0))
+            price_per_pax = float(eff_prices.get(ocupacion, 0))
             pax_in_rooms = occ_count * count
             items.append({
                 "label": f"{count} hab {ocupacion} × {occ_count} pax — {hotel['name']}",
@@ -70,7 +103,7 @@ def compute_quotation(pack: dict, hotel_name: str, pax: dict, nights: int,
     else:
         ocupacion = pax.get("ocupacion", "doble")
         adultos = int(pax.get("adultos", 2))
-        price_adult = float(hotel["prices_by_occupancy"].get(ocupacion, 0))
+        price_adult = float(eff_prices.get(ocupacion, 0))
         if adultos > 0:
             items.append({
                 "label": f"{pack['name']} - {hotel['name']} ({ocupacion}) - Adulto",
@@ -79,7 +112,7 @@ def compute_quotation(pack: dict, hotel_name: str, pax: dict, nights: int,
             })
 
     if menores > 0:
-        price_minor = float(hotel.get("minor_price") or 0)
+        price_minor = float(eff_minor or 0)
         items.append({
             "label": f"{hotel['name']} - Menor",
             "unit_price": price_minor, "qty": menores, "subtotal": price_minor * menores,
@@ -138,4 +171,5 @@ def compute_quotation(pack: dict, hotel_name: str, pax: dict, nights: int,
         "currency": pricing_config.get("currency", "MXN"),
         "nights_total": nights_total,
         "extra_nights": extra_nights,
+        "season_applied": season_name,
     }

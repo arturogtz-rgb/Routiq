@@ -1,15 +1,28 @@
 import { useEffect, useState } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import AppShell from '@/components/AppShell';
-import api from '@/lib/api';
-import { Package as PackageIcon, MapPin, Calendar, Plus } from 'lucide-react';
+import api, { formatApiError } from '@/lib/api';
+import { useAuth } from '@/context/AuthContext';
+import { Package as PackageIcon, MapPin, Calendar, Plus, Pencil, Trash2, Sun } from 'lucide-react';
 
 export default function Packages() {
+  const { user } = useAuth();
+  const navigate = useNavigate();
+  const isAdmin = user?.role === 'company_admin';
   const [packages, setPackages] = useState([]);
-  useEffect(() => { (async () => {
+  const [error, setError] = useState('');
+
+  const load = async () => {
     try { const { data } = await api.get('/packages'); setPackages(data); }
     catch (_e) { /* noop */ }
-  })(); }, []);
+  };
+  useEffect(() => { load(); }, []);
+
+  const remove = async (p) => {
+    if (!window.confirm(`¿Eliminar el paquete "${p.name}"?`)) return;
+    try { await api.delete(`/packages/${p.id}`); await load(); }
+    catch (e) { setError(formatApiError(e)); }
+  };
 
   return (
     <AppShell>
@@ -18,35 +31,47 @@ export default function Packages() {
           <h1 className="font-display text-3xl md:text-4xl font-semibold text-ink-900 tracking-tight">Catálogo de paquetes</h1>
           <p className="text-ink-500 mt-1">Tus paquetes armados listos para cotizar.</p>
         </div>
-        <button disabled className="btn-primary opacity-60 cursor-not-allowed" data-testid="new-package-btn" title="Disponible próximamente">
-          <Plus className="w-4 h-4" /> Nuevo paquete
-        </button>
+        {isAdmin && (
+          <button className="btn-primary" onClick={() => navigate('/app/packages/new')} data-testid="new-package-btn">
+            <Plus className="w-4 h-4" /> Nuevo paquete
+          </button>
+        )}
       </div>
+
+      {error && <div className="rounded-xl border border-red-200 bg-red-50 text-red-700 px-4 py-3 text-sm mb-4">{error}</div>}
 
       <div className="grid md:grid-cols-2 xl:grid-cols-3 gap-5">
         {packages.map((p) => (
           <div key={p.id} className="card-surface p-6 flex flex-col" data-testid={`package-card-${p.code}`}>
             <div className="flex items-start justify-between mb-3">
               <span className="pill bg-brand-50 text-brand-500 font-mono">{p.code}</span>
-              <span className="pill bg-mint-100 text-emerald-700">{p.nights} noches</span>
+              <div className="flex items-center gap-2">
+                {(p.seasons?.length > 0) && <span className="pill bg-peach-100 text-amber-700 inline-flex items-center gap-1"><Sun className="w-3 h-3" /> {p.seasons.length} temp.</span>}
+                <span className="pill bg-mint-100 text-emerald-700">{p.nights} noches</span>
+              </div>
             </div>
             <h3 className="font-display font-semibold text-lg text-ink-900 leading-tight">{p.name}</h3>
             <p className="text-sm text-ink-500 mt-2 line-clamp-3 flex-1">{p.description}</p>
             <div className="mt-4 space-y-1.5 text-sm text-ink-700">
               <div className="flex items-center gap-2"><MapPin className="w-4 h-4 text-brand-500" /> {p.hotels?.length || 0} hoteles disponibles</div>
-              <div className="flex items-center gap-2"><Calendar className="w-4 h-4 text-brand-500" /> {p.season_start} → {p.season_end}</div>
             </div>
             <div className="mt-5 pt-4 border-t border-ink-100 flex items-center justify-between">
               <div>
                 <p className="text-xs text-ink-400">Desde</p>
                 <p className="font-display text-xl font-bold text-brand-500">
-                  ${Math.min(...(p.hotels || []).flatMap((h) => Object.values(h.prices_by_occupancy || {}))).toLocaleString('es-MX')}
+                  ${Math.min(...((p.hotels || []).flatMap((h) => Object.values(h.prices_by_occupancy || {})).filter((n) => n > 0).concat([Infinity]))).toLocaleString('es-MX')}
                   <span className="text-xs text-ink-400"> MXN/pax</span>
                 </p>
               </div>
-              <Link to={`/app/quotations/new?package=${p.id}`} className="btn-secondary text-sm" data-testid={`quote-from-${p.code}`}>
-                Cotizar
-              </Link>
+              <div className="flex items-center gap-1">
+                {isAdmin && (
+                  <>
+                    <button className="p-2 rounded-lg text-ink-400 hover:bg-brand-50 hover:text-brand-500" onClick={() => navigate(`/app/packages/${p.id}/edit`)} data-testid={`edit-package-${p.code}`}><Pencil className="w-4 h-4" /></button>
+                    <button className="p-2 rounded-lg text-ink-400 hover:bg-red-50 hover:text-red-600" onClick={() => remove(p)} data-testid={`delete-package-${p.code}`}><Trash2 className="w-4 h-4" /></button>
+                  </>
+                )}
+                <Link to={`/app/quotations/new?package=${p.id}`} className="btn-secondary text-sm" data-testid={`quote-from-${p.code}`}>Cotizar</Link>
+              </div>
             </div>
           </div>
         ))}

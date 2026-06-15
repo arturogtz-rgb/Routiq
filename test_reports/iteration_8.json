@@ -1,0 +1,45 @@
+{
+  "summary": "v1.5 testing — Backend 9/9 PASS (package CRUD with seasons + per-hotel season_prices, RBAC company_admin vs executive 403, image upload returns fetchable URL, season engine: Dec 20 inside Alta range → unit_price 13,350 → subtotal $26,700 with season_applied='Alta'; Aug 10 outside → 8,900 → $17,800 with season_applied=null). Frontend Packages list shows 'Nuevo paquete' + edit/delete for company_admin and HIDES them for executive (verified visually). Frontend Package Editor CRUD WORKS end-to-end: created TEST-UI-972830 with season 'Alta' (2026-12-15..2027-01-10), 1 hotel with base+season prices, includes, itinerary, allowed start days; reopening /app/packages/{id}/edit populates ALL fields (name, season name, range start, base prices); base-price PATCH from 8900→9100 persisted across reload. QuotationDetail correctly renders the season-priced quotation ($26,700, $13,350 × 2). FOUND ONE FE BUG: QuotationBuilder Review-step preview total ignores seasons (shows base $17,800 instead of $26,700 for a Dec 20 check-in). Backend then computes correctly on save, so the SAVED quotation is right but the Review screen misleads the user just before they click 'Crear cotización'.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [
+      {
+        "flow": "QuotationBuilder Review preview (season pricing)",
+        "issue": "Review subtotal/total preview ignores `hotel.season_prices` and `form.dates.start`. For Guadalajara, doble, check-in 2026-12-20 (inside Alta) the Review shows $17,800 MXN (base 8900×2) instead of $26,700 MXN (season 13,350×2). The backend pricing engine returns the correct $26,700 on POST /api/quotations and QuotationDetail renders it correctly, so only the in-builder PREVIEW is wrong. Fix: in QuotationBuilder.jsx lines 102-111, before reading `hotel.prices_by_occupancy[ocupacion]`, resolve the season by scanning `package.seasons` for a range that contains `form.dates.start` and, if found and `hotel.season_prices[sid][ocupacion]` exists, use that instead (same logic as backend `pricing.resolve_hotel_prices`).",
+        "affected_selectors": ["QuotationBuilder.jsx subtotal", "review total cell"]
+      }
+    ],
+    "design_issues": [
+      {
+        "screen": "QuotationDetail",
+        "issues": ["No visible 'Temporada: Alta' chip even though backend returns season_applied='Alta'. Worth surfacing so the user understands why the unit price is higher."]
+      }
+    ]
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_iteration8_packages_seasons.py",
+    "/app/test_reports/pytest/iter8_results.xml"
+  ],
+  "action_items": [
+    "Fix QuotationBuilder.jsx Review preview to apply season pricing (mirror backend pricing.resolve_hotel_prices): if `form.dates.start` falls inside any season range of the chosen package AND the hotel has a `season_prices[sid][ocupacion]` override, use that price instead of `prices_by_occupancy[ocupacion]`. Currently only `prices_by_occupancy` is used → preview is misleading.",
+    "(Nice-to-have) Surface `season_applied` on QuotationDetail and PublicQuotation (small chip next to dates) so users can see why the price changed."
+  ],
+  "critical_code_review_comments": [
+    "QuotationBuilder.jsx line 106 — local subtotal calc duplicates backend pricing logic. Recommend extracting a small `resolveHotelPrices(pkg, hotel, ocupacion, startDate)` util in `src/lib/pricing.js` (matching `backend/pricing.py`) and re-using it for the Review preview AND the per-hotel cards (line 269). This avoids the season bug and prevents future drift between FE and BE pricing.",
+    "PackageEditor.jsx is 252 lines and a single component — fine for now, but as soon as you add per-room overrides, consider splitting into PackageEditor/SeasonsPanel/HotelsPanel/ItineraryPanel.",
+    "Packages.jsx 'Desde' price (line 62) iterates `Object.values(prices_by_occupancy)` but does NOT consider `season_prices`. Same season-blind issue — usually the lower base price is shown so it's safe, but worth noting for parity.",
+    "PackageEditor seasons UI: when a season name is empty the per-season price grid is hidden (line 209 `pkg.seasons.filter((s) => s.name)`). Good UX but if the admin clears the name after typing prices the season_prices map for that sid stays in `hotel.season_prices` (orphaned). Not a bug, but consider cleaning orphaned keys on season removal (already done in removeSeason) or on rename to empty.",
+    "No test-id on QuotationBuilder Review total (`review-total`) — would simplify future regression coverage of the very bug above."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_iteration8_packages_seasons.py (new — 9 tests, all passing)"
+  ],
+  "success_rate": {"backend": "100% (9/9)", "frontend": "85% — editor CRUD + RBAC + persistence verified; season pricing E2E reveals 1 FE preview bug"},
+  "test_credentials": "admin@aventurate.mx / Demo2026! (company_admin); ejecutivo@aventurate.mx / Demo2026! (executive). Matches /app/memory/test_credentials.md.",
+  "seed_data_creation": "Backend pytest created and DELETED its own TEST-PKG-S1 package (cleaned). UI test created TEST-UI-972830 (still in DB) plus 3 quotations: 9ee1eba1-76ab-4e6f-98a6-9b5e646533b3 (TEST_RCA2_inside, $26,700), 2 outside-season ones. No seed mutations.",
+  "retest_needed": true,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Run: REACT_APP_BACKEND_URL=https://saas-quotes-1.preview.emergentagent.com pytest /app/backend/tests/test_iteration8_packages_seasons.py -v (expect 9/9). Quotation create payload schema is {client_id, package_id, hotel_name, pax:{rooms:[{ocupacion,count}],menores}, dates:{start,end}, services:[], notes}. After the main agent fixes the QuotationBuilder Review subtotal, re-run the season E2E: pick Guadalajara/Hotel Riu Plaza/doble/2026-12-20 → Review total MUST be $26,700; switch to 2026-08-10 → $17,800. The TEST-UI-972830 package can be deleted by admin if cleanup wanted.",
+  "rca_of_the_issue": "FE Review preview bug — root cause: QuotationBuilder.jsx subtotal calc reads `hotel.prices_by_occupancy[ocupacion]` directly (line 106), never looking at `package.seasons[*].ranges` against `form.dates.start` and never looking at `hotel.season_prices[sid][ocupacion]`. The backend (`backend/pricing.py::resolve_hotel_prices`) implements season resolution but the FE preview duplicates the pricing math without that step. Reproduction: 1) login as admin@aventurate.mx 2) /app/quotations/new 3) pick any client → pick package 'Guadalajara Clásica + Tequila 4 días' (GDL-TEQ-3N) → pick Hotel Riu Plaza Guadalajara, doble 4) set check-in 2026-12-20 → Review shows $17,800 (WRONG; should be $26,700). 5) POST /api/quotations with the same body returns subtotal=26700, season_applied='Alta' (verified). Mitigation: port `resolve_hotel_prices` to FE (e.g. src/lib/pricing.js) and use it from both the Review preview and the per-hotel price cards."
+}
