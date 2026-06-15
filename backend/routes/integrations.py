@@ -3,8 +3,9 @@ from fastapi import APIRouter, Depends, HTTPException
 
 from database import get_db
 from auth import require_roles
-from models import CompanyIntegrationsUpdate
+from models import CompanyIntegrationsUpdate, SMTPTestInput
 from deps import _integrations_view
+import notifications
 import currency
 
 router = APIRouter()
@@ -82,6 +83,30 @@ async def update_my_integrations(payload: CompanyIntegrationsUpdate, user: dict 
         await db.companies.update_one({"id": user["tenant_id"]}, {"$set": updates})
     company = await db.companies.find_one({"id": user["tenant_id"]}, {"_id": 0})
     return _integrations_view(company)
+
+@router.post("/companies/me/test-smtp")
+async def test_smtp(payload: SMTPTestInput, user: dict = Depends(require_roles("company_admin"))):
+    db = get_db()
+    company = await db.companies.find_one({"id": user["tenant_id"]}, {"_id": 0})
+    if not company:
+        raise HTTPException(status_code=404, detail="Empresa no encontrada")
+    password = payload.smtp_password
+    if not password or password.startswith("••"):
+        password = ((company.get("smtp") or {}).get("password")) or ""
+    if not password:
+        raise HTTPException(status_code=400, detail="Falta la contraseña SMTP. Ingrésala para enviar la prueba.")
+    to_email = payload.to_email or payload.smtp_from_email or company.get("contact_email")
+    if not to_email:
+        raise HTTPException(status_code=400, detail="No hay correo destino para la prueba.")
+    ok, err = await notifications.send_test_smtp(
+        payload.smtp_host, payload.smtp_port, payload.smtp_username, password,
+        payload.smtp_use_tls, payload.smtp_from_email, payload.smtp_from_name, to_email,
+    )
+    if not ok:
+        raise HTTPException(status_code=400, detail=f"No se pudo enviar: {err or 'error desconocido'}")
+    return {"ok": True, "to": to_email}
+
+
 
 
 @router.get("/exchange-rate")

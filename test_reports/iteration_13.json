@@ -1,0 +1,28 @@
+{
+  "summary": "Iteration 13: Tested both P0 features end-to-end. (P0#1) Master plan modal with preset application (starter/pro/enterprise) and PATCH /api/companies/{id}/plan; (P0#1) executive limit enforcement via POST /api/users/invite-executive (403 when exceeded, 201 when within capacity); (P0#2) Per-company SMTP UI on Settings + POST /api/companies/me/test-smtp with password and host validation; PATCH /api/companies/me/integrations persistence of email_provider/smtp_*. All 14 backend pytest tests pass. All 3 frontend UI flows pass with the expected data-testid coverage. Aventúrate restored to PRO (exec_limit=15) and email_provider back to 'resend' as required.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_iteration13_plans_smtp.py",
+    "/app/test_reports/pytest/iter13.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "routes/integrations.py: PATCH /companies/me/integrations does not allow clearing smtp_port back to default after setting (truthy check skips 0); minor and edge-case only.",
+    "PATCH /companies/me/integrations accepts email_provider via Pydantic Literal but only persists when value is truthy; switching from 'smtp' back to '' won't reset, however UI only exposes 'resend'/'smtp' so not a real risk.",
+    "test-smtp endpoint will fall back to stored password when an empty password is sent — make sure the UI never sends the masked bullet placeholder as the password (it correctly does not).",
+    "server.py PLAN_DEFAULTS hard-codes per-plan values; consider extracting to a config doc for future plan tiers."
+  ],
+  "updated_files": ["/app/backend/tests/test_iteration13_plans_smtp.py"],
+  "success_rate": {"backend": "100% (14/14)", "frontend": "100% (3/3 flows)"},
+  "test_credentials": "owner@routiq.mx/Routiq2026!, admin@aventurate.mx/Demo2026!, ejecutivo@aventurate.mx/Demo2026! (read from /app/memory/test_credentials.md)",
+  "seed_data_creation": "Created one test executive 'TEST_cap_ok@aventurate.mx' and suspended it; restored Aventúrate plan to PRO (exec_limit=15) and email_provider to 'resend' to keep demos working.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Iteration 13 covers P0 plans + SMTP. Backend tests in /app/backend/tests/test_iteration13_plans_smtp.py are idempotent (cleanup suspends invited test exec, restores PRO plan and resend provider on teardown class TestZRestore). When asserting test-smtp 400 errors, both 'Falta la contraseña SMTP' and 'No se pudo enviar' are valid because the seed company may have a stored SMTP password — the test accepts either. The frontend Settings page hides smtp-section unless email-provider-select='smtp', so toggle the select first via page.select_option.",
+  "rca of the issue": "N/A — no bugs found."
+}

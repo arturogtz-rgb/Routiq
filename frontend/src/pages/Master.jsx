@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import AppShell from '@/components/AppShell';
 import api, { formatApiError } from '@/lib/api';
-import { Building2, Plus, Power, PowerOff, Users as UsersIcon, FileText, TrendingUp, SlidersHorizontal, Bot, CreditCard, Landmark, BadgeCheck, ImageIcon } from 'lucide-react';
+import { Building2, Plus, Power, PowerOff, Users as UsersIcon, FileText, TrendingUp, SlidersHorizontal, Bot, CreditCard, Landmark, BadgeCheck, ImageIcon, Crown, X } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
 
 export default function MasterAdmin() {
@@ -74,6 +74,10 @@ export function MasterCompanies() {
     admin_name: '', admin_email: '', admin_password: '',
   });
   const [error, setError] = useState('');
+  const [planTarget, setPlanTarget] = useState(null);  // company being edited
+  const [planForm, setPlanForm] = useState(null);
+  const [planSaving, setPlanSaving] = useState(false);
+  const [planError, setPlanError] = useState('');
 
   const load = async () => { const { data } = await api.get('/companies'); setCompanies(data); };
   useEffect(() => { load(); }, []);
@@ -94,6 +98,34 @@ export function MasterCompanies() {
     } catch (e) { setError(formatApiError(e)); }
   };
 
+  const openPlan = (c) => {
+    setPlanError('');
+    setPlanTarget(c);
+    setPlanForm({
+      plan: c.plan || 'pro',
+      exec_limit: c.exec_limit ?? 0,
+      ai_enabled: c.ai_enabled !== false,
+      white_label: !!c.white_label,
+      stripe_allowed: c.stripe_allowed !== false,
+      transfer_allowed: c.transfer_allowed !== false,
+    });
+  };
+
+  const applyPreset = (plan) => {
+    const presets = PLAN_PRESETS[plan] || {};
+    setPlanForm((f) => ({ ...f, plan, ...presets }));
+  };
+
+  const savePlan = async () => {
+    setPlanSaving(true); setPlanError('');
+    try {
+      await api.patch(`/companies/${planTarget.id}/plan`, planForm);
+      setPlanTarget(null); setPlanForm(null);
+      load();
+    } catch (e) { setPlanError(formatApiError(e)); }
+    finally { setPlanSaving(false); }
+  };
+
   return (
     <AppShell>
       <div className="flex items-end justify-between gap-4 mb-8">
@@ -110,12 +142,20 @@ export function MasterCompanies() {
             <div className="flex items-center gap-4">
               <div className="w-11 h-11 rounded-xl bg-brand-50 text-brand-500 flex items-center justify-center"><Building2 className="w-5 h-5" /></div>
               <div>
-                <p className="font-semibold text-ink-900">{c.name}</p>
+                <p className="font-semibold text-ink-900 flex items-center gap-2">
+                  {c.name}
+                  <span className={`pill text-xs ${PLAN_TONE[c.plan] || 'bg-ink-100 text-ink-700'}`} data-testid={`company-plan-badge-${c.slug}`}>
+                    <Crown className="w-3 h-3" /> {(c.plan || 'pro').toUpperCase()}
+                  </span>
+                </p>
                 <p className="text-xs text-ink-500">{c.slug} · {c.contact_email}</p>
               </div>
             </div>
             <div className="flex items-center gap-3">
               <span className={`pill ${c.status === 'active' ? 'bg-mint-100 text-emerald-700' : 'bg-red-100 text-red-700'}`}>{c.status}</span>
+              <button onClick={() => openPlan(c)} className="btn-ghost text-xs" data-testid={`manage-plan-${c.slug}`}>
+                <SlidersHorizontal className="w-4 h-4" /> Plan
+              </button>
               <button onClick={() => toggle(c)} className="btn-ghost text-xs" data-testid={`toggle-company-${c.slug}`}>
                 {c.status === 'active' ? <><PowerOff className="w-4 h-4" /> Suspender</> : <><Power className="w-4 h-4" /> Reactivar</>}
               </button>
@@ -147,6 +187,74 @@ export function MasterCompanies() {
           </div>
         </div>
       )}
+
+      {planTarget && planForm && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-ink-900/50" onClick={() => setPlanTarget(null)}>
+          <div className="bg-white rounded-2xl p-6 w-full max-w-lg" onClick={(e) => e.stopPropagation()} data-testid="plan-modal">
+            <div className="flex items-start justify-between mb-1">
+              <h3 className="font-display text-xl font-semibold text-ink-900 flex items-center gap-2"><Crown className="w-5 h-5 text-brand-500" /> Plan de {planTarget.name}</h3>
+              <button className="text-ink-400 hover:text-ink-700" onClick={() => setPlanTarget(null)} data-testid="plan-close"><X className="w-5 h-5" /></button>
+            </div>
+            <p className="text-sm text-ink-500 mb-4">Elige un plan (aplica valores recomendados) y ajusta límites a la medida.</p>
+            {planError && <div className="rounded-xl border border-red-200 bg-red-50 text-red-700 px-4 py-3 text-sm mb-3">{planError}</div>}
+
+            <div className="grid grid-cols-3 gap-2 mb-5">
+              {['starter', 'pro', 'enterprise'].map((p) => (
+                <button key={p} onClick={() => applyPreset(p)} data-testid={`plan-option-${p}`}
+                  className={`rounded-xl border-2 px-3 py-3 text-center transition-colors ${planForm.plan === p ? 'border-brand-500 bg-brand-50' : 'border-ink-100 hover:border-ink-200'}`}>
+                  <p className="font-display font-semibold text-ink-900 capitalize text-sm">{p}</p>
+                  <p className="text-[11px] text-ink-500 mt-0.5">{PLAN_LABELS[p]}</p>
+                </button>
+              ))}
+            </div>
+
+            <div className="space-y-4">
+              <div>
+                <label className="label-text">Límite de ejecutivos (0 = ilimitado)</label>
+                <input type="number" min="0" className="input-field" value={planForm.exec_limit}
+                  onChange={(e) => setPlanForm((f) => ({ ...f, exec_limit: Math.max(0, parseInt(e.target.value || '0', 10)) }))} data-testid="plan-exec-limit" />
+              </div>
+              <div className="grid sm:grid-cols-2 gap-3">
+                {[
+                  { k: 'ai_enabled', label: 'IA operativa (Claude)', icon: Bot },
+                  { k: 'stripe_allowed', label: 'Cobros con Stripe', icon: CreditCard },
+                  { k: 'transfer_allowed', label: 'Pago por transferencia', icon: Landmark },
+                  { k: 'white_label', label: 'Marca blanca (sin Routiq)', icon: BadgeCheck },
+                ].map(({ k, label, icon: Icon }) => (
+                  <label key={k} className={`flex items-center gap-3 rounded-xl border px-3 py-3 cursor-pointer ${planForm[k] ? 'border-brand-200 bg-brand-50/50' : 'border-ink-100'}`} data-testid={`plan-toggle-${k}`}>
+                    <input type="checkbox" checked={!!planForm[k]} onChange={(e) => setPlanForm((f) => ({ ...f, [k]: e.target.checked }))} />
+                    <Icon className="w-4 h-4 text-brand-500" />
+                    <span className="text-sm text-ink-700">{label}</span>
+                  </label>
+                ))}
+              </div>
+            </div>
+
+            <div className="flex justify-end gap-2 mt-6">
+              <button className="btn-ghost" onClick={() => setPlanTarget(null)} data-testid="plan-cancel">Cancelar</button>
+              <button className="btn-primary" onClick={savePlan} disabled={planSaving} data-testid="plan-save">{planSaving ? 'Guardando…' : 'Guardar plan'}</button>
+            </div>
+          </div>
+        </div>
+      )}
     </AppShell>
   );
 }
+
+const PLAN_PRESETS = {
+  starter: { exec_limit: 3, ai_enabled: false, white_label: false, stripe_allowed: false, transfer_allowed: true },
+  pro: { exec_limit: 15, ai_enabled: true, white_label: false, stripe_allowed: true, transfer_allowed: true },
+  enterprise: { exec_limit: 0, ai_enabled: true, white_label: true, stripe_allowed: true, transfer_allowed: true },
+};
+
+const PLAN_LABELS = {
+  starter: '3 ejec · transferencia',
+  pro: '15 ejec · IA + Stripe',
+  enterprise: 'Ilimitado · marca blanca',
+};
+
+const PLAN_TONE = {
+  starter: 'bg-ink-100 text-ink-700',
+  pro: 'bg-brand-50 text-brand-500',
+  enterprise: 'bg-peach-100 text-amber-800',
+};

@@ -8,12 +8,24 @@ export default function Team() {
   const { user } = useAuth();
   const isAdmin = user?.role === 'company_admin';
   const [users, setUsers] = useState([]);
+  const [company, setCompany] = useState(null);
   const [open, setOpen] = useState(false);
   const [form, setForm] = useState({ name: '', email: '', password: '' });
   const [error, setError] = useState('');
 
-  const load = async () => { const { data } = await api.get('/users'); setUsers(data); };
+  const load = async () => {
+    const [usersRes, companyRes] = await Promise.all([
+      api.get('/users'),
+      api.get('/companies/me').catch(() => ({ data: null })),
+    ]);
+    setUsers(usersRes.data);
+    if (companyRes.data) setCompany(companyRes.data);
+  };
   useEffect(() => { load(); }, []);
+
+  const execCount = users.filter((u) => u.role === 'executive' && u.status !== 'suspended').length;
+  const execLimit = company?.exec_limit ?? 0;
+  const limitReached = execLimit > 0 && execCount >= execLimit;
 
   const invite = async () => {
     setError('');
@@ -38,11 +50,27 @@ export default function Team() {
           <p className="text-ink-500 mt-1">Gestiona ejecutivos y accesos.</p>
         </div>
         {isAdmin && (
-          <button className="btn-primary" onClick={() => setOpen(true)} data-testid="invite-exec-btn">
+          <button className="btn-primary" onClick={() => setOpen(true)} disabled={limitReached} data-testid="invite-exec-btn">
             <UserPlus className="w-4 h-4" /> Invitar ejecutivo
           </button>
         )}
       </div>
+
+      {isAdmin && (
+        <div className="card-surface px-6 py-4 mb-4 flex items-center justify-between gap-4" data-testid="exec-usage-banner">
+          <div>
+            <p className="text-xs uppercase tracking-widest font-bold text-ink-400">Ejecutivos activos · Plan {(company?.plan || 'pro').toUpperCase()}</p>
+            <p className="font-display text-2xl font-bold text-ink-900 mt-0.5" data-testid="exec-usage-count">
+              {execCount}{execLimit > 0 ? ` de ${execLimit}` : ' · ilimitado'}
+            </p>
+          </div>
+          {limitReached && (
+            <div className="rounded-xl bg-peach-100 text-amber-800 px-4 py-2 text-sm max-w-md" data-testid="exec-limit-warning">
+              Alcanzaste el límite de tu plan. Suspende un ejecutivo o solicita una actualización de plan al administrador de Routiq.
+            </div>
+          )}
+        </div>
+      )}
 
       <div className="card-surface overflow-hidden">
         {users.map((u) => (

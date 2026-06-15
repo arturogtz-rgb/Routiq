@@ -1,7 +1,7 @@
 import { useEffect, useState, useRef } from 'react';
 import AppShell from '@/components/AppShell';
 import api, { formatApiError } from '@/lib/api';
-import { Save, Calculator, Percent, Upload, Image as ImageIcon, X, CreditCard, Mail, Coins, Landmark } from 'lucide-react';
+import { Save, Calculator, Percent, Upload, Image as ImageIcon, X, CreditCard, Mail, Coins, Landmark, Server, Send } from 'lucide-react';
 
 export default function Settings() {
   const [company, setCompany] = useState(null);
@@ -10,6 +10,8 @@ export default function Settings() {
   const [error, setError] = useState('');
   const [ok, setOk] = useState('');
   const [uploading, setUploading] = useState(false);
+  const [smtpTesting, setSmtpTesting] = useState(false);
+  const [smtpTestEmail, setSmtpTestEmail] = useState('');
   const fileInputRef = useRef(null);
   const backend = process.env.REACT_APP_BACKEND_URL || '';
 
@@ -17,7 +19,7 @@ export default function Settings() {
     const [{ data }, ig] = await Promise.all([api.get('/companies/me'), api.get('/companies/me/integrations')]);
     setCompany(data);
     setPricing(data.pricing_config);
-    setInteg({ ...ig.data, stripe_secret_key: '', resend_api_key: '' });
+    setInteg({ ...ig.data, stripe_secret_key: '', resend_api_key: '', smtp_password: '' });
   };
 
   useEffect(() => { reload(); }, []);
@@ -38,11 +40,31 @@ export default function Settings() {
       // don't send masked placeholders or empty secrets
       if (!payload.stripe_secret_key) delete payload.stripe_secret_key;
       if (!payload.resend_api_key) delete payload.resend_api_key;
+      if (!payload.smtp_password) delete payload.smtp_password;
       const { data } = await api.patch('/companies/me/integrations', payload);
-      setInteg({ ...data, stripe_secret_key: '', resend_api_key: '' });
+      setInteg({ ...data, stripe_secret_key: '', resend_api_key: '', smtp_password: '' });
       setOk('Integraciones guardadas');
       setTimeout(() => setOk(''), 2500);
     } catch (e) { setError(formatApiError(e)); }
+  };
+
+  const testSmtp = async () => {
+    setError(''); setOk(''); setSmtpTesting(true);
+    try {
+      const { data } = await api.post('/companies/me/test-smtp', {
+        smtp_host: integ.smtp_host,
+        smtp_port: Number(integ.smtp_port) || 587,
+        smtp_username: integ.smtp_username,
+        smtp_password: integ.smtp_password || '',
+        smtp_use_tls: integ.smtp_use_tls !== false,
+        smtp_from_email: integ.smtp_from_email,
+        smtp_from_name: integ.smtp_from_name || '',
+        to_email: smtpTestEmail || undefined,
+      });
+      setOk(`Correo de prueba enviado a ${data.to}. Revisa la bandeja de entrada.`);
+      setTimeout(() => setOk(''), 5000);
+    } catch (e) { setError(formatApiError(e)); }
+    finally { setSmtpTesting(false); }
   };
 
   const uploadLogo = async (file) => {
@@ -220,24 +242,71 @@ export default function Settings() {
               </div>
             </div>
 
-            {/* Email / Resend */}
+            {/* Email (Resend o SMTP propio) */}
             <div className="space-y-4">
-              <h3 className="font-semibold text-ink-900 flex items-center gap-2"><Mail className="w-4 h-4 text-brand-500" /> Correo (Resend)</h3>
+              <h3 className="font-semibold text-ink-900 flex items-center gap-2"><Mail className="w-4 h-4 text-brand-500" /> Correo saliente</h3>
               <div>
-                <label className="label-text">API key de Resend</label>
-                <input type="password" className="input-field" placeholder={integ.resend_api_key_set ? `Guardada ${integ.resend_api_key_masked}` : 're_...'}
-                  value={integ.resend_api_key || ''} onChange={(e) => setInteg((s) => ({ ...s, resend_api_key: e.target.value }))} data-testid="resend-key-input" />
+                <label className="label-text">Proveedor de envío</label>
+                <select className="input-field" value={integ.email_provider || 'resend'}
+                  onChange={(e) => setInteg((s) => ({ ...s, email_provider: e.target.value }))} data-testid="email-provider-select">
+                  <option value="resend">Resend (API)</option>
+                  <option value="smtp">SMTP propio (correo corporativo)</option>
+                </select>
+                <p className="text-xs text-ink-400 mt-1">Las cotizaciones y cobros se enviarán con el proveedor seleccionado.</p>
               </div>
-              <div>
-                <label className="label-text">Correo remitente (verificado en Resend)</label>
-                <input className="input-field" value={integ.resend_from_email || ''} placeholder="no-reply@tudominio.com"
-                  onChange={(e) => setInteg((s) => ({ ...s, resend_from_email: e.target.value }))} data-testid="resend-from-input" />
-              </div>
-              <div>
-                <label className="label-text">Nombre remitente</label>
-                <input className="input-field" value={integ.resend_from_name || ''} placeholder={company?.name || 'Tu empresa'}
-                  onChange={(e) => setInteg((s) => ({ ...s, resend_from_name: e.target.value }))} data-testid="resend-name-input" />
-              </div>
+
+              {(integ.email_provider || 'resend') === 'resend' ? (
+                <>
+                  <div>
+                    <label className="label-text">API key de Resend</label>
+                    <input type="password" className="input-field" placeholder={integ.resend_api_key_set ? `Guardada ${integ.resend_api_key_masked}` : 're_...'}
+                      value={integ.resend_api_key || ''} onChange={(e) => setInteg((s) => ({ ...s, resend_api_key: e.target.value }))} data-testid="resend-key-input" />
+                  </div>
+                  <div>
+                    <label className="label-text">Correo remitente (verificado en Resend)</label>
+                    <input className="input-field" value={integ.resend_from_email || ''} placeholder="no-reply@tudominio.com"
+                      onChange={(e) => setInteg((s) => ({ ...s, resend_from_email: e.target.value }))} data-testid="resend-from-input" />
+                  </div>
+                  <div>
+                    <label className="label-text">Nombre remitente</label>
+                    <input className="input-field" value={integ.resend_from_name || ''} placeholder={company?.name || 'Tu empresa'}
+                      onChange={(e) => setInteg((s) => ({ ...s, resend_from_name: e.target.value }))} data-testid="resend-name-input" />
+                  </div>
+                </>
+              ) : (
+                <div className="rounded-xl border border-ink-100 bg-cream/50 p-4 space-y-3" data-testid="smtp-section">
+                  <p className="text-xs text-ink-500 flex items-center gap-1.5"><Server className="w-3.5 h-3.5" /> Datos de tu servidor de correo (Gmail, Outlook, cPanel, etc.).</p>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div className="col-span-2"><label className="label-text">Servidor SMTP (host)</label><input className="input-field" placeholder="smtp.gmail.com" value={integ.smtp_host || ''} onChange={(e) => setInteg((s) => ({ ...s, smtp_host: e.target.value }))} data-testid="smtp-host-input" /></div>
+                    <div><label className="label-text">Puerto</label><input type="number" className="input-field" placeholder="587" value={integ.smtp_port || 587} onChange={(e) => setInteg((s) => ({ ...s, smtp_port: e.target.value }))} data-testid="smtp-port-input" /></div>
+                    <div className="flex items-end pb-2">
+                      <label className="flex items-center gap-2 cursor-pointer text-sm text-ink-700">
+                        <input type="checkbox" checked={integ.smtp_use_tls !== false} onChange={(e) => setInteg((s) => ({ ...s, smtp_use_tls: e.target.checked }))} data-testid="smtp-tls-input" />
+                        Usar TLS/STARTTLS
+                      </label>
+                    </div>
+                    <div className="col-span-2"><label className="label-text">Usuario</label><input className="input-field" placeholder="tucorreo@tudominio.com" value={integ.smtp_username || ''} onChange={(e) => setInteg((s) => ({ ...s, smtp_username: e.target.value }))} data-testid="smtp-username-input" /></div>
+                    <div className="col-span-2">
+                      <label className="label-text">Contraseña / App Password</label>
+                      <input type="password" className="input-field" placeholder={integ.smtp_password_set ? 'Guardada ••••' : 'Contraseña del correo'}
+                        value={integ.smtp_password || ''} onChange={(e) => setInteg((s) => ({ ...s, smtp_password: e.target.value }))} data-testid="smtp-password-input" />
+                      <p className="text-xs text-ink-400 mt-1">Déjala vacía para conservar la actual. En Gmail usa una "Contraseña de aplicación".</p>
+                    </div>
+                    <div className="col-span-2"><label className="label-text">Correo remitente (From)</label><input className="input-field" placeholder="ventas@tudominio.com" value={integ.smtp_from_email || ''} onChange={(e) => setInteg((s) => ({ ...s, smtp_from_email: e.target.value }))} data-testid="smtp-from-input" /></div>
+                    <div className="col-span-2"><label className="label-text">Nombre remitente</label><input className="input-field" placeholder={company?.name || 'Tu empresa'} value={integ.smtp_from_name || ''} onChange={(e) => setInteg((s) => ({ ...s, smtp_from_name: e.target.value }))} data-testid="smtp-from-name-input" /></div>
+                  </div>
+                  <div className="pt-2 border-t border-ink-100">
+                    <label className="label-text">Enviar prueba a (opcional)</label>
+                    <div className="flex gap-2">
+                      <input className="input-field flex-1" placeholder={integ.smtp_from_email || 'correo@destino.com'} value={smtpTestEmail} onChange={(e) => setSmtpTestEmail(e.target.value)} data-testid="smtp-test-email-input" />
+                      <button className="btn-ghost whitespace-nowrap" onClick={testSmtp} disabled={smtpTesting || !integ.smtp_host || !integ.smtp_username} data-testid="smtp-test-btn">
+                        <Send className="w-4 h-4" /> {smtpTesting ? 'Enviando…' : 'Probar'}
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              )}
+
               <div>
                 <label className="label-text">Correo de avisos (ventas / ejecutivo)</label>
                 <input className="input-field" value={integ.notify_email || ''} placeholder="ventas@tudominio.com"

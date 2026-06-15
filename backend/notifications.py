@@ -55,6 +55,39 @@ async def _send_smtp(company: dict, to_email: str, subject: str, html: str) -> b
         return False
 
 
+async def send_test_smtp(host: str, port: int, username: str, password: str,
+                         use_tls: bool, from_email: str, from_name: str, to_email: str):
+    """Send a one-off SMTP test email with explicit credentials.
+    Returns (ok: bool, error: str)."""
+    msg = EmailMessage()
+    msg["From"] = f"{from_name or 'Routiq'} <{from_email}>"
+    msg["To"] = to_email
+    msg["Subject"] = "Prueba de configuración SMTP — Routiq"
+    msg.set_content("Tu configuración SMTP de Routiq funciona correctamente.")
+    msg.add_alternative(
+        "<div style='font-family:system-ui,Arial,sans-serif'>"
+        "<h2 style='color:#185FA5'>✅ Configuración SMTP correcta</h2>"
+        "<p>Tu correo corporativo está listo. A partir de ahora, las cotizaciones y "
+        "los cobros se enviarán desde tu propio remitente.</p>"
+        f"<p style='color:#64748b;font-size:12px'>Enviado por Routiq como prueba.</p></div>",
+        subtype="html",
+    )
+    try:
+        p = int(port or 587)
+        if p == 465:
+            await aiosmtplib.send(msg, hostname=host, port=p, username=username,
+                                  password=password, use_tls=True, timeout=20)
+        else:
+            await aiosmtplib.send(msg, hostname=host, port=p, username=username,
+                                  password=password, start_tls=bool(use_tls), timeout=20)
+        return True, ""
+    except Exception as e:
+        log.warning("SMTP test failed: %s", e)
+        return False, str(e)
+
+
+
+
 async def send_email(company: dict, to_email: str, subject: str, html: str) -> bool:
     """Send an email using the company's configured provider (SMTP or Resend).
     Best-effort: returns True if accepted, False otherwise (never raises)."""
