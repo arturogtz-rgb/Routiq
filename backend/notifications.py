@@ -66,6 +66,21 @@ async def _store_inapp(db, q: dict, kind: str, title: str, body: str):
     })
 
 
+async def _send_push(db, q: dict, title: str, body: str):
+    """Send Web Push to all subscriptions of the tenant. Best-effort."""
+    import push as push_mod
+    cfg = await db.app_config.find_one({"id": "vapid"}, {"_id": 0})
+    if not cfg:
+        return
+    vapid = {"public_key": cfg.get("public_key"), "private_key": cfg.get("private_key")}
+    subs = await db.push_subscriptions.find({"tenant_id": q["tenant_id"]}, {"_id": 0}).to_list(200)
+    payload = {"title": title, "body": body, "url": f"/app/quotations/{q['id']}"}
+    for s in subs:
+        status = push_mod.send_push(s.get("subscription") or {}, payload, vapid)
+        if status in (404, 410):
+            await db.push_subscriptions.delete_one({"endpoint": s.get("endpoint")})
+
+
 async def notify_acceptance(db, q: dict):
     company = await db.companies.find_one({"id": q["tenant_id"]}, {"_id": 0})
     client = q.get("client_snapshot", {}).get("name", "Cliente")
@@ -74,6 +89,7 @@ async def notify_acceptance(db, q: dict):
     body = f"{client} aceptó la cotización {q.get('code')} por {_money(q.get('final_total', q.get('total')), ccy)}."
     log.info("ACCEPTANCE: %s", body)
     await _store_inapp(db, q, "acceptance", title, body)
+    await _send_push(db, q, title, body)
     to = await _recipient(db, company, q)
     html = f"<h2>{title}</h2><p>{body}</p><p>Paquete: {q.get('package_snapshot', {}).get('name', '')}</p>"
     await send_email(company, to, title, html)
@@ -89,6 +105,7 @@ async def notify_payment(db, q: dict, txn: dict, amount_paid: float, pay_status:
             f"en la cotización {q.get('code')}. Acumulado: {_money(amount_paid, ccy)}.")
     log.info("PAYMENT: %s", body)
     await _store_inapp(db, q, "payment", title, body)
+    await _send_push(db, q, title, body)
     to = await _recipient(db, company, q)
     html = f"<h2>{title}</h2><p>{body}</p>"
     await send_email(company, to, title, html)

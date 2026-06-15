@@ -5,7 +5,7 @@ import Logo from '@/components/Logo';
 import NotificationBell from '@/components/NotificationBell';
 import api from '@/lib/api';
 import {
-  LayoutDashboard, Kanban, FileText, Package, Users, Settings, MessageCircle, LogOut, Menu, X, ChevronRight, Sparkles,
+  LayoutDashboard, Kanban, FileText, Package, Users, Settings, MessageCircle, LogOut, Menu, X, ChevronRight, Sparkles, Globe,
 } from 'lucide-react';
 
 const NAV_BY_ROLE = {
@@ -30,6 +30,7 @@ const NAV_BY_ROLE = {
   super_admin: [
     { to: '/master', label: 'Panel Master', icon: LayoutDashboard, testid: 'nav-master' },
     { to: '/master/companies', label: 'Empresas', icon: Users, testid: 'nav-companies' },
+    { to: '/master/site', label: 'Sitio web', icon: Globe, testid: 'nav-site' },
   ],
 };
 

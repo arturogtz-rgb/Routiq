@@ -25,6 +25,8 @@ export default function QuotationDetail() {
   const [publicToken, setPublicToken] = useState('');
   const [copiedPublic, setCopiedPublic] = useState(false);
   const [discount, setDiscount] = useState({ discount_type: 'none', discount_value: 0 });
+  const [clientPhone, setClientPhone] = useState('');
+  const [companyName, setCompanyName] = useState('Routiq');
 
   const load = async () => {
     const { data } = await api.get(`/quotations/${id}`);
@@ -32,8 +34,15 @@ export default function QuotationDetail() {
     setPublicToken(data?.public_link?.token || '');
     if (data?.discount) setDiscount({ discount_type: data.discount.type, discount_value: data.discount.value });
     try {
-      const p = await api.get(`/packages/${data.package_id}`);
+      const [p, clients, company] = await Promise.all([
+        api.get(`/packages/${data.package_id}`),
+        api.get('/clients'),
+        api.get('/companies/me'),
+      ]);
       setPack(p.data);
+      const cl = (clients.data || []).find((c) => c.id === data.client_id);
+      setClientPhone(cl?.phone || '');
+      setCompanyName(company.data?.name || 'Routiq');
     } catch (_e) { /* noop */ }
   };
   useEffect(() => { load(); }, [id]); // eslint-disable-line
@@ -84,6 +93,24 @@ export default function QuotationDetail() {
     navigator.clipboard.writeText(url);
     setCopiedPublic(true);
     setTimeout(() => setCopiedPublic(false), 2000);
+  };
+
+  const sendWhatsApp = (kind) => {
+    if (!publicToken) return;
+    const url = `${window.location.origin}/q/${publicToken}`;
+    const name = q?.client_snapshot?.name || 'Hola';
+    const code = q?.code || '';
+    const pkg = q?.package_snapshot?.name || '';
+    const amount = money(q?.final_total != null ? q.final_total : q?.total, q?.currency);
+    let msg;
+    if (kind === 'pay') {
+      msg = `Hola ${name} 👋\nTu cotización *${code}* está lista. Total: *${amount}*.\nPuedes confirmar y *pagar de forma segura* aquí:\n${url}\n\n— ${companyName}`;
+    } else {
+      msg = `Hola ${name} 👋\nTe comparto tu cotización *${code}* de ${companyName}.\n${pkg ? `Paquete: ${pkg}\n` : ''}Total: *${amount}*\nMírala y confírmala aquí:\n${url}`;
+    }
+    const phone = (clientPhone || '').replace(/[^0-9]/g, '');
+    const base = phone ? `https://wa.me/${phone}` : 'https://wa.me/';
+    window.open(`${base}?text=${encodeURIComponent(msg)}`, '_blank');
   };
 
   if (!q) return <AppShell><div className="p-8 text-ink-400">Cargando…</div></AppShell>;
@@ -223,6 +250,12 @@ export default function QuotationDetail() {
                     <X className="w-3 h-3" /> Revocar
                   </button>
                 </div>
+                <button className="w-full text-xs font-semibold justify-center inline-flex items-center gap-1.5 py-2.5 rounded-xl bg-[#25D366] text-white hover:brightness-95 transition" onClick={() => sendWhatsApp('quote')} data-testid="send-quote-whatsapp-btn">
+                  <MessageCircle className="w-3.5 h-3.5" /> Enviar cotización por WhatsApp
+                </button>
+                <button className="w-full text-xs font-semibold justify-center inline-flex items-center gap-1.5 py-2.5 rounded-xl border-2 border-[#25D366] text-[#128C7E] hover:bg-[#25D366]/10 transition" onClick={() => sendWhatsApp('pay')} data-testid="send-pay-whatsapp-btn">
+                  <MessageCircle className="w-3.5 h-3.5" /> Enviar enlace de pago por WhatsApp
+                </button>
                 {q.public_link?.accepted_at && (
                   <p className="text-xs text-emerald-700 bg-mint-100 rounded p-2" data-testid="public-accepted">
                     ✓ Aceptada por el cliente el {q.public_link.accepted_at.slice(0, 10)}

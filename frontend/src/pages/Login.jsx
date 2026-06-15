@@ -2,12 +2,25 @@ import { useState } from 'react';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '@/context/AuthContext';
 import Logo from '@/components/Logo';
+import { useSiteContent } from '@/lib/useSiteContent';
 import { ArrowRight, Eye, EyeOff } from 'lucide-react';
+
+const LOGIN_FALLBACK = {
+  logo_url: '', primary_color: '#185FA5',
+  side_badge: 'Para tour operadores',
+  side_quote: '“Antes perdía cotizaciones en el chat. Ahora cierro 3x más rápido.”',
+  side_author: '— Piloto en producción: Aventúrate por Jalisco',
+  welcome_title: 'Bienvenido de vuelta',
+  welcome_subtitle: 'Entra a tu panel de Routiq.',
+};
 
 export default function Login() {
   const { login } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
+  const content = useSiteContent();
+  const c = { ...LOGIN_FALLBACK, ...(content?.login || {}) };
+  const backend = process.env.REACT_APP_BACKEND_URL || '';
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPwd, setShowPwd] = useState(false);
@@ -34,25 +47,25 @@ export default function Login() {
 
   return (
     <div className="min-h-screen grid lg:grid-cols-2 bg-cream">
-      <div className="hidden lg:flex flex-col justify-between bg-brand-500 text-white p-10 relative overflow-hidden">
+      <div className="hidden lg:flex flex-col justify-between text-white p-10 relative overflow-hidden" style={{ backgroundColor: c.primary_color }} data-testid="login-brand-panel">
         <div className="absolute inset-0 grain opacity-20" />
         <div className="relative">
-          <Logo size={32} white />
+          {c.logo_url ? <img src={`${backend}${c.logo_url}`} alt="Logo" className="h-9 w-auto object-contain" data-testid="login-logo-image" /> : <Logo size={32} white />}
         </div>
         <div className="relative space-y-4 max-w-md">
-          <p className="pill bg-white/10 text-white">Para tour operadores</p>
-          <h2 className="font-display text-4xl font-semibold leading-tight">“Antes perdía cotizaciones en el chat. Ahora cierro 3x más rápido.”</h2>
-          <p className="text-brand-50">— Piloto en producción: Aventúrate por Jalisco</p>
+          <p className="pill bg-white/10 text-white">{c.side_badge}</p>
+          <h2 className="font-display text-4xl font-semibold leading-tight" data-testid="login-side-quote">{c.side_quote}</h2>
+          <p className="text-white/80">{c.side_author}</p>
         </div>
-        <div className="relative text-sm text-brand-50/80">© 2026 Routiq</div>
+        <div className="relative text-sm text-white/70">© 2026 Routiq</div>
       </div>
 
       <div className="flex items-center justify-center p-6 md:p-10">
         <div className="w-full max-w-md space-y-6" data-testid="login-card">
-          <div className="lg:hidden mb-4"><Logo size={30} /></div>
+          <div className="lg:hidden mb-4">{c.logo_url ? <img src={`${backend}${c.logo_url}`} alt="Logo" className="h-8 w-auto object-contain" /> : <Logo size={30} />}</div>
           <div>
-            <h1 className="font-display text-3xl font-semibold text-ink-900">Bienvenido de vuelta</h1>
-            <p className="text-ink-500 mt-2">Entra a tu panel de Routiq.</p>
+            <h1 className="font-display text-3xl font-semibold text-ink-900" data-testid="login-welcome-title">{c.welcome_title}</h1>
+            <p className="text-ink-500 mt-2">{c.welcome_subtitle}</p>
           </div>
 
           {error && (

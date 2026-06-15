@@ -40,6 +40,8 @@ async def ensure_indexes():
     await db.payment_transactions.create_index("session_id", unique=True)
     await db.payment_transactions.create_index([("tenant_id", 1)])
     await db.notifications.create_index([("tenant_id", 1), ("read", 1)])
+    await db.push_subscriptions.create_index("endpoint", unique=True)
+    await db.push_subscriptions.create_index([("tenant_id", 1)])
     await db.clients.create_index([("tenant_id", 1)])
     await db.quotations.create_index([("tenant_id", 1), ("state", 1)])
     await db.quotations.create_index([("tenant_id", 1), ("code", 1)], unique=True)
@@ -68,6 +70,24 @@ DEFAULT_PRICING_CONFIG = {
     "minor_discount": 0.40,   # 40% off adult rate for menores
     "currency": "MXN",
 }
+
+
+async def ensure_app_config():
+    """Generate and persist VAPID keys once (for Web Push)."""
+    db = get_db()
+    import push
+    cfg = await db.app_config.find_one({"id": "vapid"})
+    if not cfg:
+        keys = push.generate_vapid_keys()
+        await db.app_config.insert_one({"id": "vapid", **keys})
+
+
+async def ensure_site_settings():
+    """Create the singleton site_settings doc (Landing/Login editable content)."""
+    db = get_db()
+    doc = await db.site_settings.find_one({"id": "default"})
+    if not doc:
+        await db.site_settings.insert_one({"id": "default", "draft": {}, "published": {}})
 
 
 async def seed_super_admin():

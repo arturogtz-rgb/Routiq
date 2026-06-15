@@ -14,7 +14,7 @@ from fastapi.responses import StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from starlette.middleware.cors import CORSMiddleware
 
-from database import get_db, new_id, now_iso, ensure_indexes, seed_super_admin, seed_demo_tenant, DEFAULT_PRICING_CONFIG
+from database import get_db, new_id, now_iso, ensure_indexes, seed_super_admin, seed_demo_tenant, DEFAULT_PRICING_CONFIG, ensure_app_config, ensure_site_settings
 from auth import (
     hash_password, verify_password, create_access_token, create_refresh_token,
     decode_token, set_auth_cookies, clear_auth_cookies,
@@ -32,11 +32,15 @@ from pdf_generator import generate_quotation_pdf
 import ai_service
 import currency
 import notifications
+import site_content
+import push
 from emergentintegrations.payments.stripe.checkout import StripeCheckout, CheckoutSessionRequest
 
 UPLOAD_DIR = _Path("/app/uploads") if _Path("/app/uploads").exists() or os.environ.get("DOCKER") else _Path(__file__).parent / "uploads"
 LOGO_DIR = UPLOAD_DIR / "logos"
 LOGO_DIR.mkdir(parents=True, exist_ok=True)
+SITE_DIR = UPLOAD_DIR / "site"
+SITE_DIR.mkdir(parents=True, exist_ok=True)
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s - %(message)s")
 log = logging.getLogger("routiq")
@@ -50,6 +54,8 @@ api = APIRouter(prefix="/api")
 @app.on_event("startup")
 async def _startup():
     await ensure_indexes()
+    await ensure_app_config()
+    await ensure_site_settings()
     await seed_super_admin()
     await seed_demo_tenant()
     log.info("Startup complete — super admin + demo tenant seeded")
@@ -991,6 +997,110 @@ async def stripe_webhook(request: Request):
                 await _apply_payment_to_quotation(flipped)
     except Exception as e:
         log.warning("stripe webhook error: %s", e)
+    return {"ok": True}
+
+
+# ---------------------------------------------------------------------------
+# Site content editor (Landing + Login) — super_admin, preview before publish
+# ---------------------------------------------------------------------------
+@api.get("/site-settings/public")
+async def site_settings_public():
+    db = get_db()
+    doc = await db.site_settings.find_one({"id": "default"}, {"_id": 0}) or {}
+    return site_content.merged_with_defaults(doc.get("published"))
+
+
+@api.get("/site-settings")
+async def site_settings_get(user: dict = Depends(require_roles("super_admin"))):
+    db = get_db()
+    doc = await db.site_settings.find_one({"id": "default"}, {"_id": 0}) or {}
+    draft_src = doc.get("draft") or doc.get("published")
+    return {
+        "draft": site_content.merged_with_defaults(draft_src),
+        "published": site_content.merged_with_defaults(doc.get("published")),
+    }
+
+
+@api.patch("/site-settings")
+async def site_settings_patch(payload: dict, user: dict = Depends(require_roles("super_admin"))):
+    db = get_db()
+    doc = await db.site_settings.find_one({"id": "default"}) or {"draft": {}, "published": {}}
+    draft = doc.get("draft") or {}
+    for section in ("landing", "login"):
+        if section in payload and isinstance(payload[section], dict):
+            draft.setdefault(section, {})
+            draft[section].update({k: v for k, v in payload[section].items()})
+    await db.site_settings.update_one({"id": "default"}, {"$set": {"draft": draft}}, upsert=True)
+    return site_content.merged_with_defaults(draft)
+
+
+@api.post("/site-settings/publish")
+async def site_settings_publish(user: dict = Depends(require_roles("super_admin"))):
+    db = get_db()
+    doc = await db.site_settings.find_one({"id": "default"}) or {}
+    draft = doc.get("draft") or {}
+    await db.site_settings.update_one({"id": "default"}, {"$set": {"published": draft}}, upsert=True)
+    return {"ok": True, "published": site_content.merged_with_defaults(draft)}
+
+
+@api.post("/site-settings/reset-draft")
+async def site_settings_reset(user: dict = Depends(require_roles("super_admin"))):
+    db = get_db()
+    doc = await db.site_settings.find_one({"id": "default"}) or {}
+    await db.site_settings.update_one({"id": "default"}, {"$set": {"draft": doc.get("published") or {}}}, upsert=True)
+    return {"ok": True}
+
+
+@api.post("/site-settings/upload-image")
+async def site_settings_upload_image(file: UploadFile = File(...), user: dict = Depends(require_roles("super_admin"))):
+    if not file.content_type or not file.content_type.startswith("image/"):
+        raise HTTPException(status_code=400, detail="El archivo debe ser una imagen")
+    content = await file.read()
+    if len(content) > 5 * 1024 * 1024:
+        raise HTTPException(status_code=400, detail="Imagen muy grande (máx 5 MB)")
+    ext = (file.filename or "").rsplit(".", 1)[-1].lower()
+    if ext not in ("png", "jpg", "jpeg", "svg", "webp", "gif"):
+        ext = "png"
+    filename = f"{new_id()}.{ext}"
+    SITE_DIR.mkdir(parents=True, exist_ok=True)
+    (SITE_DIR / filename).write_bytes(content)
+    return {"url": f"/api/uploads/site/{filename}"}
+
+
+# ---------------------------------------------------------------------------
+# Web Push (VAPID)
+# ---------------------------------------------------------------------------
+@api.get("/push/vapid-public-key")
+async def push_vapid_public_key():
+    db = get_db()
+    cfg = await db.app_config.find_one({"id": "vapid"}, {"_id": 0})
+    return {"public_key": (cfg or {}).get("public_key", "")}
+
+
+@api.post("/push/subscribe")
+async def push_subscribe(payload: dict, user: dict = Depends(require_tenant)):
+    db = get_db()
+    sub = payload.get("subscription") or payload
+    endpoint = sub.get("endpoint")
+    if not endpoint:
+        raise HTTPException(status_code=400, detail="Suscripción inválida")
+    await db.push_subscriptions.update_one(
+        {"endpoint": endpoint},
+        {"$set": {
+            "endpoint": endpoint, "subscription": sub,
+            "tenant_id": user["tenant_id"], "user_id": user["id"], "created_at": now_iso(),
+        }},
+        upsert=True,
+    )
+    return {"ok": True}
+
+
+@api.post("/push/unsubscribe")
+async def push_unsubscribe(payload: dict, user: dict = Depends(require_tenant)):
+    db = get_db()
+    endpoint = (payload.get("subscription") or payload).get("endpoint")
+    if endpoint:
+        await db.push_subscriptions.delete_one({"endpoint": endpoint})
     return {"ok": True}
 
 

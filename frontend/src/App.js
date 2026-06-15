@@ -16,6 +16,7 @@ import WhatsAppInbox from '@/pages/WhatsAppInbox';
 import Team from '@/pages/Team';
 import Settings from '@/pages/Settings';
 import MasterAdmin, { MasterCompanies } from '@/pages/Master';
+import MasterSite from '@/pages/MasterSite';
 import PublicQuotation from '@/pages/PublicQuotation';
 
 function HomeRedirect() {
@@ -50,6 +51,7 @@ export default function App() {
           {/* Master panel */}
           <Route path="/master" element={<ProtectedRoute roles={['super_admin']}><MasterAdmin /></ProtectedRoute>} />
           <Route path="/master/companies" element={<ProtectedRoute roles={['super_admin']}><MasterCompanies /></ProtectedRoute>} />
+          <Route path="/master/site" element={<ProtectedRoute roles={['super_admin']}><MasterSite /></ProtectedRoute>} />
 
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>

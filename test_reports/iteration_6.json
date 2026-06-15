@@ -1,0 +1,38 @@
+{
+  "summary": "v1.3 testing complete: site-settings editor (draft/publish/reset), image upload, VAPID, push subscribe/unsubscribe, WhatsApp buttons on quotation detail, dynamic Landing/Login. All 15 backend tests pass. Frontend: Login publish works end-to-end, Save Draft works, WhatsApp buttons (quote+pay) open wa.me URLs with code+client+amount correctly, push button renders + VAPID key works (Notification permission denied by headless — environment limitation as expected). ONE FRONTEND BUG FOUND: 'Vista previa de la landing' is broken for super_admin because HomeRedirect in App.js unconditionally bounces super_admin from / to /master, ignoring ?preview=1. Restored published site content to defaults after testing.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [
+      {"component": "App.js HomeRedirect", "issue": "Visiting /?preview=1 as super_admin redirects to /master (line 25: 'if (user && user.role === \"super_admin\") return <Navigate to=\"/master\" replace />'). Therefore the 'Vista previa de la landing' button (preview-landing-btn) in MasterSite.jsx opens / in a new tab but the user never sees the draft landing — they land on /master. Fix: in HomeRedirect, short-circuit the role-based redirect when URLSearchParams has preview=1, e.g. `const preview = new URLSearchParams(window.location.search).get('preview') === '1'; if (preview) return <Landing />;` placed before the role checks.", "selector": "[data-testid=\"preview-landing-btn\"] -> /?preview=1", "priority": "HIGH"}
+    ],
+    "integration_issues": [
+      {"flow": "MasterSite image upload", "issue": "ImageField uploads the file to /api/site-settings/upload-image successfully (200, file fetchable at /api/uploads/site/*) but the returned URL is only stored in local React state. The user MUST click 'Guardar borrador' or 'Publicar' for the URL to persist to the draft document. Not a bug but worth a small UX note: consider auto-saving the URL after a successful upload (call api.patch right after onChange in ImageField.pick) so the editor doesn't silently lose images on refresh.", "affected_selectors": ["[data-testid=\"ld-hero-image\"]"]}
+    ],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_iteration6_site_push.py",
+    "/app/test_reports/pytest/iter6_results.xml"
+  ],
+  "action_items": [
+    "Fix HomeRedirect in /app/frontend/src/App.js to allow ?preview=1 to render Landing for super_admin (currently bounces to /master). Same likely affects /login?preview=1 if there's an equivalent guard — verified Login route does NOT bounce, so only / is broken.",
+    "Optional UX: auto-persist image upload URL to draft after a successful POST /api/site-settings/upload-image so users don't lose uploads if they navigate away before clicking 'Guardar borrador'."
+  ],
+  "critical_code_review_comments": [
+    "Backend site_settings endpoints are clean: super_admin guard via require_roles, defaults merged via site_content.merged_with_defaults for both public and admin GET, PATCH writes only to .draft, POST /publish copies draft->published, /reset-draft copies published->draft. PATCH respects only 'landing' and 'login' top-level keys — good (prevents arbitrary key injection).",
+    "Upload size cap (5 MB) and content_type prefix check are reasonable; extension allow-list png/jpg/jpeg/svg/webp/gif. SVG should be considered carefully because of inline JS — current code only saves and serves the file, no execution path, so risk is low but worth noting.",
+    "Push subscribe enforces auth via require_tenant (so super_admin without tenant_id would be blocked — verify if intentional). VAPID public key is returned even when empty; consider returning 503 if empty so the frontend can show a clear 'Push no configurado' message.",
+    "QuotationDetail.sendWhatsApp builds a wa.me URL with phone digits stripped of non-numerics and falls back to wa.me/ (no number) when client phone missing — correct. Message includes folio (code), client name, amount via money() helper, and the public link — matches spec exactly.",
+    "App.js HomeRedirect should special-case ?preview=1 (see frontend bug above)."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_iteration6_site_push.py (new)"
+  ],
+  "success_rate": {"backend": "100% (15/15)", "frontend": "~85% — login publish, save-draft, WA buttons, push UI, VAPID all green; preview-landing button broken for super_admin"},
+  "test_credentials": "owner@routiq.mx / Routiq2026!, admin@aventurate.mx / Demo2026!, ejecutivo@aventurate.mx / Demo2026! (matches /app/memory/test_credentials.md)",
+  "seed_data_creation": "No persistent test data left behind. Restored site_settings published content to defaults (hero_title='La memoria operativa', welcome_title='Bienvenido de vuelta', primary_color='#185FA5'). Uploaded a tiny 1x1 PNG to /api/uploads/site/ during tests (file remains but unreferenced). Created one push_subscriptions doc for admin@aventurate.mx with endpoint 'https://example.com/test-push-endpoint-TEST' then deleted it via /api/push/unsubscribe.",
+  "retest_needed": true,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Run: pytest /app/backend/tests/test_iteration6_site_push.py -v (expect 15/15). Frontend bug to retest after fix: navigate to /?preview=1 while logged in as super_admin (owner@routiq.mx) — should render <Landing /> not redirect to /master. Easiest fix: in /app/frontend/src/App.js function HomeRedirect, add 'if (new URLSearchParams(window.location.search).get(\"preview\") === \"1\") return <Landing />;' before the role-based redirects. To re-test WhatsApp: navigate directly to /app/quotations/2f8d2bb6-22b3-4cfb-8e12-29e32cddedf3 (COT-2026025, client Laura Ramírez, $17,800 MXN), the public token already exists so send-quote-whatsapp-btn and send-pay-whatsapp-btn are immediately visible; intercept window.open via 'window.open = (u) => { window.__openedUrls.push(u); return null; }' to capture the URL. Headless Chrome blocks Notification.requestPermission so push subscription cannot be exercised end-to-end in CI; manual smoke in a real browser is recommended.",
+  "rca of the issue": "The 'Vista previa de la landing' bug RCA: MasterSite.preview() opens '/?preview=1' in a new tab. The new tab loads with the same cookies (super_admin session), so HomeRedirect in /app/frontend/src/App.js (line 22-28) runs. It checks user.role === 'super_admin' and returns <Navigate to='/master' replace />, completely bypassing the Landing component. Since the redirect happens before useSiteContent has a chance to render anything, the preview tab simply lands on the master dashboard instead. Mitigation = add a preview=1 short-circuit in HomeRedirect (3-line fix). No backend change needed; /api/site-settings already returns the draft correctly for super_admin and useSiteContent already loads draft when preview=1."
+}
