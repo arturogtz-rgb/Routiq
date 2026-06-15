@@ -5,7 +5,13 @@ Plataforma SaaS PWA multi-tenant para **cotización y seguimiento turístico** p
 - Empresa piloto: **Aventúrate por Jalisco**
 - Marca: **Routiq**
 - **Producción: https://routiq.com.mx** ✅ (VPS Hostinger 177.7.36.75, Docker + Nginx + Let's Encrypt)
-- Iteración actual: **v2.3** (iter_23: IA independiente de Emergent (BYOK) + logo catálogo + proporción imagen + mini-dashboard leads + limpiar datos de prueba)
+- Iteración actual: **v2.4** (iter_24: registro de uso/costo de IA en Master + generar respaldo on-demand + revisión de seguridad pre-lanzamiento)
+
+## Iteración 24 (jun-2026) — uso de IA, backup on-demand, revisión de seguridad
+- ✅ **Registro de uso/costo de IA** en `/master/ai`: cada llamada de IA se registra en `ai_usage` (tenant, proveedor, modelo, tokens, costo estimado USD según tabla de tarifas). `GET /master/ai-usage` agrega por mes y por empresa; UI con totales y tablas.
+- ✅ **Generar respaldo ahora** (sin SSH): botón en la tarjeta de backups del Master → `POST /backups/run` (mongodump async a `BACKUP_DIR`). ⚠️ En producción el volumen de backups debe estar **montado con escritura** para el backend (si es solo lectura, devuelve error claro).
+- ✅ **Revisión de seguridad pre-lanzamiento**: auditados todos los endpoints públicos (todos intencionales y protegidos donde corresponde — webhooks por secreto/firma, catálogo/paquete público read-only, cotización por token). Uploads/import requieren admin. Signup con rate-limit (hora+día) + honeypot + Turnstile. API key de IA enmascarada. `deployment_agent`: PASS sin bloqueadores. (Nota: `CORS_ORIGINS="*"` — aceptable para API pública; se puede restringir al dominio en prod si se desea).
+- Tests: `/app/test_reports/iteration_24.json` (frontend 3/3) + curl backend + deployment_agent PASS.
 
 ## Iteración 23 (jun-2026) — IA BYOK (independiente de Emergent) + 4 fixes
 - ✅ **IA independiente (BYOK)**: se eliminó la dependencia de `EMERGENT_LLM_KEY`. El Master configura proveedor (**Anthropic / OpenAI / Google**), modelo y su **propia API key** en `/master/ai` (aplica a todas las empresas). SDKs oficiales: `anthropic`, `openai`, `google-genai`. Endpoints `GET/PATCH /master/ai-settings` y `POST /master/ai-settings/test` (probar conexión). Mensajes de error amistosos en español (key inválida, sin saldo, no configurada). `ai_service.py` reescrito (BYOK) leyendo `platform_settings(id='ai')`.

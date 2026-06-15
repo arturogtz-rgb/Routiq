@@ -48,7 +48,17 @@ Cubre: (A) lo implementado, (B) configuración pendiente en producción, (C) bac
 
 > Editar `/opt/routiq/deploy/.env` (o el `.env` del backend) y redeplegar con `05-update.sh`.
 
-### IA / Inteligencia Artificial (BYOK — independiente de Emergent)
+### Operación / Master
+- [x] **Registro de uso y costo de IA** por mes y por empresa (`/master/ai` → sección de uso). Costo estimado USD.
+- [x] **Generar respaldo ahora** desde el Panel Master (sin SSH). ⚠️ Producción: el volumen de backups debe estar montado **con escritura** para el backend.
+- [x] **Revisión de seguridad** (iter_24): endpoints públicos auditados, webhooks protegidos, uploads/import con auth, signup rate-limited, deployment_agent PASS.
+
+### Seguridad — verificado
+- [x] Sin secretos hardcodeados (todo en `.env` / configurable desde paneles).
+- [x] Frontend usa `REACT_APP_BACKEND_URL`; backend usa `os.environ`.
+- [x] Rutas `/api`; puertos 8001/3000 intactos.
+- [x] `SHOW_DEMO_CREDENTIALS` apaga las credenciales demo del login vía env.
+- [ ] (Opcional prod) Restringir `CORS_ORIGINS` al dominio real en lugar de `*`.
 - [x] El Master configura **proveedor (Anthropic/OpenAI/Google) + modelo + su propia API key** en `/master/ai`. Aplica a todas las empresas. Botón "Probar conexión".
 - [ ] **Configurar la API key real del proveedor** en `/master/ai` (Anthropic Claude recomendado). **Sin key, la IA no funciona** (resúmenes de chat, siguiente paso, mensajes sugeridos). La key se cobra directo al proveedor del cliente.
 
