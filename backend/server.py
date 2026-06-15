@@ -905,10 +905,9 @@ async def public_checkout(token: str, payload: PublicCheckoutRequest, request: R
         raise HTTPException(status_code=400, detail="Monto inválido")
 
     base_currency = (company.get("base_currency") or q.get("currency", "MXN")).lower()
-    host_url = str(request.base_url)
-    webhook_url = f"{host_url}api/webhook/stripe"
-    stripe_checkout = StripeCheckout(api_key=api_key, webhook_url=webhook_url)
     origin = payload.origin_url.rstrip("/")
+    webhook_url = f"{origin}/api/webhook/stripe"
+    stripe_checkout = StripeCheckout(api_key=api_key, webhook_url=webhook_url)
     success_url = f"{origin}/q/{token}?session_id={{CHECKOUT_SESSION_ID}}"
     cancel_url = f"{origin}/q/{token}"
     metadata = {
@@ -939,27 +938,39 @@ async def public_payment_status(token: str, session_id: str, request: Request):
         raise HTTPException(status_code=404, detail="Transacción no encontrada")
     company = await db.companies.find_one({"id": txn["tenant_id"]}, {"_id": 0})
     api_key = _resolve_stripe_key(company)
-    host_url = str(request.base_url)
-    stripe_checkout = StripeCheckout(api_key=api_key, webhook_url=f"{host_url}api/webhook/stripe")
-    status = await stripe_checkout.get_checkout_status(session_id)
-    # idempotently flip + apply on first paid
-    if status.payment_status == "paid":
-        flipped = await db.payment_transactions.find_one_and_update(
-            {"session_id": session_id, "payment_status": {"$ne": "paid"}},
-            {"$set": {"payment_status": "paid", "status": status.status, "paid_at": now_iso()}},
-        )
-        if flipped is not None:
-            await _apply_payment_to_quotation(flipped)
-    else:
-        await db.payment_transactions.update_one(
-            {"session_id": session_id, "payment_status": {"$ne": "paid"}},
-            {"$set": {"status": status.status, "payment_status_stripe": status.payment_status}},
-        )
+    stripe_status = None
+    try:
+        stripe_checkout = StripeCheckout(api_key=api_key, webhook_url="")
+        st = await stripe_checkout.get_checkout_status(session_id)
+        stripe_status = st
+        if st.payment_status == "paid":
+            flipped = await db.payment_transactions.find_one_and_update(
+                {"session_id": session_id, "payment_status": {"$ne": "paid"}},
+                {"$set": {"payment_status": "paid", "status": st.status, "paid_at": now_iso()}},
+            )
+            if flipped is not None:
+                await _apply_payment_to_quotation(flipped)
+    except Exception as e:
+        # The platform fallback key (sk_test_emergent) cannot retrieve sessions;
+        # for real per-tenant keys this path works. Degrade to local txn (updated by webhook).
+        log.info("payment-status: get_checkout_status fallback to local txn (%s): %s", session_id, e)
+
+    # Re-read latest txn (may have been flipped by the webhook)
+    txn = await db.payment_transactions.find_one({"session_id": session_id}, {"_id": 0})
+    if stripe_status is not None:
+        return {
+            "payment_status": stripe_status.payment_status,
+            "status": stripe_status.status,
+            "amount_total": stripe_status.amount_total,
+            "currency": stripe_status.currency,
+        }
+    is_paid = txn.get("payment_status") == "paid"
     return {
-        "payment_status": status.payment_status,
-        "status": status.status,
-        "amount_total": status.amount_total,
-        "currency": status.currency,
+        "payment_status": "paid" if is_paid else "pending",
+        "status": txn.get("status", "open"),
+        "amount_total": int(round(float(txn["amount"]) * 100)),
+        "currency": txn.get("currency", "MXN").lower(),
+        "source": "local",
     }
 
 

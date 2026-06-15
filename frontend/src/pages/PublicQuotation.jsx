@@ -45,10 +45,10 @@ export default function PublicQuotation() {
           setPayMsg({ type: 'error', text: 'La sesión de pago expiró. Intenta de nuevo.' });
           return;
         }
-        if (attempts++ < 6) { setTimeout(poll, 2000); }
-        else setPayMsg({ type: 'error', text: 'No pudimos confirmar el pago aún. Revisa más tarde.' });
+        if (attempts++ < 15) { setTimeout(poll, 2000); }
+        else setPayMsg({ type: 'error', text: 'No pudimos confirmar el pago aún. Si lo completaste, se reflejará en breve.' });
       } catch (_e) {
-        if (attempts++ < 6) setTimeout(poll, 2000);
+        if (attempts++ < 15) setTimeout(poll, 2000);
         else setPayMsg({ type: 'error', text: 'Error verificando el pago.' });
       }
     };
