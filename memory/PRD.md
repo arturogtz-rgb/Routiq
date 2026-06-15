@@ -5,7 +5,7 @@ Plataforma SaaS PWA multi-tenant para **cotización y seguimiento turístico** p
 - Empresa piloto: **Aventúrate por Jalisco**
 - Marca: **Routiq**
 - **Producción: https://routiq.com.mx** ✅ (VPS Hostinger 177.7.36.75, Docker + Nginx + Let's Encrypt)
-- Iteración actual: **v1.3** (editor del sitio Master + Web Push + WhatsApp send)
+- Iteración actual: **v1.4** (fixes UI + mejoras del constructor: noches extra, unidades de servicio, fechas ES, días de salida)
 
 ## Arquitectura
 - **Frontend:** React 19 + Tailwind + dnd-kit + PWA
@@ -55,8 +55,10 @@ Plataforma SaaS PWA multi-tenant para **cotización y seguimiento turístico** p
 - [x] **WhatsApp "Enviar con un clic"** ✅: en el detalle de cotización, botón "Enviar cotización por WhatsApp" y "Enviar enlace de pago por WhatsApp" — mensaje prellenado con folio, nombre del cliente y monto, vía wa.me.
 
 ### P1
+- [x] **v1.4 — Fixes + constructor avanzado** ✅ (jun-2026, tests iteration_7, 0 incidencias): campana reubicada a header superior; equivalente USD visible en `/q/:token`; navegación libre entre pasos sin perder datos; fecha **DD MMM YYYY** (ES) en constructor/PDF/público/Kanban/detalle; check-out automático + noches extra (costo por persona/habitación/reservación, desglosado en PDF/público); días de salida permitidos por paquete con advertencia; unidades de cobro en servicios (persona/grupo/día/acceso) con cantidad automática.
+- [ ] **CRUD UI completo de paquetes** (próxima iteración): crear/editar/eliminar desde el panel — noches, días de inicio permitidos, hoteles, precios por ocupación y temporadas (hoy solo lectura desde seed). El campo `allowed_start_days` ya existe en el modelo; falta la UI de edición.
+- [ ] **Editor del sitio Master — avanzado**: reordenar y mostrar/ocultar secciones de la landing + editor de la sección de precios.
 - [ ] **Integración Baileys real** (microservicio Node.js en VPS): conexión QR, persistencia, envío real desde el inbox
-- [ ] CRUD UI completo para paquetes (hoy solo lectura desde seed)
 - [ ] Carga masiva de catálogos vía Excel
 - [ ] Multi-moneda completa por empresa cuando opere en USD como base (arquitectura ya preparada: base_currency + conversión)
 - [ ] Subdominios reales por empresa (empresa1.routiq.com.mx)
