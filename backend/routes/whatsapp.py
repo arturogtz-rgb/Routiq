@@ -95,6 +95,8 @@ async def connect_number(number_id: str, user: dict = Depends(require_roles("com
     db = get_db()
     await _get_number(db, user["tenant_id"], number_id)
     r = await _call("POST", f"/sessions/{_sid(user['tenant_id'], number_id)}/connect")
+    if r.status_code >= 400:
+        raise HTTPException(status_code=502, detail="El servicio de WhatsApp no pudo iniciar la conexión.")
     return r.json()
 
 
@@ -103,6 +105,8 @@ async def number_qr(number_id: str, user: dict = Depends(require_tenant)):
     db = get_db()
     await _get_number(db, user["tenant_id"], number_id)
     r = await _call("GET", f"/sessions/{_sid(user['tenant_id'], number_id)}/qr")
+    if r.status_code >= 400:
+        return {"status": "error", "qr": None}
     data = r.json()
     await _sync_number_status(db, user["tenant_id"], number_id, data.get("status"))
     return data
@@ -113,6 +117,8 @@ async def number_status(number_id: str, user: dict = Depends(require_tenant)):
     db = get_db()
     await _get_number(db, user["tenant_id"], number_id)
     r = await _call("GET", f"/sessions/{_sid(user['tenant_id'], number_id)}/status")
+    if r.status_code >= 400:
+        return {"status": "error", "jid": None}
     data = r.json()
     await _sync_number_status(db, user["tenant_id"], number_id, data.get("status"))
     return data
@@ -124,6 +130,8 @@ async def logout_number(number_id: str, user: dict = Depends(require_roles("comp
     await _get_number(db, user["tenant_id"], number_id)
     r = await _call("POST", f"/sessions/{_sid(user['tenant_id'], number_id)}/logout")
     await _sync_number_status(db, user["tenant_id"], number_id, "disconnected")
+    if r.status_code >= 400:
+        return {"ok": True, "warning": "session_already_closed"}
     return r.json()
 
 
