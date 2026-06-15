@@ -5,7 +5,14 @@ Plataforma SaaS PWA multi-tenant para **cotización y seguimiento turístico** p
 - Empresa piloto: **Aventúrate por Jalisco**
 - Marca: **Routiq**
 - **Producción: https://routiq.com.mx** ✅ (VPS Hostinger 177.7.36.75, Docker + Nginx + Let's Encrypt)
-- Iteración actual: **v1.9** (iter_19: fixes IA-resumen/eliminar nº WhatsApp/validación correo avisos + CRUD UI completo de paquetes)
+- Iteración actual: **v2.0** (iter_20: refactor Settings.jsx + vista previa pública de paquete `/p/:slug/:code` con captura de leads + página de Solicitudes)
+
+## Iteración 20 (jun-2026) — refactor + vista pública de paquete + leads
+- ✅ **Refactor Settings.jsx** (427→~160 líneas): dividido en `components/settings/{LogoSettings, PricingSettings, PaymentSettings, EmailSettings, BankingSettings}.jsx`. Sin cambios de comportamiento (todos los data-testid preservados; no-regresión validada).
+- ✅ **Vista previa pública de paquete** `/p/:slug/:code` (`PublicPackage.jsx`): página con branding de la empresa (logo, color), hero, descripción, itinerario día a día, precio base "Desde", incluye/no incluye y hoteles. Botón **"Quiero este paquete"** → formulario (nombre, correo, tel, fecha, pax, mensaje) con honeypot anti-bot. `GET /api/public/package/{slug}/{code}` y `POST .../request`.
+- ✅ **Solicitudes (leads)** `/app/leads` (`Leads.jsx`, admin+ejecutivo): lista de solicitudes con filtros (activas/archivadas/todas), notificación in-app + correo al recibir un lead, botones "Crear cotización" (→ builder con paquete preseleccionado), WhatsApp directo y marcar atendida/archivar. `GET/PATCH /api/quote-requests`.
+- ✅ **Compartir paquete**: botón en cada card de `/app/packages` que copia el enlace público `/p/{slug}/{code}`.
+- Tests: `/app/test_reports/iteration_20.json` (frontend 18/18) + curl backend.
 
 ## Iteración 19 (jun-2026) — fixes post-validación + CRUD paquetes
 - ✅ **Fix IA resumen WhatsApp**: el inbox ahora muestra el error real del backend en vez de "No se pudo generar el resumen". El motor IA funciona (probado en preview). ⚠️ En producción verificar que `EMERGENT_LLM_KEY` esté en `/opt/routiq/deploy/.env`.
