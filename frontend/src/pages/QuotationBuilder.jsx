@@ -99,14 +99,38 @@ export default function QuotationBuilder() {
     return s;
   })();
 
+  // Season-aware effective prices (mirrors backend pricing.resolve_hotel_prices)
+  const effectiveSeason = (() => {
+    if (!hotel) return { seasonId: null, seasonName: null };
+    const ci = form.dates.start ? form.dates.start.slice(0, 10) : null;
+    for (const s of (pack?.seasons || [])) {
+      for (const r of (s.ranges || [])) {
+        const st = (r.start || '').slice(0, 10); const en = (r.end || '').slice(0, 10);
+        if (st && en && st <= ci && ci <= en) return { seasonId: s.id, seasonName: s.name };
+      }
+    }
+    return { seasonId: null, seasonName: null };
+  })();
+  const priceFor = (occ) => {
+    if (!hotel) return 0;
+    const sp = effectiveSeason.seasonId ? (hotel.season_prices || {})[effectiveSeason.seasonId] : null;
+    const v = sp ? sp[occ] : undefined;
+    return (v !== undefined && v !== null && v !== '') ? Number(v) : Number(hotel.prices_by_occupancy?.[occ] || 0);
+  };
+  const minorPrice = (() => {
+    if (!hotel) return 0;
+    const sp = effectiveSeason.seasonId ? (hotel.season_prices || {})[effectiveSeason.seasonId] : null;
+    const v = sp ? sp.minor_price : undefined;
+    return (v !== undefined && v !== null && v !== '') ? Number(v) : Number(hotel.minor_price || 0);
+  })();
+
   const subtotal = (() => {
     let s = servicesSubtotal + extraNightsSubtotal;
     if (!hotel) return s;
     for (const r of (form.pax.rooms || [])) {
-      const price = Number(hotel.prices_by_occupancy?.[r.ocupacion] || 0);
-      s += price * OCC_COUNT[r.ocupacion] * (r.count || 0);
+      s += priceFor(r.ocupacion) * OCC_COUNT[r.ocupacion] * (r.count || 0);
     }
-    s += Number(hotel.minor_price || 0) * (form.pax.menores || 0);
+    s += minorPrice * (form.pax.menores || 0);
     return s;
   })();
   const commission = Math.round(subtotal * commissionRate * 100) / 100;
