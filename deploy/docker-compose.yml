@@ -47,6 +47,8 @@ services:
       BAILEYS_URL: http://baileys:3001
       BAILEYS_SHARED_SECRET: ${BAILEYS_SHARED_SECRET}
       BACKUP_DIR: /backups
+      OAUTH_REDIRECT_BASE: ${OAUTH_REDIRECT_BASE}
+      APP_SETTINGS_URL: ${APP_SETTINGS_URL}
     volumes:
       - uploads_data:/app/uploads
       # Backups de MongoDB en SOLO LECTURA, para descargarlos desde el Panel Master

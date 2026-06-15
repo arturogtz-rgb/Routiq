@@ -85,6 +85,13 @@ def _integrations_view(company: dict) -> dict:
         "smtp_use_tls": bool(smtp.get("use_tls", True)),
         "smtp_from_email": smtp.get("from_email", ""),
         "smtp_from_name": smtp.get("from_name", ""),
+        # Gmail OAuth (per company)
+        "gmail_client_id": (company.get("gmail") or {}).get("client_id", ""),
+        "gmail_client_id_set": bool((company.get("gmail") or {}).get("client_id")),
+        "gmail_client_secret_set": bool((company.get("gmail") or {}).get("client_secret")),
+        "gmail_from_name": (company.get("gmail") or {}).get("from_name", ""),
+        "gmail_connected": bool((company.get("gmail") or {}).get("refresh_token")),
+        "gmail_email": (company.get("gmail") or {}).get("email", ""),
     }
 
 

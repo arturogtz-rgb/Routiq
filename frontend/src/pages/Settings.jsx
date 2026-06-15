@@ -19,10 +19,21 @@ export default function Settings() {
     const [{ data }, ig] = await Promise.all([api.get('/companies/me'), api.get('/companies/me/integrations')]);
     setCompany(data);
     setPricing(data.pricing_config);
-    setInteg({ ...ig.data, stripe_secret_key: '', resend_api_key: '', smtp_password: '' });
+    setInteg({ ...ig.data, stripe_secret_key: '', resend_api_key: '', smtp_password: '', gmail_client_secret: '' });
   };
 
   useEffect(() => { reload(); }, []);
+
+  // Handle return from Gmail OAuth (?gmail=connected|error|norefresh)
+  useEffect(() => {
+    const p = new URLSearchParams(window.location.search).get('gmail');
+    if (!p) return;
+    if (p === 'connected') setOk('Gmail conectado correctamente.');
+    else if (p === 'norefresh') setError('Google no devolvió token. Revoca el acceso en tu cuenta de Google y vuelve a conectar.');
+    else setError('No se pudo conectar Gmail. Verifica el Client ID/Secret y la Redirect URI.');
+    window.history.replaceState({}, '', window.location.pathname);
+    setTimeout(() => { setOk(''); setError(''); }, 6000);
+  }, []);
 
   const save = async () => {
     setError(''); setOk('');
@@ -41,9 +52,28 @@ export default function Settings() {
       if (!payload.stripe_secret_key) delete payload.stripe_secret_key;
       if (!payload.resend_api_key) delete payload.resend_api_key;
       if (!payload.smtp_password) delete payload.smtp_password;
+      if (!payload.gmail_client_secret) delete payload.gmail_client_secret;
       const { data } = await api.patch('/companies/me/integrations', payload);
-      setInteg({ ...data, stripe_secret_key: '', resend_api_key: '', smtp_password: '' });
+      setInteg({ ...data, stripe_secret_key: '', resend_api_key: '', smtp_password: '', gmail_client_secret: '' });
       setOk('Integraciones guardadas');
+      setTimeout(() => setOk(''), 2500);
+    } catch (e) { setError(formatApiError(e)); }
+  };
+
+  const connectGmail = async () => {
+    setError(''); setOk('');
+    try {
+      const { data } = await api.get('/oauth/gmail/authorize');
+      window.location.href = data.url;
+    } catch (e) { setError(formatApiError(e)); }
+  };
+
+  const disconnectGmail = async () => {
+    if (!window.confirm('¿Desconectar Gmail? Las cotizaciones dejarán de enviarse desde tu cuenta de Google.')) return;
+    try {
+      const { data } = await api.post('/oauth/gmail/disconnect');
+      setInteg({ ...data, stripe_secret_key: '', resend_api_key: '', smtp_password: '', gmail_client_secret: '' });
+      setOk('Gmail desconectado');
       setTimeout(() => setOk(''), 2500);
     } catch (e) { setError(formatApiError(e)); }
   };
@@ -270,11 +300,38 @@ export default function Settings() {
                   onChange={(e) => setInteg((s) => ({ ...s, email_provider: e.target.value }))} data-testid="email-provider-select">
                   <option value="resend">Resend (API)</option>
                   <option value="smtp">SMTP propio (correo corporativo)</option>
+                  <option value="gmail">Gmail (OAuth)</option>
                 </select>
                 <p className="text-xs text-ink-400 mt-1">Las cotizaciones y cobros se enviarán con el proveedor seleccionado.</p>
               </div>
 
-              {(integ.email_provider || 'resend') === 'resend' ? (
+              {(integ.email_provider || 'resend') === 'gmail' ? (
+                <div className="rounded-xl border border-ink-100 bg-cream/50 p-4 space-y-3" data-testid="gmail-section">
+                  <p className="text-xs text-ink-500">Registra un <b>OAuth Client (Web)</b> en Google Cloud y agrega esta Redirect URI:
+                    <code className="block mt-1 px-2 py-1 bg-white rounded border border-ink-100 text-[11px] break-all" data-testid="gmail-redirect-uri">{backend}/api/oauth/gmail/callback</code>
+                  </p>
+                  <div><label className="label-text">Client ID</label><input className="input-field" placeholder="xxxx.apps.googleusercontent.com" value={integ.gmail_client_id || ''} onChange={(e) => setInteg((s) => ({ ...s, gmail_client_id: e.target.value }))} data-testid="gmail-client-id-input" /></div>
+                  <div>
+                    <label className="label-text">Client Secret</label>
+                    <input type="password" className="input-field" placeholder={integ.gmail_client_secret_set ? 'Guardado ••••' : 'GOCSPX-...'}
+                      value={integ.gmail_client_secret || ''} onChange={(e) => setInteg((s) => ({ ...s, gmail_client_secret: e.target.value }))} data-testid="gmail-client-secret-input" />
+                    <p className="text-xs text-ink-400 mt-1">Guarda primero (botón abajo) y luego conecta con Google.</p>
+                  </div>
+                  <div><label className="label-text">Nombre remitente</label><input className="input-field" placeholder={company?.name || 'Tu empresa'} value={integ.gmail_from_name || ''} onChange={(e) => setInteg((s) => ({ ...s, gmail_from_name: e.target.value }))} data-testid="gmail-from-name-input" /></div>
+                  <div className="pt-2 border-t border-ink-100">
+                    {integ.gmail_connected ? (
+                      <div className="flex items-center justify-between gap-2" data-testid="gmail-connected">
+                        <p className="text-sm text-emerald-700 font-semibold">✓ Conectado: {integ.gmail_email}</p>
+                        <button type="button" className="btn-ghost text-xs text-red-600" onClick={disconnectGmail} data-testid="gmail-disconnect-btn"><Trash2 className="w-3.5 h-3.5" /> Desconectar</button>
+                      </div>
+                    ) : (
+                      <button type="button" className="btn-primary text-sm" onClick={connectGmail} disabled={!integ.gmail_client_id_set || !integ.gmail_client_secret_set} data-testid="gmail-connect-btn">
+                        <Mail className="w-4 h-4" /> Conectar con Google
+                      </button>
+                    )}
+                  </div>
+                </div>
+              ) : (integ.email_provider || 'resend') === 'resend' ? (
                 <>
                   <div>
                     <label className="label-text">API key de Resend</label>

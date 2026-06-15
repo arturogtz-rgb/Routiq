@@ -142,8 +142,8 @@ class CompanyIntegrationsUpdate(BaseModel):
     bank_swift: Optional[str] = None
     bank_aba: Optional[str] = None
     bank_address: Optional[str] = None
-    # Per-company outbound email (SMTP/IMAP). Gmail OAuth added later.
-    email_provider: Optional[Literal["resend", "smtp"]] = None
+    # Per-company outbound email (SMTP/IMAP o Gmail OAuth)
+    email_provider: Optional[Literal["resend", "smtp", "gmail"]] = None
     smtp_host: Optional[str] = None
     smtp_port: Optional[int] = None
     smtp_username: Optional[str] = None
@@ -151,6 +151,10 @@ class CompanyIntegrationsUpdate(BaseModel):
     smtp_use_tls: Optional[bool] = None
     smtp_from_email: Optional[str] = None
     smtp_from_name: Optional[str] = None
+    # Gmail OAuth (cada empresa registra su propio Client ID/Secret de Google)
+    gmail_client_id: Optional[str] = None
+    gmail_client_secret: Optional[str] = None
+    gmail_from_name: Optional[str] = None
 
 
 class SMTPTestInput(BaseModel):

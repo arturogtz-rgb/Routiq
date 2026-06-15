@@ -96,6 +96,8 @@ async def send_email(company: dict, to_email: str, subject: str, html: str) -> b
         return False
     html = _with_footer(company, html)
     provider = (company or {}).get("email_provider")
+    if provider == "gmail" and ((company or {}).get("gmail") or {}).get("refresh_token"):
+        return await _send_gmail(company, to_email, subject, html)
     if provider == "smtp" and ((company or {}).get("smtp") or {}).get("host"):
         return await _send_smtp(company, to_email, subject, html)
     # default: Resend
@@ -119,6 +121,48 @@ async def send_email(company: dict, to_email: str, subject: str, html: str) -> b
             return ok
     except Exception as e:
         log.warning("Resend send failed: %s", e)
+        return False
+
+
+async def _send_gmail(company: dict, to_email: str, subject: str, html: str) -> bool:
+    """Send via the company's Gmail account (OAuth2 refresh token). Best-effort."""
+    import base64
+    from email.message import EmailMessage as _EM
+    gmail = (company or {}).get("gmail") or {}
+    cid, secret, rtoken = gmail.get("client_id"), gmail.get("client_secret"), gmail.get("refresh_token")
+    from_email = gmail.get("email")
+    if not (cid and secret and rtoken and from_email):
+        log.info("gmail send skipped (incomplete config) -> %s", subject)
+        return False
+    try:
+        async with httpx.AsyncClient(timeout=15) as client:
+            tok = await client.post("https://oauth2.googleapis.com/token", data={
+                "client_id": cid, "client_secret": secret,
+                "refresh_token": rtoken, "grant_type": "refresh_token",
+            })
+            if tok.status_code != 200:
+                log.warning("gmail token refresh failed (%s): %s", tok.status_code, tok.text[:200])
+                return False
+            access_token = tok.json().get("access_token")
+            msg = _EM()
+            from_name = gmail.get("from_name") or company.get("name") or "Routiq"
+            msg["From"] = f"{from_name} <{from_email}>"
+            msg["To"] = to_email
+            msg["Subject"] = subject
+            msg.set_content("Tu cliente de correo no soporta HTML.")
+            msg.add_alternative(html, subtype="html")
+            raw = base64.urlsafe_b64encode(msg.as_bytes()).decode()
+            r = await client.post(
+                "https://gmail.googleapis.com/gmail/v1/users/me/messages/send",
+                headers={"Authorization": f"Bearer {access_token}"},
+                json={"raw": raw},
+            )
+            ok = r.status_code in (200, 202)
+            if not ok:
+                log.warning("gmail send rejected (%s): %s", r.status_code, r.text[:200])
+            return ok
+    except Exception as e:
+        log.warning("gmail send failed: %s", e)
         return False
 
 

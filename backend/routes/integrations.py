@@ -59,6 +59,13 @@ async def update_my_integrations(payload: CompanyIntegrationsUpdate, user: dict 
         updates["smtp.use_tls"] = bool(data["smtp_use_tls"])
     if "smtp_password" in data and data["smtp_password"] and not data["smtp_password"].startswith("••"):
         updates["smtp.password"] = data["smtp_password"]
+    # Gmail OAuth credentials (per company)
+    if "gmail_client_id" in data:
+        updates["gmail.client_id"] = data["gmail_client_id"] or ""
+    if "gmail_client_secret" in data and data["gmail_client_secret"] and not data["gmail_client_secret"].startswith("••"):
+        updates["gmail.client_secret"] = data["gmail_client_secret"]
+    if "gmail_from_name" in data:
+        updates["gmail.from_name"] = data["gmail_from_name"] or ""
     if "base_currency" in data and data["base_currency"]:
         updates["base_currency"] = data["base_currency"]
         # keep pricing currency in sync
