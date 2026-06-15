@@ -3,7 +3,7 @@ import { useSearchParams, useNavigate } from 'react-router-dom';
 import AppShell from '@/components/AppShell';
 import api, { formatApiError } from '@/lib/api';
 import { useAuth } from '@/context/AuthContext';
-import { MessageCircle, Sparkles, Smartphone, Send, Search, Plus, QrCode, Power, X, RefreshCw, Phone, FileText } from 'lucide-react';
+import { MessageCircle, Sparkles, Smartphone, Send, Search, Plus, QrCode, Power, X, RefreshCw, Phone, FileText, Trash2 } from 'lucide-react';
 
 export default function WhatsAppInbox() {
   const { user } = useAuth();
@@ -116,6 +116,16 @@ export default function WhatsAppInbox() {
     catch (e) { setError(formatApiError(e)); }
   };
 
+  const removeNumber = async (numId) => {
+    if (!window.confirm('¿Eliminar este número de WhatsApp? Se cerrará su sesión y se borrará de la lista. Esta acción no se puede deshacer.')) return;
+    setError('');
+    try {
+      await api.delete(`/whatsapp/numbers/${numId}`);
+      if (activeNumber === numId) { setActiveNumber(null); setChats([]); setActiveChat(null); setMessages([]); }
+      await loadNumbers();
+    } catch (e) { setError(formatApiError(e)); }
+  };
+
   const addNumber = async () => {
     try {
       const { data } = await api.post('/whatsapp/numbers', addForm);
@@ -138,12 +148,12 @@ export default function WhatsAppInbox() {
   };
 
   const generateSummary = async () => {
-    setAiLoading(true);
+    setAiLoading(true); setError('');
     try {
       const mapped = messages.map((m) => ({ me: m.from_me, body: m.text }));
       const { data } = await api.post('/ai/chat-summary', { messages: mapped });
       setAiSummary(data.summary);
-    } catch { setAiSummary('No se pudo generar el resumen.'); }
+    } catch (e) { setAiSummary(`No se pudo generar el resumen: ${formatApiError(e)}`); }
     finally { setAiLoading(false); }
   };
 
@@ -180,6 +190,9 @@ export default function WhatsAppInbox() {
             {isAdmin && (n.status === 'connected'
               ? <button onClick={(e) => { e.stopPropagation(); logout(n.id); }} className="text-ink-400 hover:text-red-600" title="Desconectar" data-testid={`wa-logout-${n.id}`}><Power className="w-4 h-4" /></button>
               : <button onClick={(e) => { e.stopPropagation(); startConnect(n.id); }} className="text-ink-400 hover:text-brand-500" title="Conectar (QR)" data-testid={`wa-connect-${n.id}`}><QrCode className="w-4 h-4" /></button>
+            )}
+            {isAdmin && (
+              <button onClick={(e) => { e.stopPropagation(); removeNumber(n.id); }} className="text-ink-400 hover:text-red-600" title="Eliminar número" data-testid={`wa-delete-${n.id}`}><Trash2 className="w-4 h-4" /></button>
             )}
           </div>
         ))}

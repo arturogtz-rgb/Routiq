@@ -46,6 +46,10 @@ export default function Settings() {
 
   const saveInteg = async () => {
     setError(''); setOk('');
+    if (integ.notify_email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(integ.notify_email.trim())) {
+      setError('El "Correo de avisos" debe ser una dirección de correo completa, ej: reservas@aventurateporjalisco.com');
+      return;
+    }
     try {
       const payload = { ...integ };
       // don't send masked placeholders or empty secrets

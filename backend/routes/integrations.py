@@ -1,5 +1,9 @@
 """Integrations routes: Stripe / Resend / bank transfer config + exchange rate."""
+import re
+
 from fastapi import APIRouter, Depends, HTTPException
+
+EMAIL_RE = re.compile(r"^[^\s@]+@[^\s@]+\.[^\s@]+$")
 
 from database import get_db
 from auth import require_roles
@@ -73,7 +77,10 @@ async def update_my_integrations(payload: CompanyIntegrationsUpdate, user: dict 
     if "deposit_percent" in data and data["deposit_percent"]:
         updates["deposit_percent"] = float(data["deposit_percent"])
     if "notify_email" in data:
-        updates["notify_email"] = data["notify_email"] or ""
+        val = (data["notify_email"] or "").strip()
+        if val and not EMAIL_RE.match(val):
+            raise HTTPException(status_code=400, detail="El correo de avisos debe ser una dirección válida (ej: reservas@tudominio.com)")
+        updates["notify_email"] = val
     _BANK_FIELDS = {
         "bank_name": "bank.name", "bank_holder": "bank.holder", "bank_clabe": "bank.clabe",
         "bank_account": "bank.account", "bank_usd_account": "bank.usd_account",
