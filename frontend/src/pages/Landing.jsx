@@ -19,17 +19,39 @@ const FALLBACK = {
   features_subtitle: 'Fareharbor y Bokun resuelven la post-venta. Routiq cubre el hueco: desde el primer mensaje hasta el cierre.',
   final_cta_title: 'Digitaliza tu cotización hoy.',
   final_cta_subtitle: 'Reserva una demo de 20 min o entra directo con tus credenciales de prueba.',
+  sections: [
+    { key: 'features', label: 'Características', visible: true },
+    { key: 'how', label: 'Cómo funciona', visible: true },
+    { key: 'pricing', label: 'Planes / Precios', visible: true },
+    { key: 'final_cta', label: 'Llamado final (CTA)', visible: true },
+  ],
+  pricing_pill: 'Planes',
+  pricing_title: 'Precios simples que crecen con tu operación.',
+  pricing_subtitle: 'MXN al mes por empresa. Sin costo por mensaje. Sin costo por usuario extra hasta el límite del plan.',
+  pricing_tiers: [
+    { name: 'Starter', price: '$890', period: '/mes', highlight: false, cta: 'Comenzar', perks: ['1 número WhatsApp', 'Hasta 3 ejecutivos', 'Cotizaciones ilimitadas', 'PDF con branding'] },
+    { name: 'Pro', price: '$1,890', period: '/mes', highlight: true, cta: 'Comenzar', perks: ['Hasta 5 números', 'Hasta 15 ejecutivos', 'IA operativa', 'Kanban + alertas', 'Motor de precios avanzado'] },
+    { name: 'Enterprise', price: 'A medida', period: '/mes', highlight: false, cta: 'Comenzar', perks: ['Números ilimitados', 'Meta API oficial', 'SLA dedicado', 'Onboarding + capacitación'] },
+  ],
 };
 
-function NavBar() {
+// Nav links tied to a section key so they hide when the section is hidden.
+const NAV_LINKS = [
+  { key: 'features', href: '#features', label: 'Producto' },
+  { key: 'how', href: '#how', label: 'Cómo funciona' },
+  { key: 'pricing', href: '#pricing', label: 'Planes' },
+];
+
+function NavBar({ sections }) {
+  const visible = (key) => (sections || []).some((s) => s.key === key && s.visible);
   return (
     <header className="sticky top-0 z-40 backdrop-blur-xl bg-white/80 border-b border-ink-100/60">
       <div className="max-w-7xl mx-auto px-4 md:px-8 h-16 flex items-center justify-between">
         <Logo size={28} />
         <nav className="hidden md:flex items-center gap-7 text-sm font-medium text-ink-700">
-          <a href="#features" className="hover:text-brand-500 transition-colors">Producto</a>
-          <a href="#how" className="hover:text-brand-500 transition-colors">Cómo funciona</a>
-          <a href="#pricing" className="hover:text-brand-500 transition-colors">Planes</a>
+          {NAV_LINKS.filter((l) => visible(l.key)).map((l) => (
+            <a key={l.key} href={l.href} className="hover:text-brand-500 transition-colors">{l.label}</a>
+          ))}
         </nav>
         <div className="flex items-center gap-3">
           <Link to="/login" className="btn-ghost text-sm" data-testid="nav-login-link">Entrar</Link>
@@ -176,33 +198,29 @@ function HowItWorks({ c }) {
   );
 }
 
-function Pricing() {
-  const tiers = [
-    { name: 'Starter', price: '$890', perks: ['1 número WhatsApp', 'Hasta 3 ejecutivos', 'Cotizaciones ilimitadas', 'PDF con branding'] },
-    { name: 'Pro', price: '$1,890', highlight: true, perks: ['Hasta 5 números', 'Hasta 15 ejecutivos', 'IA operativa', 'Kanban + alertas', 'Motor de precios avanzado'] },
-    { name: 'Enterprise', price: 'A medida', perks: ['Números ilimitados', 'Meta API oficial', 'SLA dedicado', 'Onboarding + capacitación'] },
-  ];
+function Pricing({ c }) {
+  const tiers = (Array.isArray(c.pricing_tiers) && c.pricing_tiers.length) ? c.pricing_tiers : FALLBACK.pricing_tiers;
   return (
     <section id="pricing" className="py-20 md:py-28">
       <div className="max-w-7xl mx-auto px-4 md:px-8">
         <div className="text-center max-w-2xl mx-auto">
-          <p className="pill bg-peach-100 text-amber-800">Planes</p>
-          <h2 className="font-display text-3xl md:text-5xl font-semibold text-ink-900 mt-4 tracking-tight">Precios simples que crecen con tu operación.</h2>
-          <p className="text-ink-500 mt-4">MXN al mes por empresa. Sin costo por mensaje. Sin costo por usuario extra hasta el límite del plan.</p>
+          <p className="pill bg-peach-100 text-amber-800">{c.pricing_pill}</p>
+          <h2 className="font-display text-3xl md:text-5xl font-semibold text-ink-900 mt-4 tracking-tight" data-testid="landing-pricing-title">{c.pricing_title}</h2>
+          <p className="text-ink-500 mt-4">{c.pricing_subtitle}</p>
         </div>
         <div className="grid md:grid-cols-3 gap-5 mt-10">
-          {tiers.map((t) => (
-            <div key={t.name}
+          {tiers.map((t, ti) => (
+            <div key={t.name + ti}
               className={`rounded-2xl p-7 transition-all ${t.highlight ? 'bg-brand-500 text-white shadow-xl scale-[1.02]' : 'bg-white border border-ink-100'}`}
-              data-testid={`pricing-tier-${t.name.toLowerCase()}`}>
+              data-testid={`pricing-tier-${ti}`}>
               <p className={`text-xs uppercase font-bold tracking-widest ${t.highlight ? 'text-brand-50' : 'text-ink-400'}`}>{t.name}</p>
-              <p className={`font-display text-4xl font-bold mt-2 ${t.highlight ? 'text-white' : 'text-ink-900'}`}>{t.price}<span className="text-base font-normal opacity-70"> /mes</span></p>
+              <p className={`font-display text-4xl font-bold mt-2 ${t.highlight ? 'text-white' : 'text-ink-900'}`}>{t.price}<span className="text-base font-normal opacity-70"> {t.period || '/mes'}</span></p>
               <ul className={`mt-5 space-y-2 text-sm ${t.highlight ? 'text-white/90' : 'text-ink-700'}`}>
-                {t.perks.map((p) => (
-                  <li key={p} className="flex items-start gap-2"><Check className={`w-4 h-4 mt-0.5 ${t.highlight ? 'text-mint-100' : 'text-brand-500'}`} />{p}</li>
+                {(t.perks || []).filter((p) => p && p.trim() !== '').map((p, pi) => (
+                  <li key={p + pi} className="flex items-start gap-2"><Check className={`w-4 h-4 mt-0.5 ${t.highlight ? 'text-mint-100' : 'text-brand-500'}`} />{p}</li>
                 ))}
               </ul>
-              <Link to="/login" className={`mt-6 w-full justify-center ${t.highlight ? 'btn-secondary' : 'btn-primary'}`} data-testid={`pricing-cta-${t.name.toLowerCase()}`}>Comenzar</Link>
+              <Link to="/login" className={`mt-6 w-full justify-center ${t.highlight ? 'btn-secondary' : 'btn-primary'}`} data-testid={`pricing-cta-${ti}`}>{t.cta || 'Comenzar'}</Link>
             </div>
           ))}
         </div>
@@ -238,17 +256,25 @@ function Footer() {
   );
 }
 
+const SECTION_COMPONENTS = {
+  features: Features,
+  how: HowItWorks,
+  pricing: Pricing,
+  final_cta: FinalCta,
+};
+
 export default function Landing() {
   const content = useSiteContent();
   const c = { ...FALLBACK, ...(content?.landing || {}) };
+  const sections = (Array.isArray(c.sections) && c.sections.length) ? c.sections : FALLBACK.sections;
   return (
     <div className="min-h-screen bg-cream" data-testid="landing-page">
-      <NavBar />
+      <NavBar sections={sections} />
       <Hero c={c} />
-      <Features c={c} />
-      <HowItWorks c={c} />
-      <Pricing />
-      <FinalCta c={c} />
+      {sections.filter((s) => s.visible).map((s) => {
+        const Comp = SECTION_COMPONENTS[s.key];
+        return Comp ? <Comp key={s.key} c={c} /> : null;
+      })}
       <Footer />
     </div>
   );

@@ -1,0 +1,41 @@
+{
+  "summary": "Iteration 9 — Advanced Master Site Editor. Backend 9/9 PASS for the new draft/publish cycle on landing.sections + pricing_* (auth gates work, PATCH reorders sections, hides pricing, edits title+tiers; POST /publish propagates to GET /site-settings/public). Frontend MasterSite UI 11/11 PASS for all required testids: tab-sections, sections-list, 4 rows (features/how/pricing/final_cta), section-up/down-<key> reorder (features moved below how), section-toggle-pricing → label 'Ocultar/Oculta', pricing editor (pr-title, tier-name-0, tier-price-0, tier-perks-0), add-tier-btn grows the tier list, tier-remove-<idx> shrinks it, publish-btn shows site-ok '¡Publicado!'. Direct API curl confirms /api/site-settings/public reflects every published change. NOTE: in two separate UI runs the anonymous public landing visit after publish intermittently rendered the FALLBACK defaults from Landing.jsx (line 268) — the second curl right after the same publish shows correct data, so the backend is right and the symptom is a transient client-side issue (most likely PWA + landing falling back to defaults when the public fetch is racey or fails the first time). After deleting SW caches + unregistering the SW the public landing rendered the published state correctly (pricing hidden, how before features). Defaults fully restored at end of run.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [
+      {
+        "flow": "Public landing reflection after publish (anonymous visitor)",
+        "issue": "Intermittently the public landing at '/' (logged out) renders FALLBACK defaults instead of the freshly published state even though GET /api/site-settings/public (verified via curl from the same host at the same moment) returns the new data. Repro in 1 of 2 UI passes: publish a hidden+reordered pricing state via the editor → clear cookies → goto / → see DEFAULT order [features, how, pricing, final_cta] + DEFAULT 'Precios simples...' title + Starter/Pro/Enterprise tiers. Likely cause: useSiteContent (`/app/frontend/src/lib/useSiteContent.js`) catches a single failed/aborted fetch and leaves `content = null`, after which Landing.jsx line 268 `const c = { ...FALLBACK, ...(content?.landing || {}) }` silently shows DEFAULTS with no error UI; the page never re-tries. Combined with a service-worker that precaches the JS bundle (`/app/frontend/public/service-worker.js`), the user sees a stale-looking landing. Suggested fix: (a) in useSiteContent retry with a short backoff or expose an `error` flag so the UI can show a 'Reintentar' button instead of silently rendering defaults; (b) consider adding a cache-busting query param in the fetch (e.g. `?v=${published_at}`) once the backend exposes a publish timestamp.",
+        "affected_selectors": ["landing-pricing-title", "section ids on /"]
+      }
+    ],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_iteration9_site_editor.py",
+    "/app/test_reports/pytest/iter9_results.xml"
+  ],
+  "action_items": [
+    "Harden useSiteContent: retry the /api/site-settings/public fetch once on failure and surface an explicit error state so Landing.jsx doesn't silently render FALLBACK defaults when the API is momentarily unreachable. This is the only repro path for the 'changes didn't reflect' UX bug observed in this iteration.",
+    "(Nice) Add a `published_at` timestamp to the publish response and `/site-settings/public` so the frontend can cache-bust the public fetch and detect stale renders.",
+    "(Nice) data-testid for the section labels (e.g. landing-how-title) — would simplify regression coverage of the dynamic section ordering."
+  ],
+  "critical_code_review_comments": [
+    "useSiteContent.js: silent fallback to defaults on fetch failure (catch → setContent(null) → Landing.jsx spreads FALLBACK) is the single biggest correctness risk in this feature. A super_admin will publish, anonymously refresh, see no change, assume the publish failed, and re-publish — masking the bug. Add an `error` state or a retry.",
+    "MasterSite.jsx persistLanding/persistLogin (lines 105-106) PATCH the FULL landing/login object on every keystroke-driven helper; combined with the existing 'Guardar borrador' button it duplicates writes. Recommend either keeping local state only and PATCHing once on 'Guardar borrador'/'Publicar', or remove the explicit save button.",
+    "Landing.jsx line 268 — `{ ...FALLBACK, ...(content?.landing || {}) }` cascades FALLBACK into every field. If a super_admin intentionally clears pricing_title to '', FALLBACK wins and the default title reappears. Consider `content?.landing ?? FALLBACK` so an empty published value is honored when present.",
+    "site_content.py merged_with_defaults discards keys where value is None but KEEPS empty string/list/object as the override — minor inconsistency worth documenting in the docstring.",
+    "server.py PATCH /api/site-settings does a shallow per-section update with `.update`. For nested keys like `pricing_tiers` this is fine because the frontend always sends the full array; but if a partial update ever sends a single tier, it would replace the whole array. Add a comment or validate."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_iteration9_site_editor.py (new — 9 tests, all PASS)"
+  ],
+  "success_rate": {"backend": "100% (9/9)", "frontend": "92% — every editor testid works end-to-end + 1 successful public-reflection run; 1 intermittent public-reflection failure traced to client-side FALLBACK in Landing.jsx"},
+  "test_credentials": "owner@routiq.mx / Routiq2026! (super_admin) — matches /app/memory/test_credentials.md",
+  "seed_data_creation": "None left behind — defaults (sections [features,how,pricing,final_cta] all visible; pricing_title 'Precios simples que crecen con tu operación.'; tiers Starter/Pro/Enterprise) were re-PATCHed + re-published at the end of the run; verified via curl.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Editor backend + UI are solid. To re-exercise the public reflection bug: (1) log in as super, /master/site, sections tab, hide pricing + reorder, publish. (2) Open INCOGNITO `/` (no cookies, no cached SW). (3) If you see FALLBACK defaults instead of published state, repro confirmed. The fix is in useSiteContent.js — add retry / error state instead of silent setContent(null). Backend test file: /app/backend/tests/test_iteration9_site_editor.py — has a clean teardown that restores defaults, safe to re-run.",
+  "rca_of_the_issue": "Public landing intermittently shows defaults after publish: useSiteContent.js does `api.get('/site-settings/public')`; on failure it tries once more inside catch, on second failure `setContent(null)`. Landing.jsx then does `c = { ...FALLBACK, ...(null?.landing || {}) }` which yields the FALLBACK object. The PWA service-worker.js correctly skips /api (line 19: `if (url.pathname.startsWith('/api/')) return;`) so it's not an API cache; the trigger is most likely a request being aborted during the immediate navigation right after cookie clearing. Mitigation: real retry with backoff or surface error so Landing.jsx doesn't silently mask a fetch failure with defaults."
+}

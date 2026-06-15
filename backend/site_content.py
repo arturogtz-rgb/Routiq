@@ -23,6 +23,32 @@ DEFAULT_SITE = {
         "features_subtitle": "Fareharbor y Bokun resuelven la post-venta. Routiq cubre el hueco: desde el primer mensaje hasta el cierre.",
         "final_cta_title": "Digitaliza tu cotización hoy.",
         "final_cta_subtitle": "Reserva una demo de 20 min o entra directo con tus credenciales de prueba.",
+        # Order + visibility of the optional landing sections. The Hero (top) and
+        # Footer (bottom) are fixed; everything in between is reorderable/hideable.
+        "sections": [
+            {"key": "features", "label": "Características", "visible": True},
+            {"key": "how", "label": "Cómo funciona", "visible": True},
+            {"key": "pricing", "label": "Planes / Precios", "visible": True},
+            {"key": "final_cta", "label": "Llamado final (CTA)", "visible": True},
+        ],
+        # Editable Pricing / Planes section.
+        "pricing_pill": "Planes",
+        "pricing_title": "Precios simples que crecen con tu operación.",
+        "pricing_subtitle": "MXN al mes por empresa. Sin costo por mensaje. Sin costo por usuario extra hasta el límite del plan.",
+        "pricing_tiers": [
+            {
+                "name": "Starter", "price": "$890", "period": "/mes", "highlight": False, "cta": "Comenzar",
+                "perks": ["1 número WhatsApp", "Hasta 3 ejecutivos", "Cotizaciones ilimitadas", "PDF con branding"],
+            },
+            {
+                "name": "Pro", "price": "$1,890", "period": "/mes", "highlight": True, "cta": "Comenzar",
+                "perks": ["Hasta 5 números", "Hasta 15 ejecutivos", "IA operativa", "Kanban + alertas", "Motor de precios avanzado"],
+            },
+            {
+                "name": "Enterprise", "price": "A medida", "period": "/mes", "highlight": False, "cta": "Comenzar",
+                "perks": ["Números ilimitados", "Meta API oficial", "SLA dedicado", "Onboarding + capacitación"],
+            },
+        ],
     },
     "login": {
         "logo_url": "",

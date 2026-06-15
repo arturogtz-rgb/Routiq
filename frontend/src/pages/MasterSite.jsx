@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import AppShell from '@/components/AppShell';
 import api, { formatApiError } from '@/lib/api';
-import { Save, UploadCloud, Eye, Rocket, RotateCcw, Globe, LogIn, Image as ImageIcon, Loader2, CheckCircle2 } from 'lucide-react';
+import { Save, UploadCloud, Eye, EyeOff, Rocket, RotateCcw, Globe, LogIn, Layers, Image as ImageIcon, Loader2, CheckCircle2, ChevronUp, ChevronDown, Plus, Trash2 } from 'lucide-react';
 
 const backend = process.env.REACT_APP_BACKEND_URL || '';
 
@@ -73,6 +73,33 @@ export default function MasterSite() {
   const setL = (k, v) => setLanding((s) => ({ ...s, [k]: v }));
   const setLg = (k, v) => setLogin((s) => ({ ...s, [k]: v }));
 
+  // --- Section ordering / visibility ---
+  const moveSection = (idx, dir) => setLanding((s) => {
+    const arr = [...(s.sections || [])];
+    const j = idx + dir;
+    if (j < 0 || j >= arr.length) return s;
+    [arr[idx], arr[j]] = [arr[j], arr[idx]];
+    return { ...s, sections: arr };
+  });
+  const toggleSection = (idx) => setLanding((s) => ({
+    ...s,
+    sections: (s.sections || []).map((x, i) => (i === idx ? { ...x, visible: !x.visible } : x)),
+  }));
+
+  // --- Pricing tiers ---
+  const setTier = (idx, key, val) => setLanding((s) => ({
+    ...s,
+    pricing_tiers: (s.pricing_tiers || []).map((t, i) => (i === idx ? { ...t, [key]: val } : t)),
+  }));
+  const addTier = () => setLanding((s) => ({
+    ...s,
+    pricing_tiers: [...(s.pricing_tiers || []), { name: 'Nuevo plan', price: '$0', period: '/mes', highlight: false, cta: 'Comenzar', perks: [] }],
+  }));
+  const removeTier = (idx) => setLanding((s) => ({
+    ...s,
+    pricing_tiers: (s.pricing_tiers || []).filter((_, i) => i !== idx),
+  }));
+
   // Persist a single section immediately to the draft (used after image uploads
   // so a freshly uploaded image is never lost on navigation).
   const persistLanding = async (patch) => { await api.patch('/site-settings', { landing: { ...landing, ...patch } }); };
@@ -133,6 +160,7 @@ export default function MasterSite() {
 
       <div className="flex gap-2 mb-6">
         <button onClick={() => setTab('landing')} className={`pill ${tab === 'landing' ? 'bg-brand-500 text-white' : 'bg-white border border-ink-100 text-ink-700'}`} data-testid="tab-landing"><Globe className="w-3.5 h-3.5" /> Landing</button>
+        <button onClick={() => setTab('sections')} className={`pill ${tab === 'sections' ? 'bg-brand-500 text-white' : 'bg-white border border-ink-100 text-ink-700'}`} data-testid="tab-sections"><Layers className="w-3.5 h-3.5" /> Secciones y precios</button>
         <button onClick={() => setTab('login')} className={`pill ${tab === 'login' ? 'bg-brand-500 text-white' : 'bg-white border border-ink-100 text-ink-700'}`} data-testid="tab-login"><LogIn className="w-3.5 h-3.5" /> Login</button>
       </div>
 
@@ -159,6 +187,68 @@ export default function MasterSite() {
             <Field label="Título CTA final" value={landing.final_cta_title} onChange={(v) => setL('final_cta_title', v)} testid="ld-finalcta-title" />
             <Field label="Subtítulo CTA final" value={landing.final_cta_subtitle} onChange={(v) => setL('final_cta_subtitle', v)} rows={2} testid="ld-finalcta-subtitle" />
             <button className="btn-secondary text-sm w-full" onClick={() => preview('/')} data-testid="preview-landing-btn"><Eye className="w-4 h-4" /> Vista previa de la landing</button>
+          </div>
+        </div>
+      )}
+
+      {tab === 'sections' && (
+        <div className="grid lg:grid-cols-2 gap-6">
+          <div className="card-surface p-6 space-y-4">
+            <div>
+              <h3 className="font-display font-semibold text-ink-900">Orden y visibilidad de secciones</h3>
+              <p className="text-ink-500 text-sm mt-1">Reordena con las flechas y muestra/oculta secciones de la landing. El Hero (arriba) y el pie de página son fijos.</p>
+            </div>
+            <div className="space-y-2" data-testid="sections-list">
+              {(landing.sections || []).map((sec, idx) => (
+                <div key={sec.key} className={`flex items-center gap-3 rounded-xl border p-3 ${sec.visible ? 'border-ink-100 bg-white' : 'border-dashed border-ink-200 bg-ink-50 opacity-70'}`} data-testid={`section-row-${sec.key}`}>
+                  <div className="flex flex-col">
+                    <button type="button" className="text-ink-400 hover:text-brand-500 disabled:opacity-30" onClick={() => moveSection(idx, -1)} disabled={idx === 0} data-testid={`section-up-${sec.key}`}><ChevronUp className="w-4 h-4" /></button>
+                    <button type="button" className="text-ink-400 hover:text-brand-500 disabled:opacity-30" onClick={() => moveSection(idx, 1)} disabled={idx === (landing.sections.length - 1)} data-testid={`section-down-${sec.key}`}><ChevronDown className="w-4 h-4" /></button>
+                  </div>
+                  <div className="flex-1">
+                    <p className="font-medium text-ink-900 text-sm">{sec.label}</p>
+                    <p className="text-xs text-ink-400">{sec.visible ? 'Visible' : 'Oculta'}</p>
+                  </div>
+                  <button type="button" className={`pill text-xs ${sec.visible ? 'bg-mint-100 text-emerald-800' : 'bg-ink-100 text-ink-500'}`} onClick={() => toggleSection(idx)} data-testid={`section-toggle-${sec.key}`}>
+                    {sec.visible ? <><Eye className="w-3.5 h-3.5" /> Mostrar</> : <><EyeOff className="w-3.5 h-3.5" /> Ocultar</>}
+                  </button>
+                </div>
+              ))}
+            </div>
+            <button className="btn-secondary text-sm w-full" onClick={() => preview('/')} data-testid="preview-sections-btn"><Eye className="w-4 h-4" /> Vista previa de la landing</button>
+          </div>
+
+          <div className="card-surface p-6 space-y-4">
+            <h3 className="font-display font-semibold text-ink-900">Sección de Precios / Planes</h3>
+            <Field label="Etiqueta (pill)" value={landing.pricing_pill} onChange={(v) => setL('pricing_pill', v)} testid="pr-pill" />
+            <Field label="Título" value={landing.pricing_title} onChange={(v) => setL('pricing_title', v)} testid="pr-title" />
+            <Field label="Subtítulo" value={landing.pricing_subtitle} onChange={(v) => setL('pricing_subtitle', v)} rows={2} testid="pr-subtitle" />
+
+            <div className="border-t border-ink-100 pt-3 space-y-4">
+              {(landing.pricing_tiers || []).map((t, idx) => (
+                <div key={idx} className="rounded-xl border border-ink-100 p-4 space-y-3 bg-ink-50/40" data-testid={`tier-card-${idx}`}>
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-bold uppercase tracking-wider text-ink-400">Plan {idx + 1}</span>
+                    <button type="button" className="text-red-600 hover:text-red-700" onClick={() => removeTier(idx)} data-testid={`tier-remove-${idx}`}><Trash2 className="w-4 h-4" /></button>
+                  </div>
+                  <div className="grid grid-cols-2 gap-3">
+                    <Field label="Nombre" value={t.name} onChange={(v) => setTier(idx, 'name', v)} testid={`tier-name-${idx}`} />
+                    <Field label="Precio" value={t.price} onChange={(v) => setTier(idx, 'price', v)} testid={`tier-price-${idx}`} />
+                    <Field label="Periodo" value={t.period} onChange={(v) => setTier(idx, 'period', v)} placeholder="/mes" testid={`tier-period-${idx}`} />
+                    <Field label="Texto del botón" value={t.cta} onChange={(v) => setTier(idx, 'cta', v)} testid={`tier-cta-${idx}`} />
+                  </div>
+                  <div>
+                    <label className="label-text">Beneficios (uno por línea)</label>
+                    <textarea rows={4} className="input-field" value={(t.perks || []).join('\n')} onChange={(e) => setTier(idx, 'perks', e.target.value.split('\n'))} data-testid={`tier-perks-${idx}`} />
+                  </div>
+                  <label className="flex items-center gap-2 text-sm text-ink-700 cursor-pointer">
+                    <input type="checkbox" checked={!!t.highlight} onChange={(e) => setTier(idx, 'highlight', e.target.checked)} data-testid={`tier-highlight-${idx}`} />
+                    Destacar este plan (resaltado)
+                  </label>
+                </div>
+              ))}
+              <button className="btn-secondary text-sm w-full" onClick={addTier} data-testid="add-tier-btn"><Plus className="w-4 h-4" /> Agregar plan</button>
+            </div>
           </div>
         </div>
       )}
