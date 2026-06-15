@@ -1,10 +1,17 @@
-FROM node:20-alpine
+FROM node:20-slim
+
+# git + toolchain de compilación: algunas dependencias de Baileys ejecutan
+# scripts que requieren git, y los módulos nativos (node-gyp) necesitan
+# python3/make/g++ durante el `yarn install`.
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends git python3 make g++ ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /usr/src/app
 
 # Install dependencies first (better layer caching)
-COPY package.json yarn.lock* ./
-RUN yarn install --production --frozen-lockfile || yarn install --production
+COPY package.json yarn.lock ./
+RUN yarn install --production --frozen-lockfile
 
 COPY server.js ./
 
