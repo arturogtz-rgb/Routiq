@@ -112,10 +112,15 @@ export default function Packages() {
             <div className="mt-5 pt-4 border-t border-ink-100 flex items-center justify-between">
               <div>
                 <p className="text-xs text-ink-400">Desde</p>
-                <p className="font-display text-xl font-bold text-brand-500">
-                  ${Math.min(...((p.hotels || []).flatMap((h) => Object.values(h.prices_by_occupancy || {})).filter((n) => n > 0).concat([Infinity]))).toLocaleString('es-MX')}
-                  <span className="text-xs text-ink-400"> MXN/pax</span>
-                </p>
+                {(() => {
+                  const min = Math.min(...((p.hotels || []).flatMap((h) => Object.values(h.prices_by_occupancy || {})).filter((n) => n > 0).concat([Infinity])));
+                  return (
+                    <p className="font-display text-xl font-bold text-brand-500">
+                      {isFinite(min) ? `$${min.toLocaleString('es-MX')}` : '—'}
+                      <span className="text-xs text-ink-400"> MXN/pax</span>
+                    </p>
+                  );
+                })()}
               </div>
               <div className="flex items-center gap-1">
                 {isAdmin && (
