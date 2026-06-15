@@ -44,8 +44,9 @@ Plataforma SaaS PWA multi-tenant para **cotización y seguimiento turístico** p
 ### P1 — backlog priorizado
 - [x] **Backup MongoDB cron + descarga desde Master** ✅ (jun-2026): script `deploy/scripts/06-backup-mongo.sh` (mongodump gzip diario, retención 7 días en volumen `mongo_backups` y en host `/var/backups/routiq`). El volumen se monta **read-only** en el backend (`/backups`) y el Super Admin descarga el último respaldo sin SSH desde `/master/companies` (`GET /api/backups`, `GET /api/backups/latest/download`, con guardas anti path-traversal y rol super_admin). Cron a activar por el usuario: `0 3 * * * /opt/routiq/deploy/scripts/06-backup-mongo.sh >> /var/log/routiq-backup.log 2>&1`.
 - [x] **Deploy de Baileys integrado** ✅ (jun-2026): servicio `baileys` añadido a `deploy/docker-compose.yml` (red `routiq_net`, volumen `baileys_auth`, sin puertos públicos, `WEBHOOK_URL=http://backend:8000`); backend recibe `BAILEYS_URL`, `BAILEYS_SHARED_SECRET`, `TURNSTILE_SECRET_KEY`, `PUBLIC_LOGIN_URL`; `05-update.sh` recrea `backend baileys`; `.env.example` documentado.
-- [ ] **Carga masiva de catálogo vía Excel** (P1 #4): template descargable (paquetes/tours/traslados) + import.
-- [ ] **Limpiar clave secreta de Stripe (centinela)** (P1 #5) desde Ajustes.
+- [x] **Carga masiva de catálogo vía Excel** ✅ (jun-2026, iter_17): plantilla descargable (`GET /api/catalog/template`, hojas Paquetes/Tours/Traslados + Instrucciones) e importación (`POST /api/catalog/import`) con validación **fila por fila** y reporte de importados vs fallidos (hoja·fila·mensaje). UI en `/app/packages` (botones Plantilla Excel / Importar Excel + modal de reporte). Admin-only. `openpyxl` en requirements.
+- [x] **Limpiar/reemplazar clave secreta de Stripe** ✅ (jun-2026, iter_17): `DELETE /api/companies/me/integrations/stripe-secret` (borra clave + desactiva Stripe) con botón "Borrar clave guardada" en Ajustes→Pagos. Reemplazar = escribir nueva clave y guardar. Sin SSH, admin-only.
+- [ ] **Aviso por correo si el backup diario falla / no se generó en >24h** (backlog): pendiente de tener correo de plataforma configurado.
 
 ### P2 — futuro
 - Gmail OAuth **por empresa** (Client ID/Secret en Ajustes→Correo, flujo OAuth por tenant).
