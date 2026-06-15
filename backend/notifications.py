@@ -9,19 +9,67 @@ import logging
 import os
 
 import httpx
+import aiosmtplib
+from email.message import EmailMessage
 
 log = logging.getLogger("routiq.notifications")
 
+ROUTIQ_FOOTER = (
+    "<hr style='margin-top:28px;border:none;border-top:1px solid #e2e8f0'/>"
+    "<p style='color:#94a3b8;font-size:11px'>Enviado con <b>Routiq</b> · routiq.com.mx</p>"
+)
+
+
+def _with_footer(company: dict, html: str) -> str:
+    if (company or {}).get("white_label"):
+        return html
+    return html + ROUTIQ_FOOTER
+
+
+async def _send_smtp(company: dict, to_email: str, subject: str, html: str) -> bool:
+    smtp = (company or {}).get("smtp") or {}
+    host = smtp.get("host")
+    if not host:
+        return False
+    msg = EmailMessage()
+    from_email = smtp.get("from_email") or smtp.get("username")
+    from_name = smtp.get("from_name") or company.get("name") or "Routiq"
+    msg["From"] = f"{from_name} <{from_email}>"
+    msg["To"] = to_email
+    msg["Subject"] = subject
+    msg.set_content("Este correo requiere un cliente con soporte HTML.")
+    msg.add_alternative(html, subtype="html")
+    port = int(smtp.get("port", 587) or 587)
+    use_tls = bool(smtp.get("use_tls", True))
+    try:
+        # 465 -> implicit TLS; 587/others -> STARTTLS
+        if port == 465:
+            await aiosmtplib.send(msg, hostname=host, port=port, username=smtp.get("username"),
+                                  password=smtp.get("password"), use_tls=True, timeout=15)
+        else:
+            await aiosmtplib.send(msg, hostname=host, port=port, username=smtp.get("username"),
+                                  password=smtp.get("password"), start_tls=use_tls, timeout=15)
+        return True
+    except Exception as e:
+        log.warning("SMTP send failed: %s", e)
+        return False
+
 
 async def send_email(company: dict, to_email: str, subject: str, html: str) -> bool:
-    """Send an email using the company's Resend API key. Best-effort.
-
-    Returns True if accepted by Resend, False otherwise (never raises).
-    """
+    """Send an email using the company's configured provider (SMTP or Resend).
+    Best-effort: returns True if accepted, False otherwise (never raises)."""
+    if not to_email:
+        log.info("send_email skipped (no recipient) -> %s", subject)
+        return False
+    html = _with_footer(company, html)
+    provider = (company or {}).get("email_provider")
+    if provider == "smtp" and ((company or {}).get("smtp") or {}).get("host"):
+        return await _send_smtp(company, to_email, subject, html)
+    # default: Resend
     resend = (company or {}).get("resend") or {}
     api_key = resend.get("api_key") or os.environ.get("RESEND_API_KEY")
-    if not api_key or not to_email:
-        log.info("send_email skipped (no resend key or recipient) -> %s | %s", to_email, subject)
+    if not api_key:
+        log.info("send_email skipped (no provider configured) -> %s | %s", to_email, subject)
         return False
     from_email = resend.get("from_email") or "onboarding@resend.dev"
     from_name = resend.get("from_name") or company.get("name") or "Routiq"

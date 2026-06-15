@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import AppShell from '@/components/AppShell';
 import api, { formatApiError } from '@/lib/api';
-import { Building2, Plus, Power, PowerOff, Users as UsersIcon, FileText, TrendingUp } from 'lucide-react';
+import { Building2, Plus, Power, PowerOff, Users as UsersIcon, FileText, TrendingUp, SlidersHorizontal, Bot, CreditCard, Landmark, BadgeCheck, ImageIcon } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
 
 export default function MasterAdmin() {

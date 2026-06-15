@@ -30,6 +30,7 @@ def _mask_secret(value: str) -> str:
 def _integrations_view(company: dict) -> dict:
     stripe = company.get("stripe") or {}
     resend = company.get("resend") or {}
+    smtp = company.get("smtp") or {}
     return {
         "stripe_publishable_key": stripe.get("publishable_key", ""),
         "stripe_secret_key_masked": _mask_secret(stripe.get("secret_key", "")),
@@ -52,6 +53,19 @@ def _integrations_view(company: dict) -> dict:
         "bank_swift": (company.get("bank") or {}).get("swift", ""),
         "bank_aba": (company.get("bank") or {}).get("aba", ""),
         "bank_address": (company.get("bank") or {}).get("address", ""),
+        # Payment permissions controlled by Master (per plan)
+        "stripe_allowed": bool(company.get("stripe_allowed", True)),
+        "transfer_allowed": bool(company.get("transfer_allowed", True)),
+        "plan": company.get("plan", "pro"),
+        # Per-company outbound email (SMTP)
+        "email_provider": company.get("email_provider", "resend"),
+        "smtp_host": smtp.get("host", ""),
+        "smtp_port": smtp.get("port", 587),
+        "smtp_username": smtp.get("username", ""),
+        "smtp_password_set": bool(smtp.get("password")),
+        "smtp_use_tls": bool(smtp.get("use_tls", True)),
+        "smtp_from_email": smtp.get("from_email", ""),
+        "smtp_from_name": smtp.get("from_name", ""),
     }
 
 

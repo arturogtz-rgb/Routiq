@@ -68,7 +68,27 @@ class CompanyPublic(BaseModel):
     pricing_config: PricingConfig
     whatsapp_numbers: List[WhatsAppNumber] = []
     status: str = "active"
+    # Plan & per-company controls (managed by Master). Permissive defaults so
+    # pre-existing companies keep full functionality until a plan is assigned.
+    plan: str = "pro"
+    exec_limit: int = 0  # 0 = ilimitado
+    ai_enabled: bool = True
+    white_label: bool = False
+    routiq_logo_fallback: bool = True
+    stripe_allowed: bool = True
+    transfer_allowed: bool = True
+    email_provider: str = "resend"
     created_at: Optional[str] = None
+
+
+class CompanyPlanUpdate(BaseModel):
+    plan: Optional[Literal["starter", "pro", "enterprise"]] = None
+    exec_limit: Optional[int] = Field(default=None, ge=0)
+    ai_enabled: Optional[bool] = None
+    white_label: Optional[bool] = None
+    routiq_logo_fallback: Optional[bool] = None
+    stripe_allowed: Optional[bool] = None
+    transfer_allowed: Optional[bool] = None
 
 
 class CompanyUpdate(BaseModel):
@@ -102,6 +122,26 @@ class CompanyIntegrationsUpdate(BaseModel):
     bank_swift: Optional[str] = None
     bank_aba: Optional[str] = None
     bank_address: Optional[str] = None
+    # Per-company outbound email (SMTP/IMAP). Gmail OAuth added later.
+    email_provider: Optional[Literal["resend", "smtp"]] = None
+    smtp_host: Optional[str] = None
+    smtp_port: Optional[int] = None
+    smtp_username: Optional[str] = None
+    smtp_password: Optional[str] = None
+    smtp_use_tls: Optional[bool] = None
+    smtp_from_email: Optional[str] = None
+    smtp_from_name: Optional[str] = None
+
+
+class SMTPTestInput(BaseModel):
+    smtp_host: str
+    smtp_port: int = 587
+    smtp_username: str
+    smtp_password: str
+    smtp_use_tls: bool = True
+    smtp_from_email: str
+    smtp_from_name: str = ""
+    to_email: Optional[str] = None
 
 
 class ManualPaymentInput(BaseModel):

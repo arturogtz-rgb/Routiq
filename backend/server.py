@@ -28,6 +28,7 @@ from models import (
     QuotationCreate, QuotationStateUpdate, QuotationUpdate, WhatsAppNumber,
     ServiceCreate, ServiceUpdate, CompanyIntegrationsUpdate, QuotationPricingAdjust,
     PublicCheckoutRequest, QuotationArchive, ManualPaymentInput, SendPaymentInput,
+    CompanyPlanUpdate, SMTPTestInput,
 )
 from pricing import compute_quotation
 from pdf_generator import generate_quotation_pdf
@@ -223,6 +224,41 @@ async def toggle_company_status(company_id: str, status: str, user: dict = Depen
     return {"ok": True, "status": status}
 
 
+# Plan defaults (applied when a plan is selected; individually overridable)
+PLAN_DEFAULTS = {
+    "starter": {"exec_limit": 3, "ai_enabled": False, "white_label": False,
+                "stripe_allowed": False, "transfer_allowed": True},
+    "pro": {"exec_limit": 15, "ai_enabled": True, "white_label": False,
+            "stripe_allowed": True, "transfer_allowed": True},
+    "enterprise": {"exec_limit": 0, "ai_enabled": True, "white_label": True,
+                   "stripe_allowed": True, "transfer_allowed": True},
+}
+
+
+@api.patch("/companies/{company_id}/plan", response_model=CompanyPublic)
+async def update_company_plan(company_id: str, payload: CompanyPlanUpdate, user: dict = Depends(require_roles("super_admin"))):
+    db = get_db()
+    company = await db.companies.find_one({"id": company_id}, {"_id": 0})
+    if not company:
+        raise HTTPException(status_code=404, detail="Empresa no encontrada")
+    updates = {}
+    data = payload.model_dump(exclude_unset=True)
+    if data.get("plan"):
+        updates["plan"] = data["plan"]
+        updates.update(PLAN_DEFAULTS.get(data["plan"], {}))
+    # explicit per-field overrides win over plan defaults
+    for k in ("exec_limit", "ai_enabled", "white_label", "routiq_logo_fallback", "stripe_allowed", "transfer_allowed"):
+        if k in data and data[k] is not None:
+            updates[k] = data[k]
+    # If the Master disables a payment method, also turn off the company's own switch
+    if updates.get("stripe_allowed") is False:
+        updates["stripe.enabled"] = False
+    if updates.get("transfer_allowed") is False:
+        updates["bank.enabled"] = False
+    await db.companies.update_one({"id": company_id}, {"$set": updates})
+    return await db.companies.find_one({"id": company_id}, {"_id": 0})
+
+
 # ---------------------------------------------------------------------------
 # WhatsApp numbers (mock for now)
 # ---------------------------------------------------------------------------
@@ -256,6 +292,20 @@ async def invite_executive(payload: InviteExecutive, user: dict = Depends(requir
     email = payload.email.lower().strip()
     if await db.users.find_one({"email": email}):
         raise HTTPException(status_code=400, detail="Email ya registrado")
+    # Enforce the contracted executive limit of the company's plan
+    company = await db.companies.find_one({"id": user["tenant_id"]}, {"_id": 0})
+    exec_limit = int((company or {}).get("exec_limit", 0) or 0)
+    if exec_limit > 0:
+        active_execs = await db.users.count_documents({
+            "tenant_id": user["tenant_id"], "role": "executive", "status": {"$ne": "suspended"},
+        })
+        if active_execs >= exec_limit:
+            plan = (company or {}).get("plan", "tu plan")
+            raise HTTPException(
+                status_code=403,
+                detail=(f"Alcanzaste el límite de {exec_limit} ejecutivos del plan {plan.capitalize()}. "
+                        f"Suspende un ejecutivo o solicita una actualización de plan al administrador de Routiq."),
+            )
     new_user = {
         "id": new_id(), "email": email, "name": payload.name,
         "password_hash": hash_password(payload.password),
@@ -277,6 +327,29 @@ async def toggle_user_status(user_id: str, status: str, user: dict = Depends(req
         raise HTTPException(status_code=404, detail="Usuario no encontrado")
     await db.users.update_one({"id": user_id}, {"$set": {"status": status}})
     return {"ok": True}
+
+
+@api.post("/companies/me/email/test")
+async def test_company_email(payload: SMTPTestInput, user: dict = Depends(require_roles("company_admin"))):
+    """Verify SMTP credentials by sending a test email before saving."""
+    company = {
+        "name": "Routiq", "white_label": True,
+        "email_provider": "smtp",
+        "smtp": {
+            "host": payload.smtp_host, "port": payload.smtp_port,
+            "username": payload.smtp_username, "password": payload.smtp_password,
+            "use_tls": payload.smtp_use_tls, "from_email": payload.smtp_from_email,
+            "from_name": payload.smtp_from_name,
+        },
+    }
+    to = payload.to_email or payload.smtp_from_email
+    html = ("<h2>✅ Conexión de correo verificada</h2>"
+            "<p>Tu configuración SMTP funciona correctamente. Desde ahora tus cotizaciones "
+            "y cobros se enviarán desde este correo.</p><p>— Routiq</p>")
+    ok = await notifications.send_email(company, to, "Prueba de conexión — Routiq", html)
+    if not ok:
+        raise HTTPException(status_code=400, detail="No se pudo enviar el correo de prueba. Revisa host, puerto, usuario y contraseña.")
+    return {"ok": True, "sent_to": to}
 
 
 # ---------------------------------------------------------------------------

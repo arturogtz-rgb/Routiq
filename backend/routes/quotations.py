@@ -24,6 +24,15 @@ log = logging.getLogger("routiq")
 router = APIRouter()
 
 
+async def _check_ai_enabled(tenant_id: str):
+    company = await get_db().companies.find_one({"id": tenant_id}, {"_id": 0, "ai_enabled": 1})
+    if not bool((company or {}).get("ai_enabled", True)):
+        raise HTTPException(
+            status_code=403,
+            detail="La IA operativa no está incluida en tu plan. Solicita una actualización al administrador de Routiq.",
+        )
+
+
 @router.get("/quotations")
 async def list_quotations(state: str | None = None, archived: bool = False, user: dict = Depends(require_tenant)):
     db = get_db()
@@ -301,6 +310,7 @@ async def revoke_public_link(quotation_id: str, user: dict = Depends(require_ten
 # ---------------------------------------------------------------------------
 @router.post("/ai/chat-summary")
 async def ai_chat_summary(payload: dict, user: dict = Depends(require_tenant)):
+    await _check_ai_enabled(user["tenant_id"])
     messages = payload.get("messages") or []
     if not messages:
         raise HTTPException(status_code=400, detail="Sin mensajes")
@@ -329,6 +339,7 @@ async def _load_quotation_context(quotation_id: str, tenant_id: str):
 
 @router.post("/ai/quotations/{quotation_id}/next-step")
 async def ai_next_step(quotation_id: str, user: dict = Depends(require_tenant)):
+    await _check_ai_enabled(user["tenant_id"])
     q, pack, client = await _load_quotation_context(quotation_id, user["tenant_id"])
     try:
         suggestion = await ai_service.suggest_next_step(q, pack, client)
@@ -340,6 +351,7 @@ async def ai_next_step(quotation_id: str, user: dict = Depends(require_tenant)):
 
 @router.post("/ai/quotations/{quotation_id}/missing-fields")
 async def ai_missing_fields(quotation_id: str, user: dict = Depends(require_tenant)):
+    await _check_ai_enabled(user["tenant_id"])
     q, pack, client = await _load_quotation_context(quotation_id, user["tenant_id"])
     try:
         fields = await ai_service.detect_missing_fields(q, pack, client)
@@ -351,6 +363,7 @@ async def ai_missing_fields(quotation_id: str, user: dict = Depends(require_tena
 
 @router.post("/ai/quotations/{quotation_id}/client-message")
 async def ai_client_message(quotation_id: str, user: dict = Depends(require_tenant)):
+    await _check_ai_enabled(user["tenant_id"])
     q, pack, client = await _load_quotation_context(quotation_id, user["tenant_id"])
     try:
         msg = await ai_service.generate_client_message(q, pack, client)

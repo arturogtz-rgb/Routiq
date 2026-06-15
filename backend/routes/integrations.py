@@ -31,7 +31,10 @@ async def update_my_integrations(payload: CompanyIntegrationsUpdate, user: dict 
         if not data["stripe_secret_key"].startswith("••"):
             updates["stripe.secret_key"] = data["stripe_secret_key"]
     if "stripe_enabled" in data:
-        updates["stripe.enabled"] = bool(data["stripe_enabled"])
+        # cannot enable Stripe if the Master plan doesn't allow it
+        company = await db.companies.find_one({"id": user["tenant_id"]}, {"_id": 0, "stripe_allowed": 1})
+        allowed = bool((company or {}).get("stripe_allowed", True))
+        updates["stripe.enabled"] = bool(data["stripe_enabled"]) and allowed
     if "resend_api_key" in data and data["resend_api_key"]:
         if not data["resend_api_key"].startswith("••"):
             updates["resend.api_key"] = data["resend_api_key"]
@@ -39,6 +42,22 @@ async def update_my_integrations(payload: CompanyIntegrationsUpdate, user: dict 
         updates["resend.from_email"] = data["resend_from_email"] or ""
     if "resend_from_name" in data:
         updates["resend.from_name"] = data["resend_from_name"] or ""
+    # Per-company SMTP email
+    if "email_provider" in data and data["email_provider"]:
+        updates["email_provider"] = data["email_provider"]
+    _SMTP_FIELDS = {
+        "smtp_host": "smtp.host", "smtp_username": "smtp.username",
+        "smtp_from_email": "smtp.from_email", "smtp_from_name": "smtp.from_name",
+    }
+    for key, path in _SMTP_FIELDS.items():
+        if key in data:
+            updates[path] = data[key] or ""
+    if "smtp_port" in data and data["smtp_port"]:
+        updates["smtp.port"] = int(data["smtp_port"])
+    if "smtp_use_tls" in data:
+        updates["smtp.use_tls"] = bool(data["smtp_use_tls"])
+    if "smtp_password" in data and data["smtp_password"] and not data["smtp_password"].startswith("••"):
+        updates["smtp.password"] = data["smtp_password"]
     if "base_currency" in data and data["base_currency"]:
         updates["base_currency"] = data["base_currency"]
         # keep pricing currency in sync
@@ -56,7 +75,9 @@ async def update_my_integrations(payload: CompanyIntegrationsUpdate, user: dict 
         if key in data:
             updates[path] = data[key] or ""
     if "bank_enabled" in data:
-        updates["bank.enabled"] = bool(data["bank_enabled"])
+        company = await db.companies.find_one({"id": user["tenant_id"]}, {"_id": 0, "transfer_allowed": 1})
+        allowed = bool((company or {}).get("transfer_allowed", True))
+        updates["bank.enabled"] = bool(data["bank_enabled"]) and allowed
     if updates:
         await db.companies.update_one({"id": user["tenant_id"]}, {"$set": updates})
     company = await db.companies.find_one({"id": user["tenant_id"]}, {"_id": 0})

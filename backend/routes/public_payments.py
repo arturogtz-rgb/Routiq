@@ -40,9 +40,11 @@ async def get_public_quotation(token: str):
     if final_total is None:
         final_total = q.get("total", 0)
     amount_paid = q.get("amount_paid", 0) or 0
-    payment_enabled = bool(((company.get("stripe") or {}).get("secret_key")) or os.environ.get("STRIPE_API_KEY"))
+    stripe_allowed = bool(company.get("stripe_allowed", True))
+    transfer_allowed = bool(company.get("transfer_allowed", True))
+    payment_enabled = stripe_allowed and bool(((company.get("stripe") or {}).get("secret_key")) or os.environ.get("STRIPE_API_KEY"))
     bank = company.get("bank") or {}
-    transfer_enabled = bool(bank.get("enabled")) and any(
+    transfer_enabled = transfer_allowed and bool(bank.get("enabled")) and any(
         bank.get(k) for k in ("name", "clabe", "account", "usd_account"))
     rates = await currency.get_rates()
     total_usd = currency.convert(final_total, base_currency, "USD", rates) if base_currency == "MXN" else None
@@ -238,6 +240,8 @@ async def public_checkout(token: str, payload: PublicCheckoutRequest, request: R
     if expires and datetime.fromisoformat(expires) < datetime.now(timezone.utc):
         raise HTTPException(status_code=410, detail="Enlace expirado")
     company = await db.companies.find_one({"id": q["tenant_id"]}, {"_id": 0})
+    if not bool(company.get("stripe_allowed", True)):
+        raise HTTPException(status_code=403, detail="El pago con tarjeta no está habilitado para esta empresa")
     api_key = _resolve_stripe_key(company)
     if not api_key:
         raise HTTPException(status_code=400, detail="Pagos no configurados para esta empresa")

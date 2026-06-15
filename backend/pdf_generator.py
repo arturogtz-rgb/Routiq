@@ -264,5 +264,12 @@ def generate_quotation_pdf(company: dict, quotation: dict, package: dict, client
         s["soft"],
     ))
 
+    if not company.get("white_label"):
+        story.append(Spacer(1, 16))
+        story.append(Paragraph(
+            "<font color='#94A3B8' size=8>Generado con Routiq · routiq.com.mx</font>",
+            s["soft"],
+        ))
+
     doc.build(story)
     return buf.getvalue()
