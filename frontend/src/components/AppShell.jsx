@@ -2,6 +2,7 @@ import { NavLink, useNavigate } from 'react-router-dom';
 import { useState, useEffect } from 'react';
 import { useAuth } from '@/context/AuthContext';
 import Logo from '@/components/Logo';
+import NotificationBell from '@/components/NotificationBell';
 import api from '@/lib/api';
 import {
   LayoutDashboard, Kanban, FileText, Package, Users, Settings, MessageCircle, LogOut, Menu, X, ChevronRight, Sparkles,
@@ -68,8 +69,9 @@ export default function AppShell({ children }) {
     <div className="min-h-screen bg-cream flex">
       {/* Sidebar (desktop) */}
       <aside className="hidden md:flex w-64 shrink-0 border-r border-ink-100 bg-white flex-col">
-        <div className="px-6 py-5 border-b border-ink-100">
+        <div className="px-6 py-5 border-b border-ink-100 flex items-center justify-between">
           <CompanyBrand size={30} />
+          {user?.tenant_id && <NotificationBell />}
         </div>
         <nav className="flex-1 px-3 py-4 space-y-1">
           {items.map(({ to, label, icon: Icon, testid }) => (
@@ -107,9 +109,12 @@ export default function AppShell({ children }) {
             <Menu className="w-5 h-5" />
           </button>
           <Logo size={26} />
-          <button onClick={handleLogout} data-testid="mobile-logout-btn" className="p-2 rounded-lg text-ink-700 hover:bg-brand-50">
-            <LogOut className="w-5 h-5" />
-          </button>
+          <div className="flex items-center gap-1">
+            {user?.tenant_id && <NotificationBell />}
+            <button onClick={handleLogout} data-testid="mobile-logout-btn" className="p-2 rounded-lg text-ink-700 hover:bg-brand-50">
+              <LogOut className="w-5 h-5" />
+            </button>
+          </div>
         </div>
       </div>
 

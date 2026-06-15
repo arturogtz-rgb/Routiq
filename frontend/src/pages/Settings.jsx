@@ -203,6 +203,7 @@ export default function Settings() {
                 <input type="checkbox" checked={!!integ.stripe_enabled} onChange={(e) => setInteg((s) => ({ ...s, stripe_enabled: e.target.checked }))} data-testid="stripe-enabled-input" />
                 <span className="text-sm text-ink-700">Habilitar cobros con Stripe en el enlace público</span>
               </label>
+              <p className="text-xs text-ink-400 -mt-1">Con tu propia clave secreta, la confirmación del pago es automática. Sin clave propia se usa el modo de prueba.</p>
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="label-text flex items-center gap-1"><Coins className="w-3.5 h-3.5" /> Moneda base</label>

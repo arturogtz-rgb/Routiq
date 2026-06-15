@@ -17,6 +17,8 @@ export default function PublicQuotation() {
   const [accepted, setAccepted] = useState(false);
   const [paying, setPaying] = useState(false);
   const [payMsg, setPayMsg] = useState(null); // { type, text }
+  const [lastSession, setLastSession] = useState(null);
+  const [verifying, setVerifying] = useState(false);
 
   const load = async () => {
     try {
@@ -27,15 +29,21 @@ export default function PublicQuotation() {
   };
   useEffect(() => { load(); }, [token]); // eslint-disable-line
 
+  const pollOnce = async (sessionId) => {
+    const { data: st } = await api.get(`/public/quotations/${token}/payment-status/${sessionId}`);
+    return st;
+  };
+
   // Detect return from Stripe and poll status
   useEffect(() => {
     const sessionId = searchParams.get('session_id');
     if (!sessionId) return;
+    setLastSession(sessionId);
     let attempts = 0;
     setPayMsg({ type: 'pending', text: 'Verificando tu pago…' });
     const poll = async () => {
       try {
-        const { data: st } = await api.get(`/public/quotations/${token}/payment-status/${sessionId}`);
+        const st = await pollOnce(sessionId);
         if (st.payment_status === 'paid') {
           setPayMsg({ type: 'success', text: '¡Pago confirmado! Gracias por tu reserva.' });
           await load();
@@ -46,7 +54,7 @@ export default function PublicQuotation() {
           return;
         }
         if (attempts++ < 15) { setTimeout(poll, 2000); }
-        else setPayMsg({ type: 'error', text: 'No pudimos confirmar el pago aún. Si lo completaste, se reflejará en breve.' });
+        else setPayMsg({ type: 'pending', text: 'Aún no confirmamos tu pago. Si ya pagaste, pulsa "Verificar pago".' });
       } catch (_e) {
         if (attempts++ < 15) setTimeout(poll, 2000);
         else setPayMsg({ type: 'error', text: 'Error verificando el pago.' });
@@ -56,6 +64,22 @@ export default function PublicQuotation() {
     // clear the session_id from URL so refresh doesn't re-poll endlessly
     const sp = new URLSearchParams(searchParams); sp.delete('session_id'); setSearchParams(sp, { replace: true });
   }, [token]); // eslint-disable-line
+
+  const verifyPayment = async () => {
+    if (!lastSession) return;
+    setVerifying(true);
+    try {
+      const st = await pollOnce(lastSession);
+      if (st.payment_status === 'paid') {
+        setPayMsg({ type: 'success', text: '¡Pago confirmado! Gracias por tu reserva.' });
+        await load();
+      } else {
+        setPayMsg({ type: 'pending', text: 'Tu pago sigue pendiente de confirmación. Intenta de nuevo en unos minutos.' });
+      }
+    } catch (_e) {
+      setPayMsg({ type: 'error', text: 'No pudimos verificar el pago.' });
+    } finally { setVerifying(false); }
+  };
 
   const accept = async () => {
     setAccepting(true);
@@ -236,6 +260,13 @@ export default function PublicQuotation() {
               {payMsg.type === 'success' && <CheckCircle2 className="w-4 h-4" />}
               {payMsg.text}
             </div>
+          )}
+          {lastSession && payMsg && payMsg.type !== 'success' && !isPaid && (
+            <button onClick={verifyPayment} disabled={verifying}
+              className="w-full mb-3 text-sm font-semibold py-2.5 rounded-xl border border-ink-200 text-ink-700 hover:bg-cream disabled:opacity-60 flex items-center justify-center gap-2"
+              data-testid="verify-payment-btn">
+              {verifying ? <Loader2 className="w-4 h-4 animate-spin" /> : <CheckCircle2 className="w-4 h-4" />} Ya pagué, verificar pago
+            </button>
           )}
 
           {isPaid ? (

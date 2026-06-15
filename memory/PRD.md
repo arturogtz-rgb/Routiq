@@ -5,7 +5,7 @@ Plataforma SaaS PWA multi-tenant para **cotización y seguimiento turístico** p
 - Empresa piloto: **Aventúrate por Jalisco**
 - Marca: **Routiq**
 - **Producción: https://routiq.com.mx** ✅ (VPS Hostinger 177.7.36.75, Docker + Nginx + Let's Encrypt)
-- Iteración actual: **v1.1** (logo + multi-room + IA + público)
+- Iteración actual: **v1.2** (servicios a la carta + Stripe + integraciones por empresa + notificaciones)
 
 ## Arquitectura
 - **Frontend:** React 19 + Tailwind + dnd-kit + PWA
@@ -42,16 +42,25 @@ Plataforma SaaS PWA multi-tenant para **cotización y seguimiento turístico** p
 
 ## Backlog priorizado para v1.2 (próxima iteración tras feedback)
 ### P0 — siguientes
-- [ ] **Servicios a la carta**: tours sueltos, traslados, accesos a recintos, extras opcionales agregables a cualquier cotización (nuevos catálogos + UI de "Agregar servicio" en quotation builder + detalle)
-- [ ] **Stripe**: cobro total o parcial, modificación de precio y descuentos directos desde la cotización, enlace de pago enviable por WhatsApp o correo
+- [x] **Servicios a la carta** ✅ (jun-2026): catálogo (tour/traslado/acceso/extra) con precio neto y público; el motor de precios autocalcula público = neto/divisor; seleccionables en el constructor (paso "Servicios"), visibles en PDF, detalle y enlace público. CRUD admin-only en `/app/services`. Tests: iteration_3 (13/13 backend + 3/3 frontend).
+- [x] **Stripe** ✅ (jun-2026): cobro total o anticipo (% configurable) desde el enlace público; descuento (%/fijo) por cotización desde el detalle; al pagar la cotización pasa a `ganada` y `payment_status`=paid/partial. Llaves Stripe POR EMPRESA (cada tenant conecta su cuenta) configurables desde Ajustes → "Pagos e integraciones"; fallback a llave de prueba de plataforma. Webhook `/api/webhook/stripe` + polling resiliente (con fallback al registro local). Tests: iteration_4/5 (15/15). **Limitación de entorno preview**: el proxy `sk_test_emergent` no entrega webhooks de vuelta → la confirmación automática solo ocurre con la llave propia del cliente (con ella el polling confirma directo). Botón manual "Ya pagué, verificar pago" como respaldo.
+- [x] **Integraciones por empresa (cero SSH)** ✅: Ajustes → moneda base (MXN/USD), % anticipo, llaves Stripe (pk/sk), API key Resend + remitente, correo de avisos. Endpoint `GET/PATCH /api/companies/me/integrations` con secretos enmascarados.
+- [x] **Tipo de cambio automático** ✅: `GET /api/exchange-rate` (open.er-api.com, caché 6h). El enlace público muestra el equivalente en USD cuando la moneda base es MXN.
+- [x] **Notificaciones** ✅ (parcial): email automático al ejecutivo/admin al aceptar o pagar (vía Resend, dispara cuando hay API key configurada) + centro de notificaciones in-app (campana con badge en el AppShell, `/api/notifications`). **Falta**: Web Push (VAPID + service worker) — ver P1.
+
+### P0 — pendientes (solicitados por el usuario, arquitectura "todo desde panel")
+- [ ] **Panel Master — Editor del Index/landing** (https://routiq.com.mx/): textos, imágenes y secciones editables sin código.
+- [ ] **Panel Master — Editor de la página de login**: logo, colores y textos personalizables.
+- [ ] **Web Push (VAPID)**: notificación push al navegador del ejecutivo cuando el cliente acepta/paga.
 
 ### P1
 - [ ] **Integración Baileys real** (microservicio Node.js en VPS): conexión QR, persistencia, envío real desde el inbox
 - [ ] CRUD UI completo para paquetes (hoy solo lectura desde seed)
 - [ ] Carga masiva de catálogos vía Excel
-- [ ] Notificaciones push web (VAPID, scaffolding ya listo)
+- [ ] Multi-moneda completa por empresa cuando opere en USD como base (arquitectura ya preparada: base_currency + conversión)
 - [ ] Subdominios reales por empresa (empresa1.routiq.com.mx)
-- [ ] Cron de cotizaciones estancadas
+- [ ] Cron de cotizaciones estancadas + backup MongoDB diario (`06-backup-mongo.sh` ya creado, falta activar)
+- [ ] Permitir limpiar la clave secreta de Stripe guardada (sentinela)
 
 ### P2
 - [ ] Meta API oficial como alternativa a Baileys
