@@ -5,7 +5,15 @@ Plataforma SaaS PWA multi-tenant para **cotización y seguimiento turístico** p
 - Empresa piloto: **Aventúrate por Jalisco**
 - Marca: **Routiq**
 - **Producción: https://routiq.com.mx** ✅ (VPS Hostinger 177.7.36.75, Docker + Nginx + Let's Encrypt)
-- Iteración actual: **v2.2** (iter_22: botón "Compartir catálogo" con QR + checklist de lanzamiento v1.0)
+- Iteración actual: **v2.3** (iter_23: IA independiente de Emergent (BYOK) + logo catálogo + proporción imagen + mini-dashboard leads + limpiar datos de prueba)
+
+## Iteración 23 (jun-2026) — IA BYOK (independiente de Emergent) + 4 fixes
+- ✅ **IA independiente (BYOK)**: se eliminó la dependencia de `EMERGENT_LLM_KEY`. El Master configura proveedor (**Anthropic / OpenAI / Google**), modelo y su **propia API key** en `/master/ai` (aplica a todas las empresas). SDKs oficiales: `anthropic`, `openai`, `google-genai`. Endpoints `GET/PATCH /master/ai-settings` y `POST /master/ai-settings/test` (probar conexión). Mensajes de error amistosos en español (key inválida, sin saldo, no configurada). `ai_service.py` reescrito (BYOK) leyendo `platform_settings(id='ai')`.
+- ✅ **Logo más grande y centrado** en catálogo `/c/:slug` (hero con logo destacado).
+- ✅ **Proporciones de imagen** consistentes en `/p/:slug/:code` (contenedor con aspect-ratio).
+- ✅ **Mini-dashboard de leads** en `/app/leads` (`GET /quote-requests/stats`): total, nuevas, últimos 7 días, atendidas + ranking de paquetes más solicitados.
+- ✅ **Limpiar datos de prueba por empresa** (`POST /companies/me/clear-data`, admin): borra cotizaciones, clientes, leads, pagos, WhatsApp y notificaciones; conserva catálogo/config. Zona de peligro en Ajustes con confirmación "LIMPIAR".
+- Tests: `/app/test_reports/iteration_23.json` (frontend 100%) + curl backend. ⚠️ El camino exitoso de IA requiere una API key real del proveedor (no validable en preview).
 
 ## Iteración 22 (jun-2026) — Compartir catálogo con QR + checklist v1.0
 - ✅ **Botón "Compartir catálogo" con QR** en /app/packages (admin y ejecutivo): modal con código QR (`qrcode.react`), copiar enlace `/c/:slug`, descargar QR (PNG) y compartir por WhatsApp. Herramienta de prospección 24/7.

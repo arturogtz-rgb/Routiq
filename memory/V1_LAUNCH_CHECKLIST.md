@@ -48,14 +48,17 @@ Cubre: (A) lo implementado, (B) configuración pendiente en producción, (C) bac
 
 > Editar `/opt/routiq/deploy/.env` (o el `.env` del backend) y redeplegar con `05-update.sh`.
 
+### IA / Inteligencia Artificial (BYOK — independiente de Emergent)
+- [x] El Master configura **proveedor (Anthropic/OpenAI/Google) + modelo + su propia API key** en `/master/ai`. Aplica a todas las empresas. Botón "Probar conexión".
+- [ ] **Configurar la API key real del proveedor** en `/master/ai` (Anthropic Claude recomendado). **Sin key, la IA no funciona** (resúmenes de chat, siguiente paso, mensajes sugeridos). La key se cobra directo al proveedor del cliente.
+
 | Variable | Estado | Acción |
 |---|---|---|
-| `EMERGENT_LLM_KEY` | ⚠️ Pendiente | Agregar la llave para activar el **resumen IA**. Si da `FREE_USER_EXTERNAL_ACCESS_DENIED` → recargar saldo en **Profile → Universal Key → Add Balance**. |
-| `PLATFORM_RESEND_API_KEY` | ⏳ Cuando tengas la llave | Activa correos de plataforma (reset de contraseña del **Master** + aviso de backup por correo). Mientras tanto: reset del Master por enlace en panel + aviso de backup in-app. |
-| `PLATFORM_FROM_EMAIL` | ⏳ | Poner `no-reply@routiq.com.mx` (remitente de plataforma). |
-| `SHOW_DEMO_CREDENTIALS` | �е Antes del lanzamiento | Poner `false` para **ocultar las credenciales demo** del login. |
-| `BAILEYS_SHARED_SECRET` | ✅ | Ya configurada (no cambiar). Baileys fijado a `6.7.22` por CVE — **no actualizar**. |
-| Cron de backup (`06-backup-mongo.sh`) | ⚠️ Verificar | Confirmar que el cron diario corre en el VPS (en preview no corre → el aviso de backup aparece como esperado). |
+| ~~`EMERGENT_LLM_KEY`~~ | ❌ Ya no se usa | La IA es ahora BYOK; configurar la key en `/master/ai`. |
+| `PLATFORM_RESEND_API_KEY` | ⏳ Cuando tengas la llave | Activa correos de plataforma (reset de contraseña del **Master** + aviso de backup por correo). |
+| `PLATFORM_FROM_EMAIL` | ⏳ | `no-reply@routiq.com.mx`. |
+| `SHOW_DEMO_CREDENTIALS` | 🟡 Antes del lanzamiento | `false` para ocultar credenciales demo del login. |
+| Cron de backup (`06-backup-mongo.sh`) | ⚠️ Verificar | Confirmar que el cron diario corre en el VPS. |
 
 ### Verificación post-deploy (recomendada)
 - [ ] Login de los 3 roles funciona en producción.
