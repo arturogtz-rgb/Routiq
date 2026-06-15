@@ -5,7 +5,13 @@ Plataforma SaaS PWA multi-tenant para **cotización y seguimiento turístico** p
 - Empresa piloto: **Aventúrate por Jalisco**
 - Marca: **Routiq**
 - **Producción: https://routiq.com.mx** ✅ (VPS Hostinger 177.7.36.75, Docker + Nginx + Let's Encrypt)
-- Iteración actual: **v2.1** (iter_21: aviso backup + gestión usuarios/perfiles + recuperación contraseña por correo + diferenciación visual equipo + toggle demo + catálogo por empresa /c/:slug)
+- Iteración actual: **v2.2** (iter_22: botón "Compartir catálogo" con QR + checklist de lanzamiento v1.0)
+
+## Iteración 22 (jun-2026) — Compartir catálogo con QR + checklist v1.0
+- ✅ **Botón "Compartir catálogo" con QR** en /app/packages (admin y ejecutivo): modal con código QR (`qrcode.react`), copiar enlace `/c/:slug`, descargar QR (PNG) y compartir por WhatsApp. Herramienta de prospección 24/7.
+- ✅ **IA verificada en preview** (resumen de chat OK). En producción depende de `EMERGENT_LLM_KEY` + saldo.
+- ✅ **Checklist de lanzamiento v1.0** creado en `/app/memory/V1_LAUNCH_CHECKLIST.md` (implementado / config producción / backlog P2).
+- Verificación: smoke screenshot del modal QR + curl IA preview.
 
 ## Iteración 21 (jun-2026) — usuarios/perfiles, password reset, catálogo por empresa
 - ✅ **Recuperación de contraseña por correo** (todos los roles): token de un solo uso (sha256, TTL 1h) en `password_reset_tokens`; páginas públicas `/forgot-password` y `/reset-password?token=`. `POST /auth/forgot-password` (sin enumeración) y `POST /auth/reset-password`. Tenant usa correo de su empresa; Master usa correo de plataforma (Resend `PLATFORM_RESEND_API_KEY`/`PLATFORM_FROM_EMAIL`, aún sin llave → enlace generado en panel).

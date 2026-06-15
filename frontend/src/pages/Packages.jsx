@@ -3,7 +3,8 @@ import { Link, useNavigate } from 'react-router-dom';
 import AppShell from '@/components/AppShell';
 import api, { formatApiError } from '@/lib/api';
 import { useAuth } from '@/context/AuthContext';
-import { Package as PackageIcon, MapPin, Calendar, Plus, Pencil, Trash2, Sun, FileSpreadsheet, Upload, X, CheckCircle2, AlertTriangle, Download, Share2 } from 'lucide-react';
+import { Package as PackageIcon, MapPin, Calendar, Plus, Pencil, Trash2, Sun, FileSpreadsheet, Upload, X, CheckCircle2, AlertTriangle, Download, Share2, QrCode } from 'lucide-react';
+import { ShareCatalogModal } from '@/components/ShareCatalogModal';
 
 export default function Packages() {
   const { user } = useAuth();
@@ -15,6 +16,7 @@ export default function Packages() {
   const [report, setReport] = useState(null);
   const [slug, setSlug] = useState('');
   const [copiedCode, setCopiedCode] = useState('');
+  const [shareCatalog, setShareCatalog] = useState(false);
   const fileRef = useRef(null);
 
   const load = async () => {
@@ -88,6 +90,9 @@ export default function Packages() {
         </div>
         {isAdmin && (
           <div className="flex flex-wrap items-center gap-2">
+            <button className="btn-ghost text-sm" onClick={() => setShareCatalog(true)} disabled={!slug} data-testid="share-catalog-btn">
+              <QrCode className="w-4 h-4" /> Compartir catálogo
+            </button>
             <button className="btn-ghost text-sm" onClick={downloadTemplate} data-testid="download-template-btn">
               <FileSpreadsheet className="w-4 h-4" /> Plantilla Excel
             </button>
@@ -102,6 +107,11 @@ export default function Packages() {
               <Plus className="w-4 h-4" /> Nuevo paquete
             </button>
           </div>
+        )}
+        {!isAdmin && (
+          <button className="btn-primary" onClick={() => setShareCatalog(true)} disabled={!slug} data-testid="share-catalog-btn">
+            <QrCode className="w-4 h-4" /> Compartir catálogo
+          </button>
         )}
       </div>
 
@@ -194,6 +204,9 @@ export default function Packages() {
           </div>
         </div>
       )}
+
+      <ShareCatalogModal open={shareCatalog} onClose={() => setShareCatalog(false)}
+        url={slug ? `${window.location.origin}/c/${slug}` : ''} companyName={slug} />
     </AppShell>
   );
 }
