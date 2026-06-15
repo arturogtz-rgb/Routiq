@@ -10,20 +10,35 @@ export function useSiteContent() {
   const [content, setContent] = useState(null);
   useEffect(() => {
     const preview = new URLSearchParams(window.location.search).get('preview') === '1';
-    (async () => {
-      try {
-        if (preview) {
+    let cancelled = false;
+
+    const fetchOnce = async () => {
+      if (preview) {
+        try {
           const { data } = await api.get('/site-settings');
-          setContent(data.draft);
+          return data.draft;
+        } catch (_e) { /* fall through to published */ }
+      }
+      const { data } = await api.get('/site-settings/public');
+      return data;
+    };
+
+    (async () => {
+      // Retry a few times with backoff so a single aborted/racey request right
+      // after navigation never leaves us silently rendering FALLBACK defaults.
+      for (let attempt = 0; attempt < 3; attempt += 1) {
+        try {
+          const data = await fetchOnce();
+          if (!cancelled) setContent(data);
           return;
+        } catch (_e) {
+          if (cancelled) return;
+          await new Promise((r) => setTimeout(r, 400 * (attempt + 1)));
         }
-        const { data } = await api.get('/site-settings/public');
-        setContent(data);
-      } catch (_e) {
-        try { const { data } = await api.get('/site-settings/public'); setContent(data); }
-        catch (_e2) { setContent(null); }
       }
     })();
+
+    return () => { cancelled = true; };
   }, []);
   return content;
 }
