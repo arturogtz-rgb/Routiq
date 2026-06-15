@@ -29,8 +29,12 @@ DEFAULT_SITE = {
             {"key": "features", "label": "Características", "visible": True},
             {"key": "how", "label": "Cómo funciona", "visible": True},
             {"key": "pricing", "label": "Planes / Precios", "visible": True},
+            {"key": "affiliates", "label": "Logos de empresas afiliadas", "visible": True},
             {"key": "final_cta", "label": "Llamado final (CTA)", "visible": True},
         ],
+        # Affiliated-company logo carousel (managed from Master panel)
+        "affiliates_title": "Empresas que ya operan con Routiq",
+        "affiliate_logos": [],  # list of {"url": str, "name": str}
         # Editable Pricing / Planes section.
         "pricing_pill": "Planes",
         "pricing_title": "Precios simples que crecen con tu operación.",
@@ -59,6 +63,10 @@ DEFAULT_SITE = {
         "welcome_title": "Bienvenido de vuelta",
         "welcome_subtitle": "Entra a tu panel de Routiq.",
     },
+    "theme": {
+        "preset": "corporate",
+        "primary": "#185FA5",
+    },
 }
 
 
@@ -70,4 +78,22 @@ def merged_with_defaults(content: dict | None) -> dict:
         merged = dict(fields)
         merged.update({k: v for k, v in (content.get(section) or {}).items() if v is not None})
         out[section] = merged
+    # Reconcile the landing `sections` list so newly added default sections
+    # (e.g. "affiliates") always appear even on previously-published content.
+    default_sections = DEFAULT_SITE["landing"]["sections"]
+    default_by_key = {s["key"]: s for s in default_sections}
+    stored = out["landing"].get("sections") or []
+    seen = set()
+    reconciled = []
+    for s in stored:
+        if s.get("key") in default_by_key and s["key"] not in seen:
+            reconciled.append({**default_by_key[s["key"]], **s})
+            seen.add(s["key"])
+    for s in default_sections:
+        if s["key"] not in seen:
+            reconciled.append(dict(s))
+            seen.add(s["key"])
+    # keep the final CTA last for a natural page flow
+    reconciled.sort(key=lambda x: 1 if x["key"] == "final_cta" else 0)
+    out["landing"]["sections"] = reconciled
     return out

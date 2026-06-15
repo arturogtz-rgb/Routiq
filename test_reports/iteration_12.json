@@ -1,0 +1,33 @@
+{
+  "summary": "Iteration 12 — Fase D regression + 3 new features PASS. Backend: 22/22 pytest green (5 Fase D + 2 new iter12 extras + 9 Fase C + 2 Fase B + 4 Fase A regression). Modular routers (routes/quotations.py, public_payments.py, audit.py, integrations.py) preserve behavior: /api/companies/me/integrations, /api/audit-log, /api/metrics/audit, /api/quotations all 200. Theme: PATCH /site-settings persists theme{preset,primary} in draft; POST /site-settings/publish promotes it; GET /site-settings/public exposes it. Verified UI round-trip: as Master at /master/site -> tab-theme -> theme-preset-warm sets --brand-500 to 194,65,12 (terracotta) and theme-demo-btn bg becomes rgb(194,65,12); publish then visit '/' (anon, cookies cleared) shows hero-cta-primary bg rgb(194,65,12) too -> brand CSS-var wiring drives both landing and app. Affiliates: POST /api/site-settings/upload-image returns a /api/uploads/site/<uuid>.png URL; appending to landing.affiliate_logos via PATCH and publishing exposes the entry on /api/site-settings/public; sections list reconciles 'affiliates' and keeps 'final_cta' last (verified via API and via section-row-* DOM ordering in MasterSite sections-list). 48h reminder: POST /api/internal/run-reminders returns {checked, sent, skipped} as Master and 403 as company_admin. Send-payment email: covered in iter11 test (link returned, email_sent=false since Resend unset — by design). Final state restored to corporate theme #185FA5 and verified rgb(24,95,165) on public landing.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_fase_d.py",
+    "/app/backend/tests/test_iteration12_extras.py",
+    "/app/test_reports/pytest/iter12.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "server.py is now ~677 lines after the Fase D split — good. But /app/backend/site_content.py contains both DEFAULT_SITE + merged_with_defaults reconciliation logic; consider asserting in unit tests that merged_with_defaults is idempotent (calling twice == once) to guard future regressions when more sections land.",
+    "The 'theme' PATCH endpoint does NOT validate the 'primary' field is a valid hex color — submitting {'preset':'warm','primary':'not-a-color'} would persist and break applyTheme() on the client. Add a regex validator (^#[0-9A-Fa-f]{6}$) on the Pydantic input.",
+    "/api/internal/run-reminders authorization is correct (403 for company_admin) but the endpoint name 'internal' suggests it should also be behind an internal-only mechanism (e.g., header secret) in case super_admin cookies leak; right now any authenticated super_admin can trigger reminder spam. Suggest a rate-limit or a HMAC header.",
+    "Frontend: theme-color-hex input has no validation feedback when the user types an invalid hex — applyTheme silently falls back. Add an inline error or block publish when hex is malformed.",
+    "Affiliate logo upload uses POST /api/site-settings/upload-image — no file-size or mime-type guard server-side observed. Add a max-size check (e.g., 2MB) and image/* mime allowlist; a tenant could otherwise upload arbitrary files.",
+    "ThemeApplier in App.js applies the DRAFT theme for the logged-in master while editing; ensure the cleanup on master logout resets to the published theme so an editor's stale preview doesn't leak into the next session."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_iteration12_extras.py (new — 2 tests, both PASS: theme publish round-trip, affiliate upload + publish + cleanup)"
+  ],
+  "success_rate": {"backend": "100% (22/22)", "frontend": "100% on every required Fase D testid (tab-theme, theme-preset-warm/corporate/dark, theme-color, theme-color-hex, theme-demo-btn, theme-panel, publish-btn, site-ok, affiliates-manager, add-affiliate-btn, affiliate-row-0, affiliate-name-0, sections-list, section-row-affiliates, section-row-final_cta, bank-section, audit-metrics, audit-table, landing-page, hero-cta-primary, affiliates-section)"},
+  "test_credentials": "owner@routiq.mx / Routiq2026! (super_admin), admin@aventurate.mx / Demo2026! (company_admin), ejecutivo@aventurate.mx / Demo2026! (executive). Matches /app/memory/test_credentials.md.",
+  "seed_data_creation": "None persisted. Theme briefly switched to warm during testing then explicitly restored to corporate (#185FA5) — verified via /api/site-settings/public returning preset=corporate. A 1x1 PNG affiliate logo named 'Aerolínea Test' was uploaded and then DELETEd from landing.affiliate_logos with a publish in the same test; current affiliate_logos count = 0. No quotations were created in this iteration (Fase B/C coverage from prior iters still passes via regression suite).",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Fase D scope is fully green. Theme system: brand colors are document-root CSS variables (--brand-50..900) set by applyTheme in /app/frontend/src/lib/theme.js; .btn-primary uses rgb(var(--brand-500)) so any UI in landing + app responds. To re-test quickly: `pytest /app/backend/tests/test_fase_d.py /app/backend/tests/test_iteration12_extras.py -v` (7 tests, ~2s). Public theme is now corporate #185FA5 — DO NOT leave a non-corporate theme published. Affiliate logos list is empty by default; the public landing returns null for the affiliates section when length=0, so don't assert affiliates-section presence on the public landing unless you first upload at least one logo. Resend is still unset -> email_sent=false everywhere is expected. There are 3 leftover 'TEST Tours' companies in the master view from earlier iterations (test-tours-1776985518/1781524853/1781525560) — non-blocking but worth cleaning when convenient.",
+  "rca of the issue": "n/a — no bugs found in Fase D scope."
+}

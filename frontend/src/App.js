@@ -1,7 +1,10 @@
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
+import { useEffect } from 'react';
 import '@/index.css';
 import { AuthProvider, useAuth } from '@/context/AuthContext';
 import ProtectedRoute from '@/components/ProtectedRoute';
+import { useSiteContent } from '@/lib/useSiteContent';
+import { applyTheme } from '@/lib/theme';
 
 import Landing from '@/pages/Landing';
 import Login from '@/pages/Login';
@@ -33,10 +36,19 @@ function HomeRedirect() {
   return <Landing />;
 }
 
+function ThemeApplier() {
+  const content = useSiteContent();
+  useEffect(() => {
+    if (content?.theme) applyTheme(content.theme);
+  }, [content]);
+  return null;
+}
+
 export default function App() {
   return (
     <AuthProvider>
       <BrowserRouter>
+        <ThemeApplier />
         <Routes>
           <Route path="/" element={<HomeRedirect />} />
           <Route path="/login" element={<Login />} />

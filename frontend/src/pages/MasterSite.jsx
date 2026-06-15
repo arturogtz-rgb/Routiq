@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState } from 'react';
 import AppShell from '@/components/AppShell';
 import api, { formatApiError } from '@/lib/api';
-import { Save, UploadCloud, Eye, EyeOff, Rocket, RotateCcw, Globe, LogIn, Layers, Image as ImageIcon, Loader2, CheckCircle2, ChevronUp, ChevronDown, Plus, Trash2 } from 'lucide-react';
+import { Save, UploadCloud, Eye, EyeOff, Rocket, RotateCcw, Globe, LogIn, Layers, Palette, Image as ImageIcon, Loader2, CheckCircle2, ChevronUp, ChevronDown, Plus, Trash2 } from 'lucide-react';
+import { applyTheme, THEME_PRESETS } from '@/lib/theme';
 
 const backend = process.env.REACT_APP_BACKEND_URL || '';
 
@@ -56,6 +57,7 @@ function ImageField({ label, value, onChange, onPersist, testid }) {
 export default function MasterSite() {
   const [landing, setLanding] = useState(null);
   const [login, setLogin] = useState(null);
+  const [theme, setTheme] = useState(null);
   const [error, setError] = useState('');
   const [ok, setOk] = useState('');
   const [saving, setSaving] = useState(false);
@@ -66,12 +68,39 @@ export default function MasterSite() {
       const { data } = await api.get('/site-settings');
       setLanding(data.draft.landing);
       setLogin(data.draft.login);
+      setTheme(data.draft.theme || { preset: 'corporate', primary: '#185FA5' });
     } catch (e) { setError(formatApiError(e)); }
   };
   useEffect(() => { load(); }, []);
 
+  // Live-preview the theme inside the editor as the Master adjusts it.
+  useEffect(() => { if (theme) applyTheme(theme); }, [theme]);
+
   const setL = (k, v) => setLanding((s) => ({ ...s, [k]: v }));
   const setLg = (k, v) => setLogin((s) => ({ ...s, [k]: v }));
+
+  // --- Affiliate logos (carousel) ---
+  const addAffiliateLogo = (url, name = '') => setLanding((s) => ({
+    ...s, affiliate_logos: [...(s.affiliate_logos || []), { url, name }],
+  }));
+  const setAffiliateName = (idx, name) => setLanding((s) => ({
+    ...s, affiliate_logos: (s.affiliate_logos || []).map((l, i) => (i === idx ? { ...l, name } : l)),
+  }));
+  const removeAffiliateLogo = (idx) => setLanding((s) => ({
+    ...s, affiliate_logos: (s.affiliate_logos || []).filter((_, i) => i !== idx),
+  }));
+  const affRef = useRef(null);
+  const uploadAffiliate = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const fd = new FormData(); fd.append('file', file);
+    try {
+      const { data } = await api.post('/site-settings/upload-image', fd, { headers: { 'Content-Type': 'multipart/form-data' } });
+      addAffiliateLogo(data.url, (file.name || '').replace(/\.[^.]+$/, ''));
+    } catch (_e) { /* noop */ }
+    e.target.value = '';
+  };
+  const setTh = (k, v) => setTheme((s) => ({ ...s, [k]: v }));
 
   // --- Section ordering / visibility ---
   const moveSection = (idx, dir) => setLanding((s) => {
@@ -108,7 +137,7 @@ export default function MasterSite() {
   const saveDraft = async () => {
     setSaving(true); setError(''); setOk('');
     try {
-      await api.patch('/site-settings', { landing, login });
+      await api.patch('/site-settings', { landing, login, theme });
       setOk('Borrador guardado'); setTimeout(() => setOk(''), 2500);
     } catch (e) { setError(formatApiError(e)); }
     finally { setSaving(false); }
@@ -117,7 +146,7 @@ export default function MasterSite() {
   const publish = async () => {
     setSaving(true); setError(''); setOk('');
     try {
-      await api.patch('/site-settings', { landing, login });
+      await api.patch('/site-settings', { landing, login, theme });
       await api.post('/site-settings/publish');
       setOk('¡Publicado! Los cambios ya están en vivo.'); setTimeout(() => setOk(''), 3500);
     } catch (e) { setError(formatApiError(e)); }
@@ -132,11 +161,11 @@ export default function MasterSite() {
 
   const preview = async (path) => {
     // persist current edits to draft, then open preview
-    await api.patch('/site-settings', { landing, login });
+    await api.patch('/site-settings', { landing, login, theme });
     window.open(`${path}?preview=1`, '_blank');
   };
 
-  if (!landing || !login) {
+  if (!landing || !login || !theme) {
     return <AppShell><div className="text-ink-400">Cargando…</div></AppShell>;
   }
 
@@ -161,6 +190,7 @@ export default function MasterSite() {
       <div className="flex gap-2 mb-6">
         <button onClick={() => setTab('landing')} className={`pill ${tab === 'landing' ? 'bg-brand-500 text-white' : 'bg-white border border-ink-100 text-ink-700'}`} data-testid="tab-landing"><Globe className="w-3.5 h-3.5" /> Landing</button>
         <button onClick={() => setTab('sections')} className={`pill ${tab === 'sections' ? 'bg-brand-500 text-white' : 'bg-white border border-ink-100 text-ink-700'}`} data-testid="tab-sections"><Layers className="w-3.5 h-3.5" /> Secciones y precios</button>
+        <button onClick={() => setTab('theme')} className={`pill ${tab === 'theme' ? 'bg-brand-500 text-white' : 'bg-white border border-ink-100 text-ink-700'}`} data-testid="tab-theme"><Palette className="w-3.5 h-3.5" /> Tema y color</button>
         <button onClick={() => setTab('login')} className={`pill ${tab === 'login' ? 'bg-brand-500 text-white' : 'bg-white border border-ink-100 text-ink-700'}`} data-testid="tab-login"><LogIn className="w-3.5 h-3.5" /> Login</button>
       </div>
 
@@ -248,6 +278,77 @@ export default function MasterSite() {
                 </div>
               ))}
               <button className="btn-secondary text-sm w-full" onClick={addTier} data-testid="add-tier-btn"><Plus className="w-4 h-4" /> Agregar plan</button>
+            </div>
+          </div>
+
+          <div className="card-surface p-6 space-y-4 lg:col-span-2" data-testid="affiliates-manager">
+            <div className="flex items-center justify-between">
+              <div>
+                <h3 className="font-display font-semibold text-ink-900">Logos de empresas afiliadas (carrusel)</h3>
+                <p className="text-ink-500 text-sm mt-1">Sube los logos que rotarán en la landing. Actívalo/ocúltalo desde la lista de secciones de arriba.</p>
+              </div>
+              <button className="btn-primary text-sm" onClick={() => affRef.current?.click()} data-testid="add-affiliate-btn"><UploadCloud className="w-4 h-4" /> Subir logo</button>
+              <input ref={affRef} type="file" accept="image/*" className="hidden" onChange={uploadAffiliate} />
+            </div>
+            <Field label="Título de la sección" value={landing.affiliates_title} onChange={(v) => setL('affiliates_title', v)} testid="affiliates-title" />
+            <div className="grid sm:grid-cols-2 md:grid-cols-3 gap-3">
+              {(landing.affiliate_logos || []).map((l, idx) => (
+                <div key={idx} className="rounded-xl border border-ink-100 p-3 flex items-center gap-3" data-testid={`affiliate-row-${idx}`}>
+                  <div className="w-16 h-12 rounded bg-ink-50 flex items-center justify-center overflow-hidden shrink-0">
+                    <img src={l.url?.startsWith('http') ? l.url : `${backend}${l.url}`} alt={l.name} className="max-w-full max-h-full object-contain" />
+                  </div>
+                  <input className="input-field text-sm" value={l.name || ''} placeholder="Nombre" onChange={(e) => setAffiliateName(idx, e.target.value)} data-testid={`affiliate-name-${idx}`} />
+                  <button className="text-red-600 hover:text-red-700 shrink-0" onClick={() => removeAffiliateLogo(idx)} data-testid={`affiliate-remove-${idx}`}><Trash2 className="w-4 h-4" /></button>
+                </div>
+              ))}
+              {(landing.affiliate_logos || []).length === 0 && <p className="text-ink-400 text-sm italic">Aún no hay logos. Sube el primero.</p>}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {tab === 'theme' && (
+        <div className="grid lg:grid-cols-2 gap-6">
+          <div className="card-surface p-6 space-y-5" data-testid="theme-panel">
+            <div>
+              <h3 className="font-display font-semibold text-ink-900">Tema de color</h3>
+              <p className="text-ink-500 text-sm mt-1">Elige un preset y ajusta el color principal. Se aplica a la landing pública y al panel de la app para coherencia visual total.</p>
+            </div>
+            <div className="grid grid-cols-3 gap-3">
+              {Object.entries(THEME_PRESETS).map(([key, p]) => (
+                <button key={key} type="button" onClick={() => setTheme({ preset: key, primary: p.primary })}
+                  className={`rounded-xl border p-4 text-center transition-all ${theme.preset === key ? 'border-brand-500 ring-2 ring-brand-200' : 'border-ink-100 hover:border-brand-300'}`}
+                  data-testid={`theme-preset-${key}`}>
+                  <span className="block w-full h-10 rounded-lg mb-2" style={{ background: p.primary }} />
+                  <span className="text-sm font-semibold text-ink-900">{p.label}</span>
+                </button>
+              ))}
+            </div>
+            <div>
+              <label className="label-text">Color principal (personalizado)</label>
+              <div className="flex items-center gap-3">
+                <input type="color" value={theme.primary || '#185FA5'} onChange={(e) => setTh('primary', e.target.value)} className="w-12 h-10 rounded-lg border border-ink-200 cursor-pointer" data-testid="theme-color" />
+                <input className="input-field" value={theme.primary || ''} onChange={(e) => setTh('primary', e.target.value)} data-testid="theme-color-hex" />
+              </div>
+            </div>
+            <button className="btn-secondary text-sm w-full" onClick={() => preview('/')} data-testid="preview-theme-btn"><Eye className="w-4 h-4" /> Vista previa con el tema</button>
+          </div>
+          <div className="card-surface p-6 space-y-4">
+            <h3 className="font-display font-semibold text-ink-900">Vista previa</h3>
+            <p className="text-ink-500 text-sm">Así se verán los elementos con el color elegido:</p>
+            <div className="flex flex-wrap gap-3 items-center">
+              <button className="btn-primary" data-testid="theme-demo-btn">Botón primario</button>
+              <span className="pill bg-brand-50 text-brand-500">Etiqueta</span>
+              <span className="pill bg-brand-500 text-white">Activo</span>
+            </div>
+            <div className="rounded-xl bg-gradient-to-br from-brand-500 to-brand-700 text-white p-5">
+              <p className="text-sm uppercase tracking-widest opacity-80">Total</p>
+              <p className="font-display font-bold text-3xl">$12,500 MXN</p>
+            </div>
+            <div className="flex gap-2 text-sm">
+              {[50, 100, 300, 500, 700, 900].map((sh) => (
+                <span key={sh} className="flex-1 h-10 rounded" style={{ background: `rgb(var(--brand-${sh}))` }} />
+              ))}
             </div>
           </div>
         </div>

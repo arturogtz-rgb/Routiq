@@ -23,8 +23,11 @@ const FALLBACK = {
     { key: 'features', label: 'Características', visible: true },
     { key: 'how', label: 'Cómo funciona', visible: true },
     { key: 'pricing', label: 'Planes / Precios', visible: true },
+    { key: 'affiliates', label: 'Logos de empresas afiliadas', visible: true },
     { key: 'final_cta', label: 'Llamado final (CTA)', visible: true },
   ],
+  affiliates_title: 'Empresas que ya operan con Routiq',
+  affiliate_logos: [],
   pricing_pill: 'Planes',
   pricing_title: 'Precios simples que crecen con tu operación.',
   pricing_subtitle: 'MXN al mes por empresa. Sin costo por mensaje. Sin costo por usuario extra hasta el límite del plan.',
@@ -256,10 +259,32 @@ function Footer() {
   );
 }
 
+function Affiliates({ c }) {
+  const logos = Array.isArray(c.affiliate_logos) ? c.affiliate_logos.filter((l) => l && l.url) : [];
+  if (logos.length === 0) return null;
+  const loop = [...logos, ...logos];
+  return (
+    <section id="affiliates" className="py-16 md:py-20 border-y border-ink-100/60 bg-white/50" data-testid="affiliates-section">
+      <div className="max-w-7xl mx-auto px-4 md:px-8">
+        <p className="text-center text-sm uppercase tracking-widest font-bold text-ink-400 mb-8">{c.affiliates_title}</p>
+        <div className="relative overflow-hidden marquee-pause" style={{ maskImage: 'linear-gradient(90deg, transparent, #000 8%, #000 92%, transparent)', WebkitMaskImage: 'linear-gradient(90deg, transparent, #000 8%, #000 92%, transparent)' }}>
+          <div className="flex items-center gap-14 w-max animate-marquee">
+            {loop.map((l, i) => (
+              <img key={i} src={l.url} alt={l.name || 'logo'} title={l.name || ''}
+                className="h-10 md:h-12 w-auto object-contain grayscale opacity-70 hover:grayscale-0 hover:opacity-100 transition" />
+            ))}
+          </div>
+        </div>
+      </div>
+    </section>
+  );
+}
+
 const SECTION_COMPONENTS = {
   features: Features,
   how: HowItWorks,
   pricing: Pricing,
+  affiliates: Affiliates,
   final_cta: FinalCta,
 };
 

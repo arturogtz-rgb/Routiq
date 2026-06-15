@@ -26,6 +26,17 @@
     --input: 214 24% 91%;
     --ring: 210 68% 54%;
     --radius: 0.75rem;
+    /* Brand palette (themeable at runtime via Master theme selector) — RGB channels */
+    --brand-50: 230 241 251;
+    --brand-100: 208 228 246;
+    --brand-200: 169 205 236;
+    --brand-300: 127 180 224;
+    --brand-400: 55 138 221;
+    --brand-500: 24 95 165;
+    --brand-600: 20 79 138;
+    --brand-700: 16 63 111;
+    --brand-800: 12 47 84;
+    --brand-900: 8 30 56;
   }
 }
 
@@ -56,6 +67,14 @@ h1, h2, h3, h4, h5, h6, .font-display {
 ::-webkit-scrollbar-thumb { background: #CBD5E1; border-radius: 10px; }
 ::-webkit-scrollbar-thumb:hover { background: #94A3B8; }
 
+/* Logo marquee for affiliates carousel */
+@keyframes marquee {
+  0% { transform: translateX(0); }
+  100% { transform: translateX(-50%); }
+}
+.animate-marquee { animation: marquee 28s linear infinite; }
+.marquee-pause:hover .animate-marquee { animation-play-state: paused; }
+
 /* Reusable helpers */
 .card-surface {
   background: #fff;
@@ -67,30 +86,30 @@ h1, h2, h3, h4, h5, h6, .font-display {
 .card-surface:hover { box-shadow: 0 6px 20px rgba(15, 23, 42, 0.06); }
 
 .btn-primary {
-  background: #185FA5; color: #fff;
+  background: rgb(var(--brand-500)); color: #fff;
   padding: 0.65rem 1.1rem; border-radius: 999px;
   font-weight: 600; letter-spacing: 0.01em;
-  transition: all 200ms ease;
+  transition: background-color 200ms ease, transform 200ms ease, box-shadow 200ms ease;
   display: inline-flex; align-items: center; gap: 0.5rem;
 }
-.btn-primary:hover { background: #144f8a; transform: translateY(-1px); box-shadow: 0 6px 18px rgba(24, 95, 165, 0.25); }
+.btn-primary:hover { background: rgb(var(--brand-600)); transform: translateY(-1px); box-shadow: 0 6px 18px rgb(var(--brand-500) / 0.25); }
 .btn-primary:disabled { opacity: 0.5; cursor: not-allowed; transform: none; box-shadow: none; }
 
 .btn-secondary {
-  background: #E6F1FB; color: #185FA5;
+  background: rgb(var(--brand-50)); color: rgb(var(--brand-500));
   padding: 0.65rem 1.1rem; border-radius: 999px;
   font-weight: 600; letter-spacing: 0.01em;
-  transition: all 200ms ease;
+  transition: background-color 200ms ease, color 200ms ease;
   display: inline-flex; align-items: center; gap: 0.5rem;
 }
-.btn-secondary:hover { background: #185FA5; color: #fff; }
+.btn-secondary:hover { background: rgb(var(--brand-500)); color: #fff; }
 
 .btn-ghost {
   padding: 0.55rem 0.9rem; border-radius: 10px;
-  color: #334155; transition: background 150ms ease;
+  color: #334155; transition: background 150ms ease, color 150ms ease;
   display: inline-flex; align-items: center; gap: 0.5rem;
 }
-.btn-ghost:hover { background: #E6F1FB; color: #185FA5; }
+.btn-ghost:hover { background: rgb(var(--brand-50)); color: rgb(var(--brand-500)); }
 
 .input-field {
   width: 100%;
@@ -102,7 +121,7 @@ h1, h2, h3, h4, h5, h6, .font-display {
   color: #0F172A;
   transition: border-color 150ms ease, box-shadow 150ms ease;
 }
-.input-field:focus { outline: none; border-color: #378ADD; box-shadow: 0 0 0 3px rgba(55, 138, 221, 0.2); }
+.input-field:focus { outline: none; border-color: rgb(var(--brand-400)); box-shadow: 0 0 0 3px rgb(var(--brand-400) / 0.2); }
 
 .label-text {
   display: block; font-size: 0.8rem; font-weight: 600;

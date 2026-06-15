@@ -79,7 +79,7 @@ class TestLogoUpload:
         assert r.status_code == 200, r.text
         data = r.json()
         assert "logo_url" in data
-        assert data["logo_url"].startswith("/uploads/logos/")
+        assert data["logo_url"].startswith("/api/uploads/logos/")
         assert data["logo_url"].endswith(".png")
         # GET company should show updated logo
         company = admin_session.get(f"{API}/companies/me").json()
