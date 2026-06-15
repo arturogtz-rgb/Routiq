@@ -8,8 +8,10 @@ Master can share them manually if email delivery isn't configured.
 """
 import logging
 import os
+from datetime import datetime, timedelta, timezone
 
-from fastapi import APIRouter, Depends, HTTPException
+import httpx
+from fastapi import APIRouter, Depends, HTTPException, Request
 
 from database import get_db, new_id, now_iso, DEFAULT_PRICING_CONFIG
 from auth import hash_password, require_roles
@@ -21,6 +23,48 @@ log = logging.getLogger("routiq.signup")
 router = APIRouter()
 
 LOGIN_URL = os.environ.get("PUBLIC_LOGIN_URL", "https://routiq.com.mx/login")
+TURNSTILE_SECRET_KEY = os.environ.get("TURNSTILE_SECRET_KEY", "")
+
+# Rate-limit: per public IP
+SIGNUP_MAX_PER_HOUR = 5
+SIGNUP_MAX_PER_DAY = 20
+
+
+def _client_ip(request: Request) -> str:
+    """Real client IP behind ingress/nginx (X-Forwarded-For first hop)."""
+    xff = request.headers.get("x-forwarded-for", "")
+    if xff:
+        return xff.split(",")[0].strip()
+    return request.client.host if request.client else "unknown"
+
+
+async def _verify_turnstile(token: str | None, ip: str) -> bool:
+    """Verify a Cloudflare Turnstile token. Skips when no secret key is set."""
+    if not TURNSTILE_SECRET_KEY:
+        return True
+    if not token:
+        return False
+    try:
+        async with httpx.AsyncClient(timeout=10) as client:
+            resp = await client.post(
+                "https://challenges.cloudflare.com/turnstile/v0/siteverify",
+                data={"secret": TURNSTILE_SECRET_KEY, "response": token, "remoteip": ip},
+            )
+            return bool(resp.json().get("success", False))
+    except Exception:
+        log.exception("Turnstile verify failed")
+        return False
+
+
+async def _rate_limited(db, ip: str) -> bool:
+    now = datetime.now(timezone.utc)
+    hour_ago = (now - timedelta(hours=1)).isoformat()
+    day_ago = (now - timedelta(days=1)).isoformat()
+    per_hour = await db.signup_attempts.count_documents({"ip": ip, "at": {"$gte": hour_ago}})
+    if per_hour >= SIGNUP_MAX_PER_HOUR:
+        return True
+    per_day = await db.signup_attempts.count_documents({"ip": ip, "at": {"$gte": day_ago}})
+    return per_day >= SIGNUP_MAX_PER_DAY
 
 
 async def _unique_slug(db, base: str) -> str:
@@ -52,8 +96,20 @@ def _request_public(r: dict) -> dict:
 # Public: submit a signup request
 # ---------------------------------------------------------------------------
 @router.post("/signup", status_code=201)
-async def submit_signup(payload: SignupRequest):
+async def submit_signup(payload: SignupRequest, request: Request):
     db = get_db()
+    ip = _client_ip(request)
+    # Honeypot — bots fill the hidden field. Pretend success, store nothing.
+    if (payload.website or "").strip():
+        log.info("signup honeypot triggered from %s", ip)
+        return {"ok": True, "id": "ok"}
+    # Rate-limit per IP
+    if await _rate_limited(db, ip):
+        raise HTTPException(status_code=429, detail="Demasiadas solicitudes. Intenta de nuevo más tarde.")
+    # Captcha (skipped if no secret key configured)
+    if not await _verify_turnstile(payload.turnstile_token, ip):
+        raise HTTPException(status_code=400, detail="No pudimos verificar el captcha. Recárgalo e intenta de nuevo.")
+
     email = payload.admin_email.lower().strip()
     if await db.users.find_one({"email": email}, {"_id": 1}):
         raise HTTPException(status_code=400, detail="Ya existe una cuenta con ese correo. Inicia sesión.")
@@ -74,6 +130,7 @@ async def submit_signup(payload: SignupRequest):
         "decided_at": "",
     }
     await db.tenant_requests.insert_one(dict(req))
+    await db.signup_attempts.insert_one({"ip": ip, "at": now_iso()})
     return {"ok": True, "id": req["id"]}
 
 

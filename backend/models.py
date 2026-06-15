@@ -99,6 +99,8 @@ class SignupRequest(BaseModel):
     admin_phone: str = ""
     plan: Literal["starter", "pro", "enterprise"] = "pro"
     admin_password: str = Field(min_length=8)
+    turnstile_token: Optional[str] = None
+    website: str = ""  # honeypot — must stay empty for real humans
 
 
 class SignupApprove(BaseModel):

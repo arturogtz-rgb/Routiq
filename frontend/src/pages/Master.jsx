@@ -87,6 +87,21 @@ export function MasterCompanies() {
   const [rejectReason, setRejectReason] = useState('');
   const [reqBusy, setReqBusy] = useState(false);
   const [reqError, setReqError] = useState('');
+  // Request history (approved / rejected)
+  const [history, setHistory] = useState([]);
+  const [historyFilter, setHistoryFilter] = useState('all');
+
+  const loadHistory = async (filter = historyFilter) => {
+    try {
+      if (filter === 'all') {
+        const { data } = await api.get('/tenant-requests');
+        setHistory((data || []).filter((r) => r.status !== 'pending'));
+      } else {
+        const { data } = await api.get('/tenant-requests', { params: { status: filter } });
+        setHistory(data || []);
+      }
+    } catch { setHistory([]); }
+  };
 
   const load = async () => {
     const [comp, reqs] = await Promise.all([
@@ -95,6 +110,7 @@ export function MasterCompanies() {
     ]);
     setCompanies(comp.data);
     setRequests(reqs.data || []);
+    loadHistory();
   };
   useEffect(() => { load(); }, []);
 
@@ -225,6 +241,38 @@ export function MasterCompanies() {
               <button onClick={() => toggle(c)} className="btn-ghost text-xs" data-testid={`toggle-company-${c.slug}`}>
                 {c.status === 'active' ? <><PowerOff className="w-4 h-4" /> Suspender</> : <><Power className="w-4 h-4" /> Reactivar</>}
               </button>
+            </div>
+          </div>
+        ))}
+      </div>
+
+      <div className="card-surface overflow-hidden mt-6" data-testid="requests-history-card">
+        <div className="px-6 py-4 border-b border-ink-100 flex items-center justify-between gap-3">
+          <h2 className="font-display font-semibold text-ink-900 flex items-center gap-2"><Clock className="w-5 h-5 text-brand-500" /> Historial de solicitudes</h2>
+          <select className="input-field !w-auto !py-1.5 text-sm" value={historyFilter}
+            onChange={(e) => { setHistoryFilter(e.target.value); loadHistory(e.target.value); }} data-testid="history-filter">
+            <option value="all">Todas</option>
+            <option value="approved">Aprobadas</option>
+            <option value="rejected">Rechazadas</option>
+          </select>
+        </div>
+        {history.length === 0 ? (
+          <p className="px-6 py-6 text-sm text-ink-400" data-testid="history-empty">Aún no hay solicitudes procesadas.</p>
+        ) : history.map((r) => (
+          <div key={r.id} className="flex flex-wrap items-center justify-between gap-3 px-6 py-4 border-b border-ink-100 last:border-0" data-testid={`history-row-${r.id}`}>
+            <div>
+              <p className="font-semibold text-ink-900 flex items-center gap-2">
+                {r.company_name}
+                <span className={`pill text-xs ${PLAN_TONE[r.plan] || 'bg-ink-100 text-ink-700'}`}><Crown className="w-3 h-3" /> {(r.plan || 'pro').toUpperCase()}</span>
+              </p>
+              <p className="text-xs text-ink-500">{r.admin_name} · {r.admin_email}</p>
+              {r.status === 'rejected' && r.reason && <p className="text-xs text-red-600 mt-0.5">Motivo: {r.reason}</p>}
+            </div>
+            <div className="text-right">
+              <span className={`pill text-xs ${r.status === 'approved' ? 'bg-mint-100 text-emerald-700' : 'bg-red-100 text-red-700'}`} data-testid={`history-status-${r.id}`}>
+                {r.status === 'approved' ? 'Aprobada' : 'Rechazada'}
+              </span>
+              <p className="text-xs text-ink-400 mt-1">{r.decided_at ? new Date(r.decided_at).toLocaleString('es-MX', { dateStyle: 'medium', timeStyle: 'short' }) : ''}</p>
             </div>
           </div>
         ))}

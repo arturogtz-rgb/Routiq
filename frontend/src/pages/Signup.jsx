@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
+import { Turnstile } from '@marsidev/react-turnstile';
 import api, { formatApiError } from '@/lib/api';
 import Logo from '@/components/Logo';
 import { ArrowRight, Eye, EyeOff, CheckCircle2, Building2, Bot, CreditCard, Landmark, BadgeCheck } from 'lucide-react';
@@ -15,20 +16,27 @@ export default function Signup() {
   const initialPlan = ['starter', 'pro', 'enterprise'].includes(params.get('plan')) ? params.get('plan') : 'pro';
   const [form, setForm] = useState({
     company_name: '', admin_name: '', admin_email: '', admin_phone: '',
-    plan: initialPlan, admin_password: '',
+    plan: initialPlan, admin_password: '', website: '',
   });
   const [showPwd, setShowPwd] = useState(false);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const [done, setDone] = useState(false);
+  const [captchaToken, setCaptchaToken] = useState(null);
+  const siteKey = process.env.REACT_APP_TURNSTILE_SITE_KEY;
 
   const set = (k) => (e) => setForm((f) => ({ ...f, [k]: e.target.value }));
 
   const submit = async (e) => {
     e.preventDefault();
+    if (siteKey && !captchaToken) { setError('Por favor completa el captcha.'); return; }
     setError(''); setLoading(true);
     try {
-      await api.post('/signup', { ...form, admin_email: form.admin_email.trim().toLowerCase() });
+      await api.post('/signup', {
+        ...form,
+        admin_email: form.admin_email.trim().toLowerCase(),
+        turnstile_token: captchaToken,
+      });
       setDone(true);
     } catch (err) { setError(formatApiError(err)); }
     finally { setLoading(false); }
@@ -121,6 +129,20 @@ export default function Signup() {
               </div>
               <p className="text-xs text-ink-400 mt-1">Usarás este correo y contraseña para entrar una vez aprobada tu cuenta.</p>
             </div>
+
+            {/* Honeypot — hidden from humans, bots tend to fill it */}
+            <input type="text" name="website" tabIndex={-1} autoComplete="off" value={form.website}
+              onChange={set('website')} className="hidden" aria-hidden="true" data-testid="signup-honeypot" />
+
+            {siteKey && (
+              <div className="flex justify-center" data-testid="signup-turnstile">
+                <Turnstile siteKey={siteKey}
+                  onSuccess={(t) => setCaptchaToken(t)}
+                  onError={() => setCaptchaToken(null)}
+                  onExpire={() => setCaptchaToken(null)} />
+              </div>
+            )}
+
             <button type="submit" disabled={loading || form.admin_password.length < 8} className="btn-primary w-full justify-center" data-testid="signup-submit-btn">
               {loading ? 'Enviando…' : 'Solicitar acceso'} {!loading && <ArrowRight className="w-4 h-4" />}
             </button>

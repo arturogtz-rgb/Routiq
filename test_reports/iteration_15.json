@@ -1,0 +1,32 @@
+{
+  "summary": "Iteration 15 — Endurecimiento del funnel de registro y Historial Master. Backend: 5/5 nuevos tests en /app/backend/tests/test_iteration15_signup_hardening.py pasan. (1) Honeypot — POST /api/signup con website no vacío devuelve 201 {ok:true,id:'ok'} y NO inserta documento en tenant_requests ni consume signup_attempts; con website vacío crea solicitud normalmente. (2) Captcha bypass — TURNSTILE_SECRET_KEY='' permite signup sin turnstile_token (201). (3) Rate-limit por IP con header X-Forwarded-For — 5 solicitudes válidas devuelven 201, la 6ª desde la misma IP devuelve 429 con detail 'Demasiadas solicitudes...', y una IP distinta sigue devolviendo 201. (4) Historial — POST aprobar/rechazar marca status, decided_at y reason; GET /api/tenant-requests sin filtro devuelve todas; ?status=approved sólo aprobadas; ?status=rejected sólo rechazadas; password_hash queda eliminado en ambos casos. Regresión de iter14: 10/11 tests pasan, 1 falla esperada (TestRejectFlow del archivo iter14 ya no envía X-Forwarded-For y choca con el nuevo rate-limit — NO es bug de producto, sólo el test viejo que no se diseñó para esto). Frontend: /signup?plan=pro renderiza signup-card SIN signup-turnstile (count=0), honeypot oculto (is_visible=False), envío completo lleva a signup-success. /master/companies muestra requests-history-card con history-filter (opciones Todas/Aprobadas/Rechazadas). Crear 2 signups + aprobar uno + rechazar otro (con motivo) -> ambos aparecen en historial con history-status-{id} ('Aprobada' verde / 'Rechazada' rojo), fecha de decisión y motivo visible para rechazadas. Filtro 'Aprobadas' deja sólo la aprobada (1/0), filtro 'Rechazadas' deja sólo la rechazada (0/1). Cleanup ejecutado: tenant_requests/companies/users TEST_/ui_* y signup_attempts limpiados; owner@routiq.mx, admin@aventurate.mx y empresa 'Aventúrate por Jalisco' intactos.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "/api/signup", "issue": "Si /api/backend/tests/test_iteration14_signup_funnel.py se corre tras iter15 (sin X-Forwarded-For) el último test recibe 429 por el rate-limit nuevo. Sólo afecta a esa suite vieja — el endpoint funciona correctamente. Recomendado: añadir X-Forwarded-For aleatorio o limpiar signup_attempts en el fixture de iter14."}
+    ]
+  },
+  "frontend_issues": {"ui_bugs": [], "integration_issues": [], "design_issues": []},
+  "test_report_links": [
+    "/app/backend/tests/test_iteration15_signup_hardening.py",
+    "/app/test_reports/pytest/iter15.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "routes/signup.py:_client_ip usa el PRIMER hop de X-Forwarded-For. Detrás del ingress de Kubernetes el cliente puede falsificar la cabecera porque no se verifica un proxy de confianza — un atacante puede rotar X-Forwarded-For y saltarse el rate-limit. Sugerido: tomar el LAST trusted-hop o usar request.client.host cuando no haya configuración explícita de proxies confiables.",
+    "routes/signup.py:_rate_limited cuenta documentos en signup_attempts pero nunca purga registros viejos (>24h). La colección crece indefinidamente. Sugerido: índice TTL en 'at' o cleanup periódico.",
+    "routes/signup.py:submit_signup — la inserción en signup_attempts no es atómica con la creación de la tenant_request: si insert_one(tenant_requests) falla, no se cuenta el intento. Aceptable, pero documentar.",
+    "routes/signup.py:_verify_turnstile devuelve True por defecto cuando TURNSTILE_SECRET_KEY está vacío. Es lo deseado para preview, pero conviene loggear WARNING en startup si la variable está vacía en producción para que no se despliegue sin captcha por descuido.",
+    "Master.jsx loadHistory dispara la consulta dentro de load() y vuelve a llamarse en cada acción (approve/reject) — funciona pero hace 2 GETs al historial por acción. Menor."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_iteration15_signup_hardening.py"
+  ],
+  "success_rate": {"backend": "100% (5/5 nuevos) · iter14: 10/11 (1 falla por interacción con rate-limit, no regresión)", "frontend": "100% (signup, captcha-off, honeypot, historial + filtros)"},
+  "test_credentials": "owner@routiq.mx / Routiq2026! · admin@aventurate.mx / Demo2026!  (de /app/memory/test_credentials.md)",
+  "seed_data_creation": "Toda la data de prueba creada (5 TEST_ tenant_requests, 1 TEST_ company, 1 TEST_ user, 5 signup_attempts) fue borrada al final. Seed protegido intacto.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Iter15 cubre rate-limit (5/h, 20/día) por IP vía X-Forwarded-For, honeypot field 'website', bypass de Turnstile cuando TURNSTILE_SECRET_KEY='' y el historial en Master /master/companies (requests-history-card con history-filter Todas/Aprobadas/Rechazadas). Tests viven en /app/backend/tests/test_iteration15_signup_hardening.py — siempre envían X-Forwarded-For aleatorio para aislar las pruebas y limpian signup_attempts en teardown. Si vuelves a correr iter14 sin tocarlo, probablemente verás 1 fallo en TestRejectFlow por el rate-limit acumulado: corre antes 'db.signup_attempts.delete_many({})' o pasa header X-Forwarded-For. data-testid en Master: requests-history-card, history-filter, history-empty, history-row-{id}, history-status-{id}. data-testid del modal aprobar: approve-modal/approve-slug-input/approve-confirm/approve-done; modal rechazar: reject-modal/reject-reason-input/reject-confirm.",
+  "rca of the issue": "N/A — todos los criterios de aceptación de iter15 (rate-limit, honeypot, captcha bypass, historial con filtros, password_hash purgado en reject/approve) se cumplen. Único punto a mejorar: confiar en X-Forwarded-For sin lista blanca de proxies permite spoofing en entornos donde el ingress no sobrescribe la cabecera."
+}
