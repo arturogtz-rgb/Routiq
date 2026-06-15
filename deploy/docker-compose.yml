@@ -51,8 +51,9 @@ services:
       APP_SETTINGS_URL: ${APP_SETTINGS_URL}
     volumes:
       - uploads_data:/app/uploads
-      # Backups de MongoDB en SOLO LECTURA, para descargarlos desde el Panel Master
-      - mongo_backups:/backups:ro
+      # Backups de MongoDB con LECTURA/ESCRITURA: permite descargarlos desde el Panel
+      # Master y también generarlos on-demand con el botón "Generar respaldo ahora".
+      - mongo_backups:/backups
     ports:
       # Solo expone a la red local del host. Nginx en el host hace el proxy a este puerto.
       - "127.0.0.1:8001:8000"
