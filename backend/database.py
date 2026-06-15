@@ -36,6 +36,7 @@ async def ensure_indexes():
     await db.packages.create_index([("tenant_id", 1), ("code", 1)], unique=True)
     await db.tours.create_index([("tenant_id", 1)])
     await db.transfers.create_index([("tenant_id", 1)])
+    await db.services.create_index([("tenant_id", 1)])
     await db.clients.create_index([("tenant_id", 1)])
     await db.quotations.create_index([("tenant_id", 1), ("state", 1)])
     await db.quotations.create_index([("tenant_id", 1), ("code", 1)], unique=True)
@@ -191,6 +192,27 @@ async def seed_demo_tenant():
             },
         ]
         await db.packages.insert_many([p.copy() for p in packages])
+
+    # Seed sample a la carte services
+    if await db.services.count_documents({"tenant_id": tenant_id}) == 0:
+        await db.services.insert_many([
+            {"id": new_id(), "tenant_id": tenant_id, "name": "Tour privado Tequila con cata",
+             "category": "tour", "description": "Visita a destilería con cata guiada y transporte privado.",
+             "net_price": 1200.0, "public_price": round(1200 / 0.76, 2), "per_person": True,
+             "status": "active", "created_at": now_iso()},
+            {"id": new_id(), "tenant_id": tenant_id, "name": "Traslado aeropuerto privado",
+             "category": "traslado", "description": "Traslado privado aeropuerto–hotel (por trayecto).",
+             "net_price": 650.0, "public_price": round(650 / 0.76, 2), "per_person": False,
+             "status": "active", "created_at": now_iso()},
+            {"id": new_id(), "tenant_id": tenant_id, "name": "Acceso Hospicio Cabañas",
+             "category": "acceso", "description": "Entrada al museo Hospicio Cabañas, Patrimonio de la Humanidad.",
+             "net_price": 90.0, "public_price": round(90 / 0.76, 2), "per_person": True,
+             "status": "active", "created_at": now_iso()},
+            {"id": new_id(), "tenant_id": tenant_id, "name": "Guía privado certificado (día completo)",
+             "category": "extra", "description": "Guía de turistas certificado por día.",
+             "net_price": 2500.0, "public_price": round(2500 / 0.76, 2), "per_person": False,
+             "status": "active", "created_at": now_iso()},
+        ])
 
     # Seed sample clients
     if await db.clients.count_documents({"tenant_id": tenant_id}) == 0:

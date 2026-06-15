@@ -1,0 +1,40 @@
+{
+  "summary": "Iteration 3 — A la carte Services feature fully validated. 13/13 backend tests PASS (CRUD + role guards + quotation wiring + PDF + public link). All 3 frontend flows confirmed end-to-end via Playwright: /app/services page lists 4 seeded services, create new service with empty public_price auto-computes public=net/divisor; quotation builder /app/quotations/new has 5 steps including 'Servicios' (step-services-panel), service-toggle/inc/dec work, services-subtotal renders, review totals include services ($355.26 service line on top of $17,800 hospedaje = $18,155.26), submit creates quotation and navigates to detail page where service item is visible in 'Desglose'; public quotation page /q/{token} renders 'Servicios adicionales incluidos' (data-testid='public-services') with service line items.",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "Public quotation /q/{token}", "issues": ["Company logo block renders as a solid blue square placeholder when logo_url is empty — minor cosmetic. Pre-existing issue from iteration 2 (logo routing) is unrelated to this iteration's services feature."]}
+    ]
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_iteration3_services.py",
+    "/app/test_reports/pytest/iter3_results.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "server.py _auto_public_price() correctly handles public_price==0 path and uses tenant's margin_divisor (defaults to 0.76).",
+    "server.py update_service: only recomputes public when net changes AND public not explicitly provided in the same patch — correct semantics.",
+    "pricing.py compute_quotation: services are appended after hospedaje items; per_person logic auto-bumps qty to total_pax when qty<=1, which matches the documented backend-uses-provided-qty contract (frontend sends explicit qty). Subtotal/total math verified.",
+    "Role guards on /api/services POST/PATCH/DELETE correctly enforce company_admin only; executive gets 403 (verified).",
+    "Public endpoint /api/public/quotations/{token} exposes service items in items[] correctly with kind='servicio'.",
+    "Frontend Services.jsx uses correct data-testids (new-service-btn, service-name-input, service-net-input, save-service-btn, service-card-{id}, edit/delete buttons). Suggested public price hint is shown when net>0 and public empty — UX nice touch.",
+    "QuotationBuilder.jsx step indices: 0 client, 1 package, 2 dates, 3 services, 4 review — matches expected 5-step flow. step-services-panel renders only after dates step; services-subtotal only shows when at least one service is selected.",
+    "PublicQuotation.jsx public-services section properly filters items by kind==='servicio' and only renders the section if at least one service item exists — verified."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_iteration3_services.py (new)",
+    "/app/test_reports/pytest/iter3_results.xml (new)"
+  ],
+  "success_rate": {"backend": "100% (13/13)", "frontend": "100% (3/3 flows)"},
+  "test_credentials": "admin@aventurate.mx/Demo2026!, ejecutivo@aventurate.mx/Demo2026! (matches /app/memory/test_credentials.md)",
+  "seed_data_creation": "Created a few TEST_ prefixed services (TEST UI Tour, TEST Tour, TEST Patch, TEST Acceso, TEST Del — last one deleted) and 5+ new quotations (e.g. COT-2026024) with service items on aventurate tenant. No cleanup performed; data has TEST_ prefix on services for easy identification.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Iteration 3 (a la carte services) is functioning end-to-end. Backend tests in /app/backend/tests/test_iteration3_services.py — all 13 PASS in ~7s. Frontend Playwright flows confirmed: Services catalog CRUD UI, 5-step QuotationBuilder with Servicios step (index 3), and PublicQuotation /q/:token services section. The pre-existing iteration-2 logo routing bug (/uploads not under /api prefix) is still unresolved and visible as a blue placeholder square on the public page — out of scope for this iteration. To re-run: pytest /app/backend/tests/test_iteration3_services.py -v. Pricing margin_divisor for the aventurate tenant was set to 0.75 by iteration-2 tests (not 0.76), so test_create_service_auto_public_price computes expected_public from the current tenant config rather than the default constant.",
+  "rca of the issue": "No new issues found in iteration 3."
+}

@@ -129,6 +129,35 @@ class PackageUpdate(BaseModel):
     status: Optional[str] = None
 
 
+# ---------- Services (a la carte) ----------
+ServiceCategory = Literal["tour", "traslado", "acceso", "extra"]
+
+
+class ServiceCreate(BaseModel):
+    name: str
+    category: ServiceCategory = "tour"
+    description: str = ""
+    net_price: float = 0.0
+    public_price: float = 0.0  # if 0, server auto-computes from net via margin_divisor
+    per_person: bool = False
+    status: str = "active"
+
+
+class ServiceUpdate(BaseModel):
+    name: Optional[str] = None
+    category: Optional[ServiceCategory] = None
+    description: Optional[str] = None
+    net_price: Optional[float] = None
+    public_price: Optional[float] = None
+    per_person: Optional[bool] = None
+    status: Optional[str] = None
+
+
+class SelectedService(BaseModel):
+    service_id: str
+    qty: int = Field(default=1, ge=1)
+
+
 # ---------- Clients ----------
 class ClientCreate(BaseModel):
     name: str
@@ -172,6 +201,7 @@ class QuotationCreate(BaseModel):
     hotel_name: str
     dates: QuotationDates
     pax: QuotationPax
+    services: List[SelectedService] = []
     notes: str = ""
     assigned_to: Optional[str] = None
 
@@ -184,5 +214,6 @@ class QuotationUpdate(BaseModel):
     dates: Optional[QuotationDates] = None
     pax: Optional[QuotationPax] = None
     hotel_name: Optional[str] = None
+    services: Optional[List[SelectedService]] = None
     notes: Optional[str] = None
     assigned_to: Optional[str] = None

@@ -8,6 +8,7 @@ import Login from '@/pages/Login';
 import Dashboard from '@/pages/Dashboard';
 import Kanban from '@/pages/Kanban';
 import Packages from '@/pages/Packages';
+import Services from '@/pages/Services';
 import QuotationBuilder from '@/pages/QuotationBuilder';
 import QuotationsList from '@/pages/QuotationsList';
 import QuotationDetail from '@/pages/QuotationDetail';
@@ -38,6 +39,7 @@ export default function App() {
           <Route path="/app/dashboard" element={<ProtectedRoute roles={['company_admin', 'executive']}><Dashboard /></ProtectedRoute>} />
           <Route path="/app/kanban" element={<ProtectedRoute roles={['company_admin', 'executive']}><Kanban /></ProtectedRoute>} />
           <Route path="/app/packages" element={<ProtectedRoute roles={['company_admin', 'executive']}><Packages /></ProtectedRoute>} />
+          <Route path="/app/services" element={<ProtectedRoute roles={['company_admin', 'executive']}><Services /></ProtectedRoute>} />
           <Route path="/app/quotations" element={<ProtectedRoute roles={['company_admin', 'executive']}><QuotationsList /></ProtectedRoute>} />
           <Route path="/app/quotations/new" element={<ProtectedRoute roles={['company_admin', 'executive']}><QuotationBuilder /></ProtectedRoute>} />
           <Route path="/app/quotations/:id" element={<ProtectedRoute roles={['company_admin', 'executive']}><QuotationDetail /></ProtectedRoute>} />

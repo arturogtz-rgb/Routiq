@@ -24,6 +24,7 @@ from models import (
     LoginInput, UserPublic, CompanyCreate, CompanyPublic, CompanyUpdate, PricingConfig,
     InviteExecutive, PackageCreate, PackageUpdate, ClientCreate,
     QuotationCreate, QuotationStateUpdate, QuotationUpdate, WhatsAppNumber,
+    ServiceCreate, ServiceUpdate,
 )
 from pricing import compute_quotation
 from pdf_generator import generate_quotation_pdf
@@ -289,6 +290,65 @@ async def delete_package(package_id: str, user: dict = Depends(require_roles("co
 
 
 # ---------------------------------------------------------------------------
+# Services catalog (a la carte: tours, traslados, accesos, extras)
+# ---------------------------------------------------------------------------
+@api.get("/services")
+async def list_services(user: dict = Depends(require_tenant)):
+    db = get_db()
+    return await db.services.find({"tenant_id": user["tenant_id"]}, {"_id": 0}).sort("name", 1).to_list(500)
+
+
+async def _auto_public_price(db, tenant_id: str, net_price: float, public_price: float) -> float:
+    if public_price and public_price > 0:
+        return round(public_price, 2)
+    company = await db.companies.find_one({"id": tenant_id}, {"_id": 0, "pricing_config": 1})
+    divisor = float((company or {}).get("pricing_config", {}).get("margin_divisor") or 0.76) or 0.76
+    return round((net_price or 0) / divisor, 2)
+
+
+@api.post("/services", status_code=201)
+async def create_service(payload: ServiceCreate, user: dict = Depends(require_roles("company_admin"))):
+    db = get_db()
+    data = payload.model_dump()
+    data["public_price"] = await _auto_public_price(db, user["tenant_id"], data.get("net_price", 0), data.get("public_price", 0))
+    doc = {"id": new_id(), "tenant_id": user["tenant_id"], "created_at": now_iso(), **data}
+    await db.services.insert_one(dict(doc))
+    return doc
+
+
+@api.patch("/services/{service_id}")
+async def update_service(service_id: str, payload: ServiceUpdate, user: dict = Depends(require_roles("company_admin"))):
+    db = get_db()
+    updates = {k: v for k, v in payload.model_dump(exclude_unset=True).items() if v is not None}
+    existing = await db.services.find_one({"id": service_id, "tenant_id": user["tenant_id"]}, {"_id": 0})
+    if not existing:
+        raise HTTPException(status_code=404, detail="Servicio no encontrado")
+    # recompute public if net changed and public not explicitly provided
+    if "net_price" in updates and "public_price" not in updates:
+        updates["public_price"] = await _auto_public_price(db, user["tenant_id"], updates["net_price"], 0)
+    if updates:
+        await db.services.update_one({"id": service_id, "tenant_id": user["tenant_id"]}, {"$set": updates})
+    return await db.services.find_one({"id": service_id, "tenant_id": user["tenant_id"]}, {"_id": 0})
+
+
+@api.delete("/services/{service_id}")
+async def delete_service(service_id: str, user: dict = Depends(require_roles("company_admin"))):
+    db = get_db()
+    await db.services.delete_one({"id": service_id, "tenant_id": user["tenant_id"]})
+    return {"ok": True}
+
+
+async def _load_services_catalog(db, tenant_id: str, selected: list) -> dict:
+    ids = [s["service_id"] if isinstance(s, dict) else s.service_id for s in (selected or [])]
+    if not ids:
+        return {}
+    catalog = {}
+    async for svc in db.services.find({"id": {"$in": ids}, "tenant_id": tenant_id}, {"_id": 0}):
+        catalog[svc["id"]] = svc
+    return catalog
+
+
+# ---------------------------------------------------------------------------
 # Clients
 # ---------------------------------------------------------------------------
 @api.get("/clients")
@@ -351,8 +411,11 @@ async def create_quotation(payload: QuotationCreate, user: dict = Depends(requir
         raise HTTPException(status_code=404, detail="Paquete no encontrado")
     company = await db.companies.find_one({"id": user["tenant_id"]}, {"_id": 0})
     pricing_config = company.get("pricing_config") or DEFAULT_PRICING_CONFIG
+    services_sel = [s.model_dump() for s in payload.services]
+    services_catalog = await _load_services_catalog(db, user["tenant_id"], services_sel)
     calc = compute_quotation(pack, payload.hotel_name, payload.pax.model_dump(),
-                             pack["nights"], client["channel"], pricing_config)
+                             pack["nights"], client["channel"], pricing_config,
+                             services_catalog, services_sel)
     code = await _next_quotation_code(db, user["tenant_id"])
     # Defensive: swap dates if start > end
     d_start = payload.dates.start
@@ -367,6 +430,7 @@ async def create_quotation(payload: QuotationCreate, user: dict = Depends(requir
         "hotel_selected": payload.hotel_name,
         "dates": {"start": d_start, "end": d_end},
         "pax": payload.pax.model_dump(),
+        "services": services_sel,
         "items": calc["items"],
         "subtotal": calc["subtotal"],
         "commission": calc["commission"],
@@ -405,16 +469,20 @@ async def update_quotation(quotation_id: str, payload: QuotationUpdate, user: di
     q = await db.quotations.find_one({"id": quotation_id, "tenant_id": user["tenant_id"]}, {"_id": 0})
     if not q:
         raise HTTPException(status_code=404, detail="Cotización no encontrada")
-    if any(k in updates for k in ("pax", "hotel_name")):
+    if any(k in updates for k in ("pax", "hotel_name", "services")):
         pack = await db.packages.find_one({"id": q["package_id"], "tenant_id": user["tenant_id"]}, {"_id": 0})
         client = await db.clients.find_one({"id": q["client_id"], "tenant_id": user["tenant_id"]}, {"_id": 0})
         company = await db.companies.find_one({"id": user["tenant_id"]}, {"_id": 0})
         pricing_config = company.get("pricing_config") or DEFAULT_PRICING_CONFIG
         hotel = updates.get("hotel_name", q["hotel_selected"])
         pax = updates.get("pax", q["pax"])
-        calc = compute_quotation(pack, hotel, pax, pack["nights"], client["channel"], pricing_config)
+        services_sel = updates.get("services", q.get("services", []))
+        services_catalog = await _load_services_catalog(db, user["tenant_id"], services_sel)
+        calc = compute_quotation(pack, hotel, pax, pack["nights"], client["channel"], pricing_config,
+                                 services_catalog, services_sel)
         updates.update({
             "hotel_selected": hotel,
+            "services": services_sel,
             "items": calc["items"], "subtotal": calc["subtotal"],
             "commission": calc["commission"], "commission_rate": calc["commission_rate"],
             "total": calc["total"],

@@ -2,12 +2,13 @@ import { useEffect, useState } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import AppShell from '@/components/AppShell';
 import api, { formatApiError } from '@/lib/api';
-import { ArrowLeft, ArrowRight, Check, User, Package, CalendarDays, Calculator, FileText, Plus } from 'lucide-react';
+import { ArrowLeft, ArrowRight, Check, User, Package, CalendarDays, Calculator, FileText, Plus, Sparkles } from 'lucide-react';
 
 const STEPS = [
   { key: 'client', label: 'Cliente', icon: User },
   { key: 'package', label: 'Paquete', icon: Package },
   { key: 'dates', label: 'Fechas y pax', icon: CalendarDays },
+  { key: 'services', label: 'Servicios', icon: Sparkles },
   { key: 'review', label: 'Revisión', icon: Calculator },
 ];
 
@@ -19,6 +20,7 @@ export default function QuotationBuilder() {
   const [step, setStep] = useState(0);
   const [clients, setClients] = useState([]);
   const [packages, setPackages] = useState([]);
+  const [services, setServices] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [showClient, setShowClient] = useState(false);
@@ -30,13 +32,14 @@ export default function QuotationBuilder() {
     hotel_name: '',
     dates: { start: '', end: '' },
     pax: { rooms: [{ ocupacion: 'doble', count: 1 }], menores: 0 },
+    services: [],
     notes: '',
   });
 
   useEffect(() => {
     (async () => {
-      const [c, p] = await Promise.all([api.get('/clients'), api.get('/packages')]);
-      setClients(c.data); setPackages(p.data);
+      const [c, p, s] = await Promise.all([api.get('/clients'), api.get('/packages'), api.get('/services')]);
+      setClients(c.data); setPackages(p.data); setServices(s.data);
       if (form.package_id && !form.hotel_name) {
         const pack = p.data.find((x) => x.id === form.package_id);
         if (pack?.hotels?.[0]) setForm((f) => ({ ...f, hotel_name: pack.hotels[0].name }));
@@ -57,24 +60,47 @@ export default function QuotationBuilder() {
   const OCC_COUNT = { sencilla: 1, doble: 2, triple: 3, cuadruple: 4 };
 
   const totalAdults = (form.pax.rooms || []).reduce((s, r) => s + OCC_COUNT[r.ocupacion] * (r.count || 0), 0);
+  const totalPax = totalAdults + (form.pax.menores || 0);
+
+  const servicesSubtotal = (() => {
+    let s = 0;
+    for (const sel of (form.services || [])) {
+      const svc = services.find((x) => x.id === sel.service_id);
+      if (!svc) continue;
+      s += Number(svc.public_price || 0) * (sel.qty || 1);
+    }
+    return s;
+  })();
 
   const subtotal = (() => {
-    if (!hotel) return 0;
+    if (!hotel) return servicesSubtotal;
     let s = 0;
     for (const r of (form.pax.rooms || [])) {
       const price = Number(hotel.prices_by_occupancy?.[r.ocupacion] || 0);
       s += price * OCC_COUNT[r.ocupacion] * (r.count || 0);
     }
     s += Number(hotel.minor_price || 0) * (form.pax.menores || 0);
-    return s;
+    return s + servicesSubtotal;
   })();
   const commission = Math.round(subtotal * commissionRate * 100) / 100;
   const total = subtotal - commission;
 
+  const isServiceSelected = (id) => (form.services || []).some((s) => s.service_id === id);
+  const toggleService = (svc) => setForm((f) => {
+    const exists = (f.services || []).some((s) => s.service_id === svc.id);
+    if (exists) return { ...f, services: f.services.filter((s) => s.service_id !== svc.id) };
+    const defaultQty = svc.per_person && totalPax > 0 ? totalPax : 1;
+    return { ...f, services: [...(f.services || []), { service_id: svc.id, qty: defaultQty }] };
+  });
+  const setServiceQty = (id, qty) => setForm((f) => ({
+    ...f, services: f.services.map((s) => s.service_id === id ? { ...s, qty: Math.max(1, qty) } : s),
+  }));
+
   const canNext = () =>
     (step === 0 && !!form.client_id) ||
     (step === 1 && !!form.package_id && !!form.hotel_name) ||
-    (step === 2 && form.dates.start && form.dates.end && (form.pax.rooms?.length > 0) && totalAdults > 0);
+    (step === 2 && form.dates.start && form.dates.end && (form.pax.rooms?.length > 0) && totalAdults > 0) ||
+    (step === 3);
 
   const addRoom = (ocupacion) => setForm((f) => ({ ...f, pax: { ...f.pax, rooms: [...(f.pax.rooms || []), { ocupacion, count: 1 }] } }));
   const updateRoom = (idx, patch) => setForm((f) => ({ ...f, pax: { ...f.pax, rooms: f.pax.rooms.map((r, i) => i === idx ? { ...r, ...patch } : r) } }));
@@ -116,7 +142,7 @@ export default function QuotationBuilder() {
       <p className="text-ink-500 mb-8">Construye una cotización de paquete armado en 4 pasos.</p>
 
       {/* Stepper */}
-      <div className="grid grid-cols-4 gap-2 mb-8">
+      <div className="grid grid-cols-5 gap-2 mb-8">
         {STEPS.map((s, i) => (
           <div key={s.key} className={`rounded-xl p-3 border text-xs font-semibold uppercase tracking-wider text-center transition-all
               ${i === step ? 'bg-brand-500 text-white border-brand-500'
@@ -293,8 +319,63 @@ export default function QuotationBuilder() {
           </div>
         )}
 
-        {/* Step: Review */}
+        {/* Step: Services (a la carte) */}
         {step === 3 && (
+          <div className="space-y-4" data-testid="step-services-panel">
+            <div>
+              <h2 className="font-display text-xl font-semibold text-ink-900">Servicios a la carta</h2>
+              <p className="text-ink-500 text-sm mt-1">Agrega tours, traslados, accesos o extras opcionales. Este paso es opcional.</p>
+            </div>
+            {services.length === 0 ? (
+              <p className="text-ink-400 text-sm italic">No hay servicios en el catálogo. Pídele a un admin que los cree en la sección Servicios.</p>
+            ) : (
+              <div className="grid md:grid-cols-2 gap-3">
+                {services.map((svc) => {
+                  const selected = isServiceSelected(svc.id);
+                  const sel = (form.services || []).find((s) => s.service_id === svc.id);
+                  return (
+                    <div key={svc.id}
+                      className={`rounded-xl border p-4 transition-all ${selected ? 'border-brand-500 bg-brand-50' : 'border-ink-100 hover:border-brand-300'}`}
+                      data-testid={`service-pick-${svc.id}`}>
+                      <button type="button" className="w-full text-left" onClick={() => toggleService(svc)} data-testid={`service-toggle-${svc.id}`}>
+                        <div className="flex items-start justify-between gap-2">
+                          <div>
+                            <span className="pill bg-white text-brand-500 text-xs capitalize">{svc.category}</span>
+                            <p className="font-semibold text-ink-900 mt-1.5">{svc.name}</p>
+                            {svc.description && <p className="text-xs text-ink-500 mt-0.5">{svc.description}</p>}
+                          </div>
+                          <div className={`w-5 h-5 rounded-full border-2 shrink-0 flex items-center justify-center ${selected ? 'bg-brand-500 border-brand-500' : 'border-ink-200'}`}>
+                            {selected && <Check className="w-3 h-3 text-white" />}
+                          </div>
+                        </div>
+                        <p className="font-display font-bold text-brand-500 mt-2">${Number(svc.public_price).toLocaleString('es-MX')}{svc.per_person ? ' / persona' : ''}</p>
+                      </button>
+                      {selected && (
+                        <div className="flex items-center gap-2 mt-3 pt-3 border-t border-brand-200">
+                          <span className="text-xs text-ink-500">Cantidad</span>
+                          <button type="button" className="w-7 h-7 rounded-full bg-white border border-ink-200 hover:bg-brand-50"
+                            onClick={() => setServiceQty(svc.id, (sel?.qty || 1) - 1)} data-testid={`service-dec-${svc.id}`}>−</button>
+                          <span className="font-semibold w-8 text-center" data-testid={`service-qty-${svc.id}`}>{sel?.qty || 1}</span>
+                          <button type="button" className="w-7 h-7 rounded-full bg-white border border-ink-200 hover:bg-brand-50"
+                            onClick={() => setServiceQty(svc.id, (sel?.qty || 1) + 1)} data-testid={`service-inc-${svc.id}`}>+</button>
+                          <span className="text-xs text-ink-400 ml-auto">{money(Number(svc.public_price) * (sel?.qty || 1))}</span>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+            {servicesSubtotal > 0 && (
+              <div className="rounded-xl bg-mint-100 text-emerald-800 px-4 py-3 text-sm font-medium" data-testid="services-subtotal">
+                Servicios seleccionados: {money(servicesSubtotal)}
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Step: Review */}
+        {step === 4 && (
           <div className="space-y-4" data-testid="step-review-panel">
             <h2 className="font-display text-xl font-semibold text-ink-900">Revisión</h2>
             <div className="grid md:grid-cols-2 gap-4 text-sm">
@@ -321,6 +402,9 @@ export default function QuotationBuilder() {
             </div>
 
             <div className="rounded-xl bg-gradient-to-br from-brand-500 to-accent text-white p-5" data-testid="builder-totals">
+              {servicesSubtotal > 0 && (
+                <div className="flex justify-between text-sm mb-1 opacity-90"><span>Servicios a la carta</span><span>{money(servicesSubtotal)}</span></div>
+              )}
               <div className="flex justify-between text-sm"><span>Subtotal</span><span>{money(subtotal)}</span></div>
               {commissionRate > 0 && <div className="flex justify-between text-sm mt-1"><span>Comisión canal ({(commissionRate * 100).toFixed(0)}%)</span><span>- {money(commission)}</span></div>}
               <div className="border-t border-white/20 mt-3 pt-3 flex justify-between items-end">

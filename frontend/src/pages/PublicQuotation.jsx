@@ -150,6 +150,27 @@ export default function PublicQuotation() {
           </div>
         )}
 
+        {/* Servicios a la carta */}
+        {(q.items || []).some((it) => it.kind === 'servicio') && (
+          <div className="card-surface p-6" data-testid="public-services">
+            <h2 className="font-display text-xl font-semibold text-ink-900 mb-4">Servicios adicionales incluidos</h2>
+            <div className="space-y-2">
+              {(q.items || []).filter((it) => it.kind === 'servicio').map((it, i) => (
+                <div key={i} className="flex items-center justify-between py-2 border-b border-ink-100 last:border-0">
+                  <div className="flex items-center gap-3">
+                    <Sparkles className="w-4 h-4" style={{ color: primary }} />
+                    <div>
+                      <p className="font-medium text-ink-900">{it.label}</p>
+                      <p className="text-xs text-ink-400">{money(it.unit_price, q.currency)} × {it.qty}</p>
+                    </div>
+                  </div>
+                  <p className="font-semibold text-ink-900">{money(it.subtotal, q.currency)}</p>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
         {/* Total + Accept */}
         <div className="card-surface p-6 sticky bottom-4">
           <div className="flex items-center justify-between mb-5">
