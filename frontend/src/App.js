@@ -15,6 +15,7 @@ import WhatsAppInbox from '@/pages/WhatsAppInbox';
 import Team from '@/pages/Team';
 import Settings from '@/pages/Settings';
 import MasterAdmin, { MasterCompanies } from '@/pages/Master';
+import PublicQuotation from '@/pages/PublicQuotation';
 
 function HomeRedirect() {
   const { user, loading } = useAuth();
@@ -31,6 +32,7 @@ export default function App() {
         <Routes>
           <Route path="/" element={<HomeRedirect />} />
           <Route path="/login" element={<Login />} />
+          <Route path="/q/:token" element={<PublicQuotation />} />
 
           {/* Company app */}
           <Route path="/app/dashboard" element={<ProtectedRoute roles={['company_admin', 'executive']}><Dashboard /></ProtectedRoute>} />

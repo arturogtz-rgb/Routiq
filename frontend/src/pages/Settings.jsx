@@ -1,21 +1,24 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import AppShell from '@/components/AppShell';
 import api, { formatApiError } from '@/lib/api';
-import { Save, Calculator, Percent } from 'lucide-react';
+import { Save, Calculator, Percent, Upload, Image as ImageIcon, X } from 'lucide-react';
 
 export default function Settings() {
   const [company, setCompany] = useState(null);
   const [pricing, setPricing] = useState(null);
   const [error, setError] = useState('');
   const [ok, setOk] = useState('');
+  const [uploading, setUploading] = useState(false);
+  const fileInputRef = useRef(null);
+  const backend = process.env.REACT_APP_BACKEND_URL || '';
 
-  useEffect(() => {
-    (async () => {
-      const { data } = await api.get('/companies/me');
-      setCompany(data);
-      setPricing(data.pricing_config);
-    })();
-  }, []);
+  const reload = async () => {
+    const { data } = await api.get('/companies/me');
+    setCompany(data);
+    setPricing(data.pricing_config);
+  };
+
+  useEffect(() => { reload(); }, []);
 
   const save = async () => {
     setError(''); setOk('');
@@ -23,6 +26,28 @@ export default function Settings() {
       const { data } = await api.patch('/companies/me/pricing', pricing);
       setCompany(data); setOk('Configuración guardada');
       setTimeout(() => setOk(''), 2500);
+    } catch (e) { setError(formatApiError(e)); }
+  };
+
+  const uploadLogo = async (file) => {
+    if (!file) return;
+    setError(''); setUploading(true);
+    try {
+      const fd = new FormData();
+      fd.append('file', file);
+      const { data } = await api.post('/companies/me/logo', fd, { headers: { 'Content-Type': 'multipart/form-data' } });
+      setCompany(data);
+      setOk('Logo actualizado');
+      setTimeout(() => setOk(''), 2500);
+    } catch (e) { setError(formatApiError(e)); }
+    finally { setUploading(false); }
+  };
+
+  const removeLogo = async () => {
+    if (!window.confirm('¿Eliminar el logo actual?')) return;
+    try {
+      const { data } = await api.delete('/companies/me/logo');
+      setCompany(data);
     } catch (e) { setError(formatApiError(e)); }
   };
 
@@ -42,6 +67,34 @@ export default function Settings() {
 
       <div className="grid lg:grid-cols-3 gap-6">
         <div className="lg:col-span-2 card-surface p-6 space-y-6">
+          {/* Logo upload */}
+          <div>
+            <h2 className="font-display font-semibold text-lg text-ink-900 flex items-center gap-2"><ImageIcon className="w-5 h-5 text-brand-500" /> Logo de empresa</h2>
+            <p className="text-sm text-ink-500 mt-1">Aparece en el sidebar, los PDF y el enlace público del cliente. Recomendado: PNG/SVG transparente, máx 2 MB.</p>
+            <div className="mt-4 flex items-center gap-5">
+              <div className="w-28 h-28 rounded-2xl border-2 border-dashed border-ink-200 bg-cream flex items-center justify-center overflow-hidden" data-testid="logo-preview">
+                {company?.logo_url
+                  ? <img src={`${backend}${company.logo_url}`} alt="Logo" className="max-w-full max-h-full object-contain" />
+                  : <ImageIcon className="w-10 h-10 text-ink-300" />}
+              </div>
+              <div className="flex-1">
+                <input ref={fileInputRef} type="file" accept="image/*" className="hidden"
+                  onChange={(e) => uploadLogo(e.target.files?.[0])} data-testid="logo-file-input" />
+                <button className="btn-primary text-sm" disabled={uploading}
+                  onClick={() => fileInputRef.current?.click()} data-testid="upload-logo-btn">
+                  <Upload className="w-4 h-4" /> {uploading ? 'Subiendo…' : (company?.logo_url ? 'Cambiar logo' : 'Subir logo')}
+                </button>
+                {company?.logo_url && (
+                  <button className="btn-ghost text-sm ml-2 text-red-600" onClick={removeLogo} data-testid="remove-logo-btn">
+                    <X className="w-4 h-4" /> Quitar
+                  </button>
+                )}
+              </div>
+            </div>
+          </div>
+
+          <hr className="border-ink-100" />
+
           <div>
             <h2 className="font-display font-semibold text-lg text-ink-900 flex items-center gap-2"><Calculator className="w-5 h-5 text-brand-500" /> Fórmula base</h2>
             <p className="text-sm text-ink-500 mt-1">Costo total ÷ divisor = precio público. Ej: 0.76 ⇒ margen del 24%.</p>

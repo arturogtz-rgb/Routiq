@@ -4,10 +4,14 @@ from pathlib import Path
 load_dotenv(Path(__file__).parent / ".env")
 
 import os
+import io
 import logging
-from datetime import datetime, timezone
-from fastapi import FastAPI, APIRouter, HTTPException, Depends, Response, Request
+import secrets
+from datetime import datetime, timezone, timedelta
+from pathlib import Path as _Path
+from fastapi import FastAPI, APIRouter, HTTPException, Depends, Response, Request, UploadFile, File
 from fastapi.responses import StreamingResponse
+from fastapi.staticfiles import StaticFiles
 from starlette.middleware.cors import CORSMiddleware
 
 from database import get_db, new_id, now_iso, ensure_indexes, seed_super_admin, seed_demo_tenant, DEFAULT_PRICING_CONFIG
@@ -23,7 +27,11 @@ from models import (
 )
 from pricing import compute_quotation
 from pdf_generator import generate_quotation_pdf
-import io
+import ai_service
+
+UPLOAD_DIR = _Path("/app/uploads") if _Path("/app/uploads").exists() or os.environ.get("DOCKER") else _Path(__file__).parent / "uploads"
+LOGO_DIR = UPLOAD_DIR / "logos"
+LOGO_DIR.mkdir(parents=True, exist_ok=True)
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s - %(message)s")
 log = logging.getLogger("routiq")
@@ -488,9 +496,196 @@ async def master_metrics(user: dict = Depends(require_roles("super_admin"))):
 
 
 # ---------------------------------------------------------------------------
+# Logo upload
+# ---------------------------------------------------------------------------
+@api.post("/companies/me/logo", response_model=CompanyPublic)
+async def upload_company_logo(file: UploadFile = File(...), user: dict = Depends(require_roles("company_admin"))):
+    if not file.content_type or not file.content_type.startswith("image/"):
+        raise HTTPException(status_code=400, detail="El archivo debe ser una imagen")
+    content = await file.read()
+    if len(content) > 2 * 1024 * 1024:
+        raise HTTPException(status_code=400, detail="Imagen muy grande (máx 2 MB)")
+    ext = (file.filename or "").rsplit(".", 1)[-1].lower()
+    if ext not in ("png", "jpg", "jpeg", "svg", "webp"):
+        ext = "png"
+    filename = f"{user['tenant_id']}.{ext}"
+    LOGO_DIR.mkdir(parents=True, exist_ok=True)
+    # Remove old logo files for this tenant
+    for old in LOGO_DIR.glob(f"{user['tenant_id']}.*"):
+        try:
+            old.unlink()
+        except Exception:
+            pass
+    (LOGO_DIR / filename).write_bytes(content)
+    logo_url = f"/uploads/logos/{filename}"
+    db = get_db()
+    await db.companies.update_one({"id": user["tenant_id"]}, {"$set": {"logo_url": logo_url}})
+    return await db.companies.find_one({"id": user["tenant_id"]}, {"_id": 0})
+
+
+@api.delete("/companies/me/logo", response_model=CompanyPublic)
+async def remove_company_logo(user: dict = Depends(require_roles("company_admin"))):
+    for old in LOGO_DIR.glob(f"{user['tenant_id']}.*"):
+        try:
+            old.unlink()
+        except Exception:
+            pass
+    db = get_db()
+    await db.companies.update_one({"id": user["tenant_id"]}, {"$set": {"logo_url": ""}})
+    return await db.companies.find_one({"id": user["tenant_id"]}, {"_id": 0})
+
+
+# ---------------------------------------------------------------------------
+# Public quotation link (cliente acepta cotización con un click)
+# ---------------------------------------------------------------------------
+@api.post("/quotations/{quotation_id}/public-link")
+async def create_public_link(quotation_id: str, user: dict = Depends(require_tenant)):
+    db = get_db()
+    q = await db.quotations.find_one({"id": quotation_id, "tenant_id": user["tenant_id"]}, {"_id": 0})
+    if not q:
+        raise HTTPException(status_code=404, detail="Cotización no encontrada")
+    token = secrets.token_urlsafe(18)
+    expires_at = (datetime.now(timezone.utc) + timedelta(days=7)).isoformat()
+    public = {"token": token, "expires_at": expires_at, "created_at": now_iso(), "accepted_at": None}
+    await db.quotations.update_one({"id": quotation_id}, {"$set": {"public_link": public}})
+    return {"token": token, "expires_at": expires_at}
+
+
+@api.delete("/quotations/{quotation_id}/public-link")
+async def revoke_public_link(quotation_id: str, user: dict = Depends(require_tenant)):
+    db = get_db()
+    await db.quotations.update_one(
+        {"id": quotation_id, "tenant_id": user["tenant_id"]},
+        {"$unset": {"public_link": ""}},
+    )
+    return {"ok": True}
+
+
+@api.get("/public/quotations/{token}")
+async def get_public_quotation(token: str):
+    db = get_db()
+    q = await db.quotations.find_one({"public_link.token": token}, {"_id": 0})
+    if not q:
+        raise HTTPException(status_code=404, detail="Enlace inválido")
+    expires = q.get("public_link", {}).get("expires_at")
+    if expires and datetime.fromisoformat(expires) < datetime.now(timezone.utc):
+        raise HTTPException(status_code=410, detail="Enlace expirado")
+    company = await db.companies.find_one({"id": q["tenant_id"]}, {"_id": 0, "pricing_config": 0})
+    pack = await db.packages.find_one({"id": q["package_id"]}, {"_id": 0})
+    return {
+        "quotation": {
+            "code": q["code"], "package_snapshot": q["package_snapshot"],
+            "hotel_selected": q["hotel_selected"], "dates": q["dates"], "pax": q["pax"],
+            "items": q["items"], "subtotal": q["subtotal"], "commission": q.get("commission", 0),
+            "total": q["total"], "currency": q.get("currency", "MXN"), "state": q["state"],
+            "client_name": q.get("client_snapshot", {}).get("name", ""),
+            "accepted_at": q.get("public_link", {}).get("accepted_at"),
+        },
+        "company": {
+            "name": company.get("name", ""), "logo_url": company.get("logo_url", ""),
+            "primary_color": company.get("primary_color", "#185FA5"),
+            "contact_email": company.get("contact_email", ""),
+            "contact_phone": company.get("contact_phone", ""),
+        },
+        "itinerary": (pack or {}).get("itinerary", []),
+        "includes": (pack or {}).get("includes", []),
+        "excludes": (pack or {}).get("excludes", []),
+    }
+
+
+@api.post("/public/quotations/{token}/accept")
+async def accept_public_quotation(token: str):
+    db = get_db()
+    q = await db.quotations.find_one({"public_link.token": token}, {"_id": 0})
+    if not q:
+        raise HTTPException(status_code=404, detail="Enlace inválido")
+    expires = q.get("public_link", {}).get("expires_at")
+    if expires and datetime.fromisoformat(expires) < datetime.now(timezone.utc):
+        raise HTTPException(status_code=410, detail="Enlace expirado")
+    accepted_at = now_iso()
+    await db.quotations.update_one(
+        {"id": q["id"]},
+        {"$set": {
+            "state": "ganada",
+            "public_link.accepted_at": accepted_at,
+            "last_activity_at": accepted_at,
+        }},
+    )
+    return {"ok": True, "accepted_at": accepted_at}
+
+
+# ---------------------------------------------------------------------------
+# IA operativa (Claude Sonnet 4.5)
+# ---------------------------------------------------------------------------
+@api.post("/ai/chat-summary")
+async def ai_chat_summary(payload: dict, user: dict = Depends(require_tenant)):
+    messages = payload.get("messages") or []
+    if not messages:
+        raise HTTPException(status_code=400, detail="Sin mensajes")
+    try:
+        summary = await ai_service.summarize_chat(messages)
+        return {"summary": summary}
+    except Exception as e:
+        log.exception("AI summary failed")
+        raise HTTPException(status_code=503, detail=f"IA no disponible: {e}")
+
+
+async def _load_quotation_context(quotation_id: str, tenant_id: str):
+    db = get_db()
+    q = await db.quotations.find_one({"id": quotation_id, "tenant_id": tenant_id}, {"_id": 0})
+    if not q:
+        raise HTTPException(status_code=404, detail="Cotización no encontrada")
+    pack = await db.packages.find_one({"id": q["package_id"], "tenant_id": tenant_id}, {"_id": 0})
+    client = await db.clients.find_one({"id": q["client_id"], "tenant_id": tenant_id}, {"_id": 0})
+    # enrich days_idle
+    try:
+        last = datetime.fromisoformat(q.get("last_activity_at", q.get("created_at")))
+        q["days_idle"] = (datetime.now(timezone.utc) - last).days
+    except Exception:
+        q["days_idle"] = 0
+    return q, pack, client
+
+
+@api.post("/ai/quotations/{quotation_id}/next-step")
+async def ai_next_step(quotation_id: str, user: dict = Depends(require_tenant)):
+    q, pack, client = await _load_quotation_context(quotation_id, user["tenant_id"])
+    try:
+        suggestion = await ai_service.suggest_next_step(q, pack, client)
+        return {"suggestion": suggestion}
+    except Exception as e:
+        log.exception("AI next-step failed")
+        raise HTTPException(status_code=503, detail=f"IA no disponible: {e}")
+
+
+@api.post("/ai/quotations/{quotation_id}/missing-fields")
+async def ai_missing_fields(quotation_id: str, user: dict = Depends(require_tenant)):
+    q, pack, client = await _load_quotation_context(quotation_id, user["tenant_id"])
+    try:
+        fields = await ai_service.detect_missing_fields(q, pack, client)
+        return {"fields": fields}
+    except Exception as e:
+        log.exception("AI missing-fields failed")
+        raise HTTPException(status_code=503, detail=f"IA no disponible: {e}")
+
+
+@api.post("/ai/quotations/{quotation_id}/client-message")
+async def ai_client_message(quotation_id: str, user: dict = Depends(require_tenant)):
+    q, pack, client = await _load_quotation_context(quotation_id, user["tenant_id"])
+    try:
+        msg = await ai_service.generate_client_message(q, pack, client)
+        return {"message": msg}
+    except Exception as e:
+        log.exception("AI client-message failed")
+        raise HTTPException(status_code=503, detail=f"IA no disponible: {e}")
+
+
+# ---------------------------------------------------------------------------
 # Router + CORS
 # ---------------------------------------------------------------------------
 app.include_router(api)
+
+# Static files for uploaded logos
+app.mount("/uploads", StaticFiles(directory=str(UPLOAD_DIR)), name="uploads")
 
 app.add_middleware(
     CORSMiddleware,

@@ -1,0 +1,59 @@
+{
+  "summary": "Iteration 2 (logo upload, multi-room quotations, public link, AI endpoints) — 18/19 backend tests PASS. Frontend smoke confirms AI panel (3 buttons), public link panel (generate/copy/revoke), and public /q/:token page (no auth, hero with first name, itinerary, Confirmar y reservar). Public accept endpoint sets state=ganada and accepted_at. CRITICAL ROUTING BUG: /uploads/logos/* is NOT reachable via the K8s ingress (only /api/* is forwarded to backend), so logo URLs returned by the backend (e.g. /uploads/logos/{tenant}.png) render the React SPA index.html instead of the image. As a consequence, sidebar logo, PDF logo (works only because PDF generator reads from local filesystem), and public quotation page logo all appear broken in the browser (img.naturalWidth=0).",
+  "backend_issues": {
+    "critical": [
+      {
+        "endpoint": "GET /uploads/logos/{file}",
+        "issue": "Static logo URL not reachable via public ingress. K8s/Cloudflare routing only forwards /api/* to backend; everything else (including /uploads) returns the React SPA HTML (200 text/html). Result: <img src='/uploads/logos/{tenant}.png'> always loads index.html, never the actual image. Backend StaticFiles mount works correctly on localhost:8001 but is unreachable from the public URL.",
+        "priority": "CRITICAL"
+      }
+    ],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [
+      {
+        "component": "AppShell sidebar CompanyBrand + PublicQuotation hero + Settings preview",
+        "issue": "Logo <img> tags after upload have naturalWidth=0 (broken image). Caused by the /uploads routing bug above. UI shows a tiny broken-image icon next to 'Aventúrate por Jalisco' in the sidebar.",
+        "selector": "img[src*='/uploads/logos/']",
+        "priority": "HIGH"
+      }
+    ],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_iteration2.py",
+    "/app/backend/tests/backend_test.py",
+    "/app/test_reports/pytest/iter2_results.xml"
+  ],
+  "action_items": [
+    "FIX LOGO ROUTING: Either (a) move StaticFiles mount from app.mount('/uploads', ...) to app.mount('/api/uploads', ...) and update server.py to return logo_url='/api/uploads/logos/{file}', or (b) add a GET /api/companies/me/logo endpoint that streams the file bytes (and also a public /api/public/companies/{tenant_id}/logo for the public quotation page), or (c) configure the K8s ingress to forward /uploads/* to the backend service. Option (a) is the smallest change.",
+    "Once routing is fixed, also update Settings page logo preview, AppShell CompanyBrand, PublicQuotation hero, and pdf_generator.py if it references the URL (currently it reads the local file path directly so PDF is fine).",
+    "Optional: PDF generator should be resilient to a corrupt/unreadable logo file (currently it crashes with 500 if logo image bytes are malformed — PIL OSError 'broken data stream'). Wrap the Image flowable in a try/except and skip the logo on failure."
+  ],
+  "critical_code_review_comments": [
+    "server.py L688: app.mount('/uploads', StaticFiles(...)) sits outside the /api prefix → not reachable behind the ingress that only routes /api/*. This is the root cause of the broken logo.",
+    "pricing.py multi-room math verified numerically: 2 doble (4 pax) + 1 triple (3 pax) + 1 menor → subtotal = price_doble*4 + price_triple*3 + price_minor*1. Confirmed by test_multi_room_create_and_pricing.",
+    "server.py L549: secrets.token_urlsafe(18) generates 24-char URL-safe tokens (>=18 visually); public-link expiry checked against UTC, OK.",
+    "server.py L607: $set on 'public_link.accepted_at' uses dotted path — works because public_link doc already exists; would no-op if link was revoked first (defensive: not an issue here because revoke uses $unset).",
+    "ai_service.py is invoked via emergentintegrations; all three quotation AI endpoints (next-step, missing-fields, client-message) and chat-summary returned valid Spanish content within ~3-6s each. EMERGENT_LLM_KEY present in /app/backend/.env.",
+    "pdf_generator.py: when a corrupt PNG is on disk, doc.build() raises OSError → 500 to client. Should wrap logo Image in try/except.",
+    "Public endpoint GET /api/public/quotations/{token} correctly omits company.pricing_config (uses {'pricing_config': 0} projection) — good leak prevention.",
+    "Public accept endpoint flips state to 'ganada' unconditionally — even if quotation was previously 'perdida'. Probably intentional, but worth a guard in future."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_iteration2.py (new)",
+    "/app/test_reports/pytest/iter2_results.xml (new)"
+  ],
+  "success_rate": {
+    "backend": "94.7% (18/19)",
+    "frontend": "80% (logo broken everywhere; multi-room builder UI confirmed in source but not navigated end-to-end via playwright due to multi-step wizard — feature exists at QuotationBuilder.jsx L226-247 with rooms-total testid)"
+  },
+  "test_credentials": "owner@routiq.mx/Routiq2026!, admin@aventurate.mx/Demo2026!, ejecutivo@aventurate.mx/Demo2026!",
+  "seed_data_creation": "Tests created ~5 extra quotations on admin tenant (COT-202601x) plus 1 logo file de7483e7-...png on filesystem. One existing quotation was set to state='ganada' via public accept flow (COT-2026018).",
+  "retest_needed": true,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Backend tests in /app/backend/tests/test_iteration2.py — 18/19 pass. The single failure (test_logo_static_serves) intentionally fails until the /uploads routing is fixed; once main agent moves the StaticFiles mount under /api/uploads and updates logo_url accordingly, re-run pytest and that test should pass (it already calls $BASE_URL{logo_url} which will naturally start with /api/uploads/ after the fix). Multi-room builder UI wasn't navigated end-to-end via playwright (the wizard required client selection before reaching step 2); source code (QuotationBuilder.jsx L226-247) confirms feature is implemented with data-testid='rooms-total'. AI endpoints take 3-6s each; use timeout>=20s in playwright when clicking those buttons.",
+  "rca of the issue": "The Routiq deployment uses a Kubernetes ingress that forwards only paths matching /api/* to the FastAPI backend (port 8001); all other paths fall through to the React frontend (port 3000 / Express SPA). FastAPI server mounts StaticFiles at /uploads, which is correct internally but invisible to public traffic. When the company logo is uploaded, the backend stores logo_url='/uploads/logos/{tenant}.{ext}' and returns it to the SPA, which then renders <img src='/uploads/...'/>. The browser request resolves through the ingress to the frontend, which returns its index.html with content-type text/html for any unmatched path, yielding an image element with naturalWidth=0 (broken). Reproduction: login as admin@aventurate.mx → Ajustes → upload any PNG → observe sidebar 'Aventúrate por Jalisco' with broken thumbnail; or curl -I https://<host>/uploads/logos/anything.png returns 200 text/html. Mitigation: mount StaticFiles at /api/uploads (one-line change in server.py) and have the upload handler return logo_url='/api/uploads/logos/{file}'. The local filesystem path used by pdf_generator.py is unaffected."
+}

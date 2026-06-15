@@ -1,8 +1,8 @@
 import { useEffect, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import AppShell from '@/components/AppShell';
-import api from '@/lib/api';
-import { ArrowLeft, Download, MessageCircle, Mail, FileText } from 'lucide-react';
+import api, { formatApiError } from '@/lib/api';
+import { ArrowLeft, Download, MessageCircle, Mail, FileText, Sparkles, Link2, Copy, CheckCircle2, X } from 'lucide-react';
 
 const STATES = [
   { id: 'nueva_consulta', label: 'Nueva' },
@@ -19,10 +19,16 @@ export default function QuotationDetail() {
   const { id } = useParams();
   const [q, setQ] = useState(null);
   const [pack, setPack] = useState(null);
+  const [ai, setAi] = useState({ next: '', missing: [], message: '' });
+  const [aiLoading, setAiLoading] = useState({ next: false, missing: false, message: false });
+  const [aiError, setAiError] = useState('');
+  const [publicToken, setPublicToken] = useState('');
+  const [copiedPublic, setCopiedPublic] = useState(false);
 
   const load = async () => {
     const { data } = await api.get(`/quotations/${id}`);
     setQ(data);
+    setPublicToken(data?.public_link?.token || '');
     try {
       const p = await api.get(`/packages/${data.package_id}`);
       setPack(p.data);
@@ -43,7 +49,47 @@ export default function QuotationDetail() {
     window.URL.revokeObjectURL(url);
   };
 
+  const runAI = async (kind) => {
+    setAiError('');
+    setAiLoading((s) => ({ ...s, [kind]: true }));
+    try {
+      const { data } = await api.post(`/ai/quotations/${id}/${kind === 'next' ? 'next-step' : kind === 'missing' ? 'missing-fields' : 'client-message'}`);
+      setAi((a) => ({ ...a, [kind]: kind === 'missing' ? (data.fields || []) : (data.suggestion || data.message || '') }));
+    } catch (e) { setAiError(formatApiError(e)); }
+    finally { setAiLoading((s) => ({ ...s, [kind]: false })); }
+  };
+
+  const createPublicLink = async () => {
+    const { data } = await api.post(`/quotations/${id}/public-link`);
+    setPublicToken(data.token);
+    await load();
+  };
+
+  const revokePublicLink = async () => {
+    if (!window.confirm('¿Revocar el enlace público? El cliente ya no podrá acceder.')) return;
+    await api.delete(`/quotations/${id}/public-link`);
+    setPublicToken('');
+    await load();
+  };
+
+  const copyPublicUrl = () => {
+    const url = `${window.location.origin}/q/${publicToken}`;
+    navigator.clipboard.writeText(url);
+    setCopiedPublic(true);
+    setTimeout(() => setCopiedPublic(false), 2000);
+  };
+
   if (!q) return <AppShell><div className="p-8 text-ink-400">Cargando…</div></AppShell>;
+
+  const paxDesc = (() => {
+    const p = q.pax || {};
+    if (p.rooms?.length) {
+      const rooms = p.rooms.map((r) => `${r.count} ${r.ocupacion}`).join(' · ');
+      const adults = p.rooms.reduce((s, r) => s + ({ sencilla: 1, doble: 2, triple: 3, cuadruple: 4 }[r.ocupacion] || 0) * r.count, 0);
+      return `${rooms} (${adults} adultos${p.menores > 0 ? ` + ${p.menores} menores` : ''})`;
+    }
+    return `${p.adultos || 0} adultos · ${p.menores || 0} menores (${p.ocupacion || ''})`;
+  })();
 
   return (
     <AppShell>
@@ -88,8 +134,7 @@ export default function QuotationDetail() {
             <div className="grid md:grid-cols-2 gap-4 text-sm">
               <div><p className="text-xs uppercase tracking-widest text-ink-400 font-bold">Hotel</p><p className="text-ink-900 font-medium mt-1">{q.hotel_selected}</p></div>
               <div><p className="text-xs uppercase tracking-widest text-ink-400 font-bold">Fechas</p><p className="text-ink-900 font-medium mt-1">{q.dates?.start} → {q.dates?.end}</p></div>
-              <div><p className="text-xs uppercase tracking-widest text-ink-400 font-bold">Pasajeros</p><p className="text-ink-900 font-medium mt-1">{q.pax?.adultos} adultos · {q.pax?.menores} menores</p></div>
-              <div><p className="text-xs uppercase tracking-widest text-ink-400 font-bold">Ocupación</p><p className="text-ink-900 font-medium mt-1 capitalize">{q.pax?.ocupacion}</p></div>
+              <div><p className="text-xs uppercase tracking-widest text-ink-400 font-bold">Habitaciones / Pax</p><p className="text-ink-900 font-medium mt-1">{paxDesc}</p></div>
             </div>
             {q.notes && <><p className="text-xs uppercase tracking-widest text-ink-400 font-bold mt-6">Notas</p><p className="text-ink-700 mt-1 text-sm">{q.notes}</p></>}
           </div>
@@ -109,6 +154,77 @@ export default function QuotationDetail() {
         </div>
 
         <div className="space-y-6">
+          {/* AI Panel */}
+          <div className="card-surface p-6" data-testid="ai-panel">
+            <h3 className="font-display font-semibold text-ink-900 mb-3 flex items-center gap-2">
+              <Sparkles className="w-4 h-4 text-brand-500" /> Asistente IA
+            </h3>
+            {aiError && <div className="text-xs text-red-700 bg-red-50 rounded-lg p-2 mb-3" data-testid="ai-error">{aiError}</div>}
+            <div className="space-y-2">
+              <button className="btn-secondary w-full text-xs justify-center" disabled={aiLoading.next}
+                onClick={() => runAI('next')} data-testid="ai-next-step-btn">
+                {aiLoading.next ? 'Analizando…' : 'Sugerir próximo paso'}
+              </button>
+              {ai.next && <p className="text-sm text-ink-700 bg-mint-100 rounded-lg p-3" data-testid="ai-next-result">{ai.next}</p>}
+
+              <button className="btn-secondary w-full text-xs justify-center" disabled={aiLoading.missing}
+                onClick={() => runAI('missing')} data-testid="ai-missing-btn">
+                {aiLoading.missing ? 'Analizando…' : 'Detectar campos faltantes'}
+              </button>
+              {ai.missing.length > 0 && (
+                <ul className="text-sm text-ink-700 bg-peach-100 rounded-lg p-3 space-y-1" data-testid="ai-missing-result">
+                  {ai.missing.map((f, i) => <li key={i}>• {f}</li>)}
+                </ul>
+              )}
+
+              <button className="btn-secondary w-full text-xs justify-center" disabled={aiLoading.message}
+                onClick={() => runAI('message')} data-testid="ai-message-btn">
+                {aiLoading.message ? 'Redactando…' : 'Redactar mensaje WhatsApp'}
+              </button>
+              {ai.message && (
+                <div className="text-sm text-ink-700 bg-brand-50 rounded-lg p-3 whitespace-pre-wrap" data-testid="ai-message-result">
+                  {ai.message}
+                  <button className="mt-2 btn-ghost text-xs"
+                    onClick={() => navigator.clipboard.writeText(ai.message)} data-testid="ai-message-copy">
+                    <Copy className="w-3 h-3" /> Copiar
+                  </button>
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* Public Link Panel */}
+          <div className="card-surface p-6" data-testid="public-link-panel">
+            <h3 className="font-display font-semibold text-ink-900 mb-2 flex items-center gap-2">
+              <Link2 className="w-4 h-4 text-brand-500" /> Enlace para cliente
+            </h3>
+            <p className="text-xs text-ink-500 mb-3">El cliente puede ver y aceptar la cotización con un click. Válido 7 días.</p>
+            {!publicToken ? (
+              <button className="btn-primary w-full text-sm justify-center" onClick={createPublicLink} data-testid="create-public-link">
+                Generar enlace
+              </button>
+            ) : (
+              <div className="space-y-2">
+                <div className="rounded-lg bg-cream border border-ink-100 p-2 text-xs font-mono break-all text-ink-700">
+                  {window.location.origin}/q/{publicToken}
+                </div>
+                <div className="flex gap-2">
+                  <button className="btn-primary text-xs flex-1 justify-center" onClick={copyPublicUrl} data-testid="copy-public-link">
+                    {copiedPublic ? <><CheckCircle2 className="w-3 h-3" /> Copiado</> : <><Copy className="w-3 h-3" /> Copiar</>}
+                  </button>
+                  <button className="btn-ghost text-xs text-red-600" onClick={revokePublicLink} data-testid="revoke-public-link">
+                    <X className="w-3 h-3" /> Revocar
+                  </button>
+                </div>
+                {q.public_link?.accepted_at && (
+                  <p className="text-xs text-emerald-700 bg-mint-100 rounded p-2" data-testid="public-accepted">
+                    ✓ Aceptada por el cliente el {q.public_link.accepted_at.slice(0, 10)}
+                  </p>
+                )}
+              </div>
+            )}
+          </div>
+
           <div className="card-surface p-6">
             <h3 className="font-display font-semibold text-ink-900 mb-4 flex items-center gap-2"><FileText className="w-4 h-4 text-brand-500" /> Desglose</h3>
             {q.items?.map((it, i) => (

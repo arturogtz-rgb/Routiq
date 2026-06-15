@@ -41,6 +41,9 @@ services:
       DEMO_COMPANY_ADMIN_PASSWORD: ${DEMO_COMPANY_ADMIN_PASSWORD}
       DEMO_EXECUTIVE_EMAIL: ${DEMO_EXECUTIVE_EMAIL}
       DEMO_EXECUTIVE_PASSWORD: ${DEMO_EXECUTIVE_PASSWORD}
+      EMERGENT_LLM_KEY: ${EMERGENT_LLM_KEY}
+    volumes:
+      - uploads_data:/app/uploads
     ports:
       # Solo expone a la red local del host. Nginx en el host hace el proxy a este puerto.
       - "127.0.0.1:8001:8000"
@@ -56,6 +59,8 @@ volumes:
     name: routiq_mongo_data
   mongo_backups:
     name: routiq_mongo_backups
+  uploads_data:
+    name: routiq_uploads
 
 networks:
   routiq_net:

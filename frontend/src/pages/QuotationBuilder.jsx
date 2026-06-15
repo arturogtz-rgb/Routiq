@@ -29,7 +29,7 @@ export default function QuotationBuilder() {
     package_id: search.get('package') || '',
     hotel_name: '',
     dates: { start: '', end: '' },
-    pax: { adultos: 2, menores: 0, ocupacion: 'doble' },
+    pax: { rooms: [{ ocupacion: 'doble', count: 1 }], menores: 0 },
     notes: '',
   });
 
@@ -54,11 +54,19 @@ export default function QuotationBuilder() {
     return rates[client.channel] ?? 0;
   })();
 
+  const OCC_COUNT = { sencilla: 1, doble: 2, triple: 3, cuadruple: 4 };
+
+  const totalAdults = (form.pax.rooms || []).reduce((s, r) => s + OCC_COUNT[r.ocupacion] * (r.count || 0), 0);
+
   const subtotal = (() => {
     if (!hotel) return 0;
-    const adult = Number(hotel.prices_by_occupancy?.[form.pax.ocupacion] || 0) * form.pax.adultos;
-    const minor = Number(hotel.minor_price || 0) * form.pax.menores;
-    return adult + minor;
+    let s = 0;
+    for (const r of (form.pax.rooms || [])) {
+      const price = Number(hotel.prices_by_occupancy?.[r.ocupacion] || 0);
+      s += price * OCC_COUNT[r.ocupacion] * (r.count || 0);
+    }
+    s += Number(hotel.minor_price || 0) * (form.pax.menores || 0);
+    return s;
   })();
   const commission = Math.round(subtotal * commissionRate * 100) / 100;
   const total = subtotal - commission;
@@ -66,7 +74,11 @@ export default function QuotationBuilder() {
   const canNext = () =>
     (step === 0 && !!form.client_id) ||
     (step === 1 && !!form.package_id && !!form.hotel_name) ||
-    (step === 2 && form.dates.start && form.dates.end && form.pax.adultos >= 0);
+    (step === 2 && form.dates.start && form.dates.end && (form.pax.rooms?.length > 0) && totalAdults > 0);
+
+  const addRoom = (ocupacion) => setForm((f) => ({ ...f, pax: { ...f.pax, rooms: [...(f.pax.rooms || []), { ocupacion, count: 1 }] } }));
+  const updateRoom = (idx, patch) => setForm((f) => ({ ...f, pax: { ...f.pax, rooms: f.pax.rooms.map((r, i) => i === idx ? { ...r, ...patch } : r) } }));
+  const removeRoom = (idx) => setForm((f) => ({ ...f, pax: { ...f.pax, rooms: f.pax.rooms.filter((_, i) => i !== idx) } }));
 
   const handleCreateClient = async () => {
     setError('');
@@ -198,8 +210,8 @@ export default function QuotationBuilder() {
 
         {/* Step: Dates & Pax */}
         {step === 2 && (
-          <div className="space-y-4" data-testid="step-dates-panel">
-            <h2 className="font-display text-xl font-semibold text-ink-900">Fechas y pasajeros</h2>
+          <div className="space-y-5" data-testid="step-dates-panel">
+            <h2 className="font-display text-xl font-semibold text-ink-900">Fechas y habitaciones</h2>
             <div className="grid md:grid-cols-2 gap-4">
               <div><label className="label-text">Check-in</label>
                 <input type="date" className="input-field" value={form.dates.start} onChange={(e) => setForm((f) => ({ ...f, dates: { ...f.dates, start: e.target.value } }))} data-testid="date-start" />
@@ -207,19 +219,68 @@ export default function QuotationBuilder() {
               <div><label className="label-text">Check-out</label>
                 <input type="date" className="input-field" value={form.dates.end} onChange={(e) => setForm((f) => ({ ...f, dates: { ...f.dates, end: e.target.value } }))} data-testid="date-end" />
               </div>
-              <div><label className="label-text">Ocupación</label>
-                <select className="input-field" value={form.pax.ocupacion} onChange={(e) => setForm((f) => ({ ...f, pax: { ...f.pax, ocupacion: e.target.value } }))} data-testid="pax-ocupacion">
-                  <option value="sencilla">Sencilla</option><option value="doble">Doble</option>
-                  <option value="triple">Triple</option><option value="cuadruple">Cuádruple</option>
-                </select>
-              </div>
-              <div className="grid grid-cols-2 gap-3">
-                <div><label className="label-text">Adultos</label>
-                  <input type="number" min="1" className="input-field" value={form.pax.adultos} onChange={(e) => setForm((f) => ({ ...f, pax: { ...f.pax, adultos: +e.target.value } }))} data-testid="pax-adultos" /></div>
-                <div><label className="label-text">Menores</label>
-                  <input type="number" min="0" className="input-field" value={form.pax.menores} onChange={(e) => setForm((f) => ({ ...f, pax: { ...f.pax, menores: +e.target.value } }))} data-testid="pax-menores" /></div>
-              </div>
             </div>
+
+            <div>
+              <div className="flex items-center justify-between mb-2">
+                <label className="label-text mb-0">Habitaciones del grupo</label>
+                <div className="flex gap-2">
+                  {['sencilla', 'doble', 'triple', 'cuadruple'].map((o) => (
+                    <button key={o} type="button" onClick={() => addRoom(o)} className="btn-ghost text-xs"
+                      data-testid={`add-room-${o}`}>+ {o}</button>
+                  ))}
+                </div>
+              </div>
+              <div className="space-y-2">
+                {(form.pax.rooms || []).map((r, idx) => {
+                  const price = hotel ? Number(hotel.prices_by_occupancy?.[r.ocupacion] || 0) : 0;
+                  const pax = OCC_COUNT[r.ocupacion] * (r.count || 0);
+                  return (
+                    <div key={idx} className="grid grid-cols-12 gap-2 items-center rounded-xl border border-ink-100 p-3 bg-cream"
+                      data-testid={`room-row-${idx}`}>
+                      <div className="col-span-4">
+                        <select className="input-field" value={r.ocupacion}
+                          onChange={(e) => updateRoom(idx, { ocupacion: e.target.value })} data-testid={`room-occ-${idx}`}>
+                          <option value="sencilla">Sencilla (1 pax)</option>
+                          <option value="doble">Doble (2 pax)</option>
+                          <option value="triple">Triple (3 pax)</option>
+                          <option value="cuadruple">Cuádruple (4 pax)</option>
+                        </select>
+                      </div>
+                      <div className="col-span-3">
+                        <div className="flex items-center gap-2">
+                          <button type="button" className="w-8 h-8 rounded-full bg-white border border-ink-200 hover:bg-brand-50"
+                            onClick={() => updateRoom(idx, { count: Math.max(1, (r.count || 1) - 1) })} data-testid={`room-dec-${idx}`}>−</button>
+                          <span className="font-display font-semibold text-lg w-8 text-center" data-testid={`room-count-${idx}`}>{r.count}</span>
+                          <button type="button" className="w-8 h-8 rounded-full bg-white border border-ink-200 hover:bg-brand-50"
+                            onClick={() => updateRoom(idx, { count: (r.count || 1) + 1 })} data-testid={`room-inc-${idx}`}>+</button>
+                        </div>
+                      </div>
+                      <div className="col-span-4 text-xs text-ink-500">
+                        {pax} pax · {price > 0 ? `$${(price * pax).toLocaleString('es-MX')} MXN` : ''}
+                      </div>
+                      <div className="col-span-1 text-right">
+                        <button type="button" className="text-red-600 hover:text-red-800 text-xs"
+                          onClick={() => removeRoom(idx)} data-testid={`room-remove-${idx}`}>✕</button>
+                      </div>
+                    </div>
+                  );
+                })}
+                {(!form.pax.rooms || form.pax.rooms.length === 0) && (
+                  <p className="text-ink-400 text-sm italic">Agrega al menos una habitación con los botones de arriba.</p>
+                )}
+              </div>
+              {totalAdults > 0 && (
+                <p className="text-xs text-ink-500 mt-2" data-testid="rooms-total">Total adultos: <b className="text-ink-900">{totalAdults}</b></p>
+              )}
+            </div>
+
+            <div className="grid md:grid-cols-2 gap-4">
+              <div><label className="label-text">Menores (3-11 años)</label>
+                <input type="number" min="0" className="input-field" value={form.pax.menores}
+                  onChange={(e) => setForm((f) => ({ ...f, pax: { ...f.pax, menores: +e.target.value || 0 } }))} data-testid="pax-menores" /></div>
+            </div>
+
             <div>
               <label className="label-text">Notas internas</label>
               <textarea rows="3" className="input-field" value={form.notes} onChange={(e) => setForm((f) => ({ ...f, notes: e.target.value }))} data-testid="builder-notes" />
@@ -249,8 +310,8 @@ export default function QuotationBuilder() {
               </div>
               <div className="rounded-xl border border-ink-100 p-4">
                 <p className="text-xs uppercase tracking-widest font-bold text-ink-400 mb-1">Pasajeros</p>
-                <p className="font-semibold text-ink-900">{form.pax.adultos} adultos · {form.pax.menores} menores</p>
-                <p className="text-ink-500 capitalize">{form.pax.ocupacion}</p>
+                <p className="font-semibold text-ink-900">{totalAdults} adultos · {form.pax.menores} menores</p>
+                <p className="text-ink-500 text-xs mt-1">{(form.pax.rooms || []).map((r) => `${r.count} ${r.ocupacion}`).join(' · ')}</p>
               </div>
             </div>
 

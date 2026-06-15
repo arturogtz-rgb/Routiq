@@ -33,6 +33,8 @@ export default function WhatsAppInbox() {
   const [selectedChat, setSelectedChat] = useState(MOCK_CHATS[0].id);
   const chat = useMemo(() => MOCK_CHATS.find((c) => c.id === selectedChat), [selectedChat]);
   const [waStatus, setWaStatus] = useState('disconnected');
+  const [aiSummary, setAiSummary] = useState('');
+  const [aiLoading, setAiLoading] = useState(false);
 
   useEffect(() => {
     (async () => {
@@ -43,6 +45,19 @@ export default function WhatsAppInbox() {
       } catch (_e) { /* noop */ }
     })();
   }, []);
+
+  useEffect(() => { setAiSummary(''); }, [selectedChat]);
+
+  const generateSummary = async () => {
+    setAiLoading(true);
+    try {
+      const messages = chat.subthreads[0].messages;
+      const { data } = await api.post('/ai/chat-summary', { messages });
+      setAiSummary(data.summary);
+    } catch (_e) {
+      setAiSummary('No se pudo generar el resumen. Verifica que EMERGENT_LLM_KEY esté configurada.');
+    } finally { setAiLoading(false); }
+  };
 
   return (
     <AppShell>
@@ -90,9 +105,14 @@ export default function WhatsAppInbox() {
                 <p className="text-xs text-ink-400">{chat.phone} · vía {chat.wa_number}</p>
                 <div className="mt-3 rounded-xl bg-mint-100 p-3 flex gap-3" data-testid="ai-summary">
                   <Sparkles className="w-4 h-4 shrink-0 text-emerald-700 mt-0.5" />
-                  <div>
-                    <p className="text-xs uppercase tracking-widest font-bold text-emerald-800">Resumen IA (próximamente)</p>
-                    <p className="text-sm text-ink-900 mt-1">{chat.summary}</p>
+                  <div className="flex-1">
+                    <div className="flex items-center justify-between">
+                      <p className="text-xs uppercase tracking-widest font-bold text-emerald-800">Resumen IA</p>
+                      <button onClick={generateSummary} disabled={aiLoading} className="text-xs text-emerald-800 hover:underline disabled:opacity-50" data-testid="generate-ai-summary">
+                        {aiLoading ? 'Generando…' : (aiSummary ? 'Regenerar' : 'Generar')}
+                      </button>
+                    </div>
+                    <p className="text-sm text-ink-900 mt-1">{aiSummary || chat.summary}</p>
                   </div>
                 </div>
                 <div className="mt-3 flex flex-wrap gap-2">

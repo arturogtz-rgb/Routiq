@@ -43,15 +43,40 @@ def generate_quotation_pdf(company: dict, quotation: dict, package: dict, client
     s = _styles()
     story = []
 
-    # Header
-    header_data = [[
-        Paragraph(f"<b>{company['name']}</b><br/><font size=9 color='#475569'>{company.get('contact_email','')}<br/>{company.get('contact_phone','')}<br/>{company.get('address','')}</font>", s["body"]),
-        Paragraph(f"<b><font color='#185FA5' size=16>COTIZACIÓN</font></b><br/><font size=10>{quotation.get('code','')}</font><br/><font size=9 color='#475569'>{quotation.get('created_at','')[:10]}</font>", s["body"]),
-    ]]
-    header = Table(header_data, colWidths=[10 * cm, 7 * cm])
+    # Header — with logo if available
+    from reportlab.platypus import Image as RLImage
+    from pathlib import Path as _P
+    logo_cell = ""
+    logo_url = company.get("logo_url") or ""
+    if logo_url.startswith("/uploads/"):
+        logo_path = _P("/app") / logo_url.lstrip("/")
+        if not logo_path.exists():
+            from pathlib import Path as _PP
+            logo_path = _PP(__file__).parent / logo_url.lstrip("/")
+        if logo_path.exists() and logo_path.suffix.lower() in (".png", ".jpg", ".jpeg", ".webp"):
+            try:
+                logo_cell = RLImage(str(logo_path), width=3.5 * cm, height=3.5 * cm, kind="proportional")
+            except Exception:
+                logo_cell = ""
+
+    company_text = Paragraph(
+        f"<b>{company['name']}</b><br/><font size=9 color='#475569'>{company.get('contact_email','')}<br/>{company.get('contact_phone','')}<br/>{company.get('address','')}</font>",
+        s["body"],
+    )
+    cot_text = Paragraph(
+        f"<b><font color='#185FA5' size=16>COTIZACIÓN</font></b><br/><font size=10>{quotation.get('code','')}</font><br/><font size=9 color='#475569'>{quotation.get('created_at','')[:10]}</font>",
+        s["body"],
+    )
+    if logo_cell:
+        header_data = [[logo_cell, company_text, cot_text]]
+        col_widths = [4 * cm, 8 * cm, 5 * cm]
+    else:
+        header_data = [[company_text, cot_text]]
+        col_widths = [10 * cm, 7 * cm]
+    header = Table(header_data, colWidths=col_widths)
     header.setStyle(TableStyle([
         ("VALIGN", (0, 0), (-1, -1), "TOP"),
-        ("ALIGN", (1, 0), (1, 0), "RIGHT"),
+        ("ALIGN", (-1, 0), (-1, 0), "RIGHT"),
         ("LINEBELOW", (0, 0), (-1, -1), 2, PRIMARY),
         ("BOTTOMPADDING", (0, 0), (-1, -1), 14),
     ]))
@@ -72,11 +97,22 @@ def generate_quotation_pdf(company: dict, quotation: dict, package: dict, client
     dates = quotation.get("dates", {})
     pax = quotation.get("pax", {})
     story.append(Spacer(1, 6))
+
+    # Build pax description (rooms or legacy occupancy)
+    if pax.get("rooms"):
+        total_pax = sum({"sencilla":1,"doble":2,"triple":3,"cuadruple":4}.get(r["ocupacion"],0) * int(r.get("count",1)) for r in pax["rooms"])
+        rooms_desc = ", ".join(f"{r['count']} {r['ocupacion']}" for r in pax["rooms"])
+        pax_desc = f"{rooms_desc} ({total_pax} adultos)"
+        if pax.get("menores", 0) > 0:
+            pax_desc += f" + {pax['menores']} menores"
+    else:
+        pax_desc = f"{pax.get('ocupacion','')} · {pax.get('adultos',0)} adultos, {pax.get('menores',0)} menores"
+
     meta = Table([
         ["Hotel", quotation.get("hotel_selected", "")],
         ["Fechas", f"{dates.get('start','')} → {dates.get('end','')}"],
         ["Noches", str(package.get("nights", ""))],
-        ["Ocupación", f"{pax.get('ocupacion','')} · {pax.get('adultos',0)} adultos, {pax.get('menores',0)} menores"],
+        ["Habitaciones / Pax", pax_desc],
     ], colWidths=[3.5 * cm, 12 * cm])
     meta.setStyle(TableStyle([
         ("BACKGROUND", (0, 0), (0, -1), PASTEL),

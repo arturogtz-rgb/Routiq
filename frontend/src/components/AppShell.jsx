@@ -1,7 +1,8 @@
 import { NavLink, useNavigate } from 'react-router-dom';
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useAuth } from '@/context/AuthContext';
 import Logo from '@/components/Logo';
+import api from '@/lib/api';
 import {
   LayoutDashboard, Kanban, FileText, Package, Users, Settings, MessageCircle, LogOut, Menu, X, ChevronRight,
 } from 'lucide-react';
@@ -29,6 +30,27 @@ const NAV_BY_ROLE = {
   ],
 };
 
+function CompanyBrand({ size = 30 }) {
+  const { user } = useAuth();
+  const [company, setCompany] = useState(null);
+  useEffect(() => {
+    if (user?.tenant_id) {
+      api.get('/companies/me').then(({ data }) => setCompany(data)).catch(() => null);
+    }
+  }, [user]);
+  const logo = company?.logo_url;
+  const backend = process.env.REACT_APP_BACKEND_URL || '';
+  if (logo) {
+    return (
+      <div className="inline-flex items-center gap-2.5" data-testid="company-brand">
+        <img src={`${backend}${logo}`} alt={company?.name || 'Logo'} style={{ height: size, width: 'auto', maxWidth: size * 2.5, objectFit: 'contain' }} />
+        <span className="font-display font-semibold text-ink-900 text-base hidden sm:inline">{company?.name}</span>
+      </div>
+    );
+  }
+  return <Logo size={size} />;
+}
+
 export default function AppShell({ children }) {
   const { user, logout } = useAuth();
   const navigate = useNavigate();
@@ -45,7 +67,7 @@ export default function AppShell({ children }) {
       {/* Sidebar (desktop) */}
       <aside className="hidden md:flex w-64 shrink-0 border-r border-ink-100 bg-white flex-col">
         <div className="px-6 py-5 border-b border-ink-100">
-          <Logo size={30} />
+          <CompanyBrand size={30} />
         </div>
         <nav className="flex-1 px-3 py-4 space-y-1">
           {items.map(({ to, label, icon: Icon, testid }) => (

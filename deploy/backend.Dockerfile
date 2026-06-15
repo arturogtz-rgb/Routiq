@@ -18,9 +18,13 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 WORKDIR /app
 
 COPY backend/requirements.txt /app/requirements.txt
-RUN pip install --upgrade pip && pip install -r /app/requirements.txt
+RUN pip install --upgrade pip && \
+    pip install --extra-index-url https://d33sy5i8bnduwe.cloudfront.net/simple/ -r /app/requirements.txt
 
 COPY backend/ /app/
+
+# Directorio de uploads (montado como volumen en docker-compose)
+RUN mkdir -p /app/uploads/logos && chmod -R 755 /app/uploads
 
 # Run as non-root
 RUN useradd -m -u 1000 routiq && chown -R routiq:routiq /app

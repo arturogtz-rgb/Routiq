@@ -139,10 +139,26 @@ class ClientCreate(BaseModel):
 
 
 # ---------- Quotations ----------
+OCCUPANCY_COUNT = {"sencilla": 1, "doble": 2, "triple": 3, "cuadruple": 4}
+
+
+class QuotationRoom(BaseModel):
+    ocupacion: Literal["sencilla", "doble", "triple", "cuadruple"] = "doble"
+    count: int = Field(default=1, ge=1, le=20)  # cuántas habitaciones de este tipo
+
+
 class QuotationPax(BaseModel):
-    adultos: int = 2
+    # Legacy fields (back-compat for old quotations)
+    adultos: int = 0
     menores: int = 0
     ocupacion: Literal["sencilla", "doble", "triple", "cuadruple"] = "doble"
+    # New multi-room structure
+    rooms: List[QuotationRoom] = []
+
+    def total_adults(self) -> int:
+        if self.rooms:
+            return sum(OCCUPANCY_COUNT[r.ocupacion] * r.count for r in self.rooms)
+        return self.adultos
 
 
 class QuotationDates(BaseModel):
