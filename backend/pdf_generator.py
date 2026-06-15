@@ -48,16 +48,18 @@ def generate_quotation_pdf(company: dict, quotation: dict, package: dict, client
     from pathlib import Path as _P
     logo_cell = ""
     logo_url = company.get("logo_url") or ""
-    if logo_url.startswith("/uploads/"):
-        logo_path = _P("/app") / logo_url.lstrip("/")
-        if not logo_path.exists():
-            from pathlib import Path as _PP
-            logo_path = _PP(__file__).parent / logo_url.lstrip("/")
-        if logo_path.exists() and logo_path.suffix.lower() in (".png", ".jpg", ".jpeg", ".webp"):
-            try:
-                logo_cell = RLImage(str(logo_path), width=3.5 * cm, height=3.5 * cm, kind="proportional")
-            except Exception:
-                logo_cell = ""
+    # accept both /uploads/... (legacy) and /api/uploads/... (current)
+    rel = logo_url.replace("/api/uploads/", "").replace("/uploads/", "")
+    if rel:
+        # try docker path first, then local dev path
+        candidates = [_P("/app/uploads") / rel, _P(__file__).parent / "uploads" / rel]
+        for logo_path in candidates:
+            if logo_path.exists() and logo_path.suffix.lower() in (".png", ".jpg", ".jpeg", ".webp"):
+                try:
+                    logo_cell = RLImage(str(logo_path), width=3.5 * cm, height=3.5 * cm, kind="proportional")
+                    break
+                except Exception:
+                    logo_cell = ""
 
     company_text = Paragraph(
         f"<b>{company['name']}</b><br/><font size=9 color='#475569'>{company.get('contact_email','')}<br/>{company.get('contact_phone','')}<br/>{company.get('address','')}</font>",

@@ -39,6 +39,12 @@ async def ensure_indexes():
     await db.clients.create_index([("tenant_id", 1)])
     await db.quotations.create_index([("tenant_id", 1), ("state", 1)])
     await db.quotations.create_index([("tenant_id", 1), ("code", 1)], unique=True)
+    # Migration: legacy logo URLs (without /api prefix) → /api/uploads/...
+    async for c in db.companies.find({"logo_url": {"$regex": "^/uploads/"}}, {"_id": 0, "id": 1, "logo_url": 1}):
+        await db.companies.update_one(
+            {"id": c["id"]},
+            {"$set": {"logo_url": "/api" + c["logo_url"]}},
+        )
 
 
 DEFAULT_PRICING_CONFIG = {

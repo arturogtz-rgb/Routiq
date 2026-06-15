@@ -517,7 +517,7 @@ async def upload_company_logo(file: UploadFile = File(...), user: dict = Depends
         except Exception:
             pass
     (LOGO_DIR / filename).write_bytes(content)
-    logo_url = f"/uploads/logos/{filename}"
+    logo_url = f"/api/uploads/logos/{filename}"
     db = get_db()
     await db.companies.update_one({"id": user["tenant_id"]}, {"$set": {"logo_url": logo_url}})
     return await db.companies.find_one({"id": user["tenant_id"]}, {"_id": 0})
@@ -684,8 +684,8 @@ async def ai_client_message(quotation_id: str, user: dict = Depends(require_tena
 # ---------------------------------------------------------------------------
 app.include_router(api)
 
-# Static files for uploaded logos
-app.mount("/uploads", StaticFiles(directory=str(UPLOAD_DIR)), name="uploads")
+# Static files for uploaded logos — mounted under /api so it passes through ingress
+app.mount("/api/uploads", StaticFiles(directory=str(UPLOAD_DIR)), name="uploads")
 
 app.add_middleware(
     CORSMiddleware,

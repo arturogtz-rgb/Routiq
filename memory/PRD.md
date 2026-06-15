@@ -1,96 +1,78 @@
 # Routiq — PRD (Product Requirements Document)
 
 ## Contexto
-Plataforma SaaS PWA multi-tenant para **cotización y seguimiento turístico** dirigida a tour operadores receptivos / DMCs en Latinoamérica.
+Plataforma SaaS PWA multi-tenant para **cotización y seguimiento turístico** para tour operadores receptivos / DMCs en Latinoamérica.
 - Empresa piloto: **Aventúrate por Jalisco**
 - Marca: **Routiq**
-- **Dominio en producción: https://routiq.com.mx** ✅
-- VPS: Hostinger Ubuntu 24.04 LTS, IP `177.7.36.75`
+- **Producción: https://routiq.com.mx** ✅ (VPS Hostinger 177.7.36.75, Docker + Nginx + Let's Encrypt)
+- Iteración actual: **v1.1** (logo + multi-room + IA + público)
 
-Problema que resuelve: digitalizar el flujo **previo a la venta** (primer contacto → cotización → seguimiento → cierre), complementario a Fareharbor/Bokun que resuelven post-venta.
-
-## Arquitectura en producción
-```
-Internet → Nginx (host, SSL Let's Encrypt) → /api/  → Docker FastAPI :8001
-                                            → /     → /var/www/routiq (build React estático)
-Docker MongoDB :27017 (volumen persistente, no expuesta al exterior)
-```
-- SSL automático con renovación cada 12h via certbot.timer
-- Firewall UFW: solo SSH(22) + HTTP(80) + HTTPS(443)
-- fail2ban activo, swap 2GB, timezone America/Mexico_City
-- SSH solo con llave Ed25519 (passwordauth deshabilitado tras hardening)
-
-## Stack
-- **Frontend:** React 19 + React Router 7 + Tailwind + dnd-kit + PWA (manifest + service worker)
-- **Backend:** FastAPI + MongoDB (motor) + bcrypt + PyJWT + reportlab
-- **Auth:** JWT custom (access 12h + refresh 30d) en cookies httpOnly secure samesite=none
-- **Multi-tenant:** aislamiento por `tenant_id` en cada query
+## Arquitectura
+- **Frontend:** React 19 + Tailwind + dnd-kit + PWA
+- **Backend:** FastAPI + MongoDB (motor) + bcrypt + PyJWT + reportlab + emergentintegrations
+- **IA:** Claude Sonnet 4.5 (`claude-sonnet-4-5-20250929`) via Emergent Universal LLM Key
+- **Auth:** JWT custom (cookies httpOnly secure samesite=none)
+- **Multi-tenant:** aislamiento por `tenant_id`
 
 ## Roles
-| Rol | Alcance |
-|---|---|
-| `super_admin` | Dueño del SaaS. Panel Master. Gestiona tenants. Sin acceso a datos confidenciales. |
-| `company_admin` | Admin de la empresa. Configura pricing, gestiona equipo y catálogos. |
-| `executive` | Ejecutivo de ventas. Cotiza, da seguimiento, usa Kanban. |
+- `super_admin`: dueño SaaS, panel Master, gestiona tenants
+- `company_admin`: admin empresa, pricing, equipo, catálogos, logo
+- `executive`: ventas, cotizaciones, kanban
 
-## Implementado en MVP v1.0 ✅ (en producción)
-- Landing page vertical (hero + features + how-it-works + pricing + final CTA + footer)
-- Auth JWT multi-tenant (login/me/logout/refresh) con cookies httpOnly
-- Panel Master Admin: métricas globales + gestión de empresas (crear/suspender)
-- Dashboard empresa (4 métricas + cotizaciones recientes)
-- Catálogo de paquetes (seed: GDL-Tequila 4 días + PV Lujo 6 días)
-- Motor de precios configurable por empresa (margin_divisor, comisiones por canal, descuento menor)
-- Constructor de cotización wizard 4 pasos con cálculo automático
-- Detalle de cotización + cambio de estado + descarga PDF profesional
-- Kanban pipeline 6 estados con drag-drop + alertas días sin movimiento
-- Lista de cotizaciones con búsqueda y filtros
-- Gestión de equipo (invitar ejecutivos, suspender/reactivar)
-- WhatsApp Inbox **UI MOCKED** (mensaje de envío deshabilitado)
-- PWA completo: manifest, iconos 192/512, service worker offline
-- Seed automático idempotente en cada startup del backend
+## Implementado en v1.0 (Producción, abr-2026)
+- Landing vertical, Auth multi-tenant, Panel Master, Dashboard empresa
+- Catálogo paquetes, Motor de precios configurable, Constructor cotización wizard
+- Kanban 6 estados drag-drop, Lista cotizaciones, Gestión equipo
+- PDF profesional, WhatsApp Inbox mock, PWA completo
 
-## Despliegue (completado abr-2026)
-- ✅ VPS configurado: Docker, Nginx, Certbot, Node 20, swap, UFW, fail2ban
-- ✅ SSH endurecido (solo llave Ed25519, password auth deshabilitado)
-- ✅ Repo en GitHub privado (arturogtz-rgb/Routiq)
-- ✅ Docker Compose orquesta backend + MongoDB
-- ✅ Nginx reverse proxy con SSL Let's Encrypt
-- ✅ Auto-renovación SSL via certbot.timer
-- ✅ Scripts de mantenimiento: 05-update.sh (deploy futuros), 06-backup-mongo.sh (backup diario)
+## Implementado en v1.1 (jun-2026) — listo para deploy
+- ✅ **Logo por empresa**: upload PNG/JPG/SVG/WEBP (max 2MB) desde Ajustes, visible en sidebar, PDF de cotización y página pública del cliente. Servido via `/api/uploads/logos/{tenant_id}.{ext}` (StaticFiles montado bajo /api para pasar el ingress).
+- ✅ **Habitaciones múltiples**: rooms[] con combinación libre (ej: 2 dobles + 1 triple = 7 adultos). Pricing engine recalcula correctamente. PDF muestra desglose por habitación. Back-compat con cotizaciones legacy (formato `pax.adultos/ocupacion`).
+- ✅ **IA operativa (Claude Sonnet 4.5)**:
+  - `POST /api/ai/quotations/{id}/next-step` — sugiere próximo paso al ejecutivo
+  - `POST /api/ai/quotations/{id}/missing-fields` — detecta campos faltantes (JSON array)
+  - `POST /api/ai/quotations/{id}/client-message` — redacta mensaje WhatsApp en español
+  - `POST /api/ai/chat-summary` — resumen de chat (wireado al botón del WhatsApp Inbox)
+- ✅ **Enlace público de cotización**: `POST /api/quotations/{id}/public-link` genera token (válido 7 días). Página `/q/:token` sin auth muestra cotización con branding de la empresa, itinerario, total y botón "Confirmar y reservar" que mueve el estado a `ganada` automáticamente. Revocable.
 
-## Pendiente para próxima iteración (cuando regrese arturogtz con observaciones)
-- ✅ **Eliminar badge "Made with Emergent"** del index.html (HECHO en /app/, falta git pull en VPS)
-- 📝 Aplicar observaciones que reporte el usuario tras testing
-- 📝 Workflow de deploy de cambios documentado:
-  1. Cambios en /app/ (Emergent)
-  2. Save to GitHub
-  3. En VPS: `cd /opt/routiq && git pull && sudo /opt/routiq/deploy/scripts/05-update.sh`
+## Testing v1.1
+- Backend: 18/19 ✅ (resuelto el único fallo: ingress no enrutaba `/uploads/` → movido a `/api/uploads/`)
+- Frontend: 100% smoke ✅ tras el fix
+- Reporte: `/app/test_reports/iteration_2.json`
 
-## Backlog priorizado
-### P0 — Próximas fases
-- [ ] **IA operativa con Claude Sonnet 4.5** (Emergent LLM key): resumen automático de chat, detección de oportunidades, campos faltantes
-- [ ] **Integración Baileys real** (microservicio Node.js, fase dedicada): conexión QR, persistencia sesión, webhooks → FastAPI
+## Backlog priorizado para v1.2 (próxima iteración tras feedback)
+### P0 — siguientes
+- [ ] **Servicios a la carta**: tours sueltos, traslados, accesos a recintos, extras opcionales agregables a cualquier cotización (nuevos catálogos + UI de "Agregar servicio" en quotation builder + detalle)
+- [ ] **Stripe**: cobro total o parcial, modificación de precio y descuentos directos desde la cotización, enlace de pago enviable por WhatsApp o correo
 
 ### P1
-- [ ] CRUD UI completo para paquetes (hoy solo lectura/seed)
-- [ ] Tipos adicionales de cotización: tours sueltos, traslados, cotización a medida
+- [ ] **Integración Baileys real** (microservicio Node.js en VPS): conexión QR, persistencia, envío real desde el inbox
+- [ ] CRUD UI completo para paquetes (hoy solo lectura desde seed)
 - [ ] Carga masiva de catálogos vía Excel
-- [ ] Notificaciones push web (VAPID)
+- [ ] Notificaciones push web (VAPID, scaffolding ya listo)
 - [ ] Subdominios reales por empresa (empresa1.routiq.com.mx)
-- [ ] Job programado de detección de cotizaciones estancadas
+- [ ] Cron de cotizaciones estancadas
 
 ### P2
 - [ ] Meta API oficial como alternativa a Baileys
-- [ ] Calendario de reservas post-venta (v2.0 — fuera de MVP según prompt)
+- [ ] Calendario post-venta (v2.0)
 - [ ] Reportes avanzados por ejecutivo
-- [ ] Modo cliente del PDF: enlace público temporal + aceptación con click
+- [ ] Email transaccional al aceptar enlace público (notifica al admin)
 
 ## Decisiones técnicas clave
-1. **MongoDB-only** (no PostgreSQL como pedía el prompt original) — entorno Emergent nativo + multi-tenant vía `tenant_id`. Sin pérdida funcional.
-2. **WhatsApp mockeado en MVP** — Baileys real va en fase dedicada cuando el VPS estuviera listo.
-3. **Cookies httpOnly secure samesite=none** — protección XSS y soporte cross-subdomain.
-4. **Same-origin en producción** — frontend y backend en `routiq.com.mx`, sin CORS (ruta `/api/` proxy a Docker).
-5. **`emergentintegrations` removido del requirements.txt** — paquete interno de Emergent no disponible en PyPI público; no se usa en producción ya que la IA aún no está integrada.
+1. **MongoDB-only** (no Postgres) — multi-tenant via `tenant_id`.
+2. **Cookies httpOnly secure samesite=none** — protección XSS.
+3. **Same-origin en prod** — frontend y backend en `routiq.com.mx`, sin CORS.
+4. **StaticFiles bajo `/api/uploads`** para pasar el ingress K8s y el Nginx de producción que solo enruta `/api/*` al backend.
+5. **`emergentintegrations` se instala con `--extra-index-url https://d33sy5i8bnduwe.cloudfront.net/simple/`** tanto en preview como en VPS (ya en Dockerfile).
+6. **EMERGENT_LLM_KEY** universal para Claude — sin gestión de billing Anthropic para el usuario.
+7. **Migración automática de logo URLs viejas** (`/uploads/...` → `/api/uploads/...`) en cada startup via `ensure_indexes`.
 
 ## Credenciales
-Ver `/app/memory/test_credentials.md` para credenciales de demo (sembradas en producción mediante seed automático).
+Ver `/app/memory/test_credentials.md`. Seed automático en cada startup.
+
+## Despliegue de esta iteración
+1. Usuario hace **"Save to GitHub"** en chat de Emergent.
+2. En VPS: `cd /opt/routiq && git pull`
+3. Editar `/opt/routiq/deploy/.env` y agregar `EMERGENT_LLM_KEY=sk-emergent-fF2A3A42eB149Cc812` al final.
+4. `sudo /opt/routiq/deploy/scripts/05-update.sh` (el script ya hace `--force-recreate` que recarga env vars).
