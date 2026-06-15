@@ -5,7 +5,23 @@ Plataforma SaaS PWA multi-tenant para **cotización y seguimiento turístico** p
 - Empresa piloto: **Aventúrate por Jalisco**
 - Marca: **Routiq**
 - **Producción: https://routiq.com.mx** ✅ (VPS Hostinger 177.7.36.75, Docker + Nginx + Let's Encrypt)
-- Iteración actual: **v2.0** (iter_20: refactor Settings.jsx + vista previa pública de paquete `/p/:slug/:code` con captura de leads + página de Solicitudes)
+- Iteración actual: **v2.1** (iter_21: aviso backup + gestión usuarios/perfiles + recuperación contraseña por correo + diferenciación visual equipo + toggle demo + catálogo por empresa /c/:slug)
+
+## Iteración 21 (jun-2026) — usuarios/perfiles, password reset, catálogo por empresa
+- ✅ **Recuperación de contraseña por correo** (todos los roles): token de un solo uso (sha256, TTL 1h) en `password_reset_tokens`; páginas públicas `/forgot-password` y `/reset-password?token=`. `POST /auth/forgot-password` (sin enumeración) y `POST /auth/reset-password`. Tenant usa correo de su empresa; Master usa correo de plataforma (Resend `PLATFORM_RESEND_API_KEY`/`PLATFORM_FROM_EMAIL`, aún sin llave → enlace generado en panel).
+- ✅ **Perfil self-service** `/profile` (admin/ejecutivo/master): cambiar nombre, correo y contraseña (correo/contraseña requieren contraseña actual). `PATCH /auth/profile`. Enlace "Mi perfil" en sidebar.
+- ✅ **Gestión en /app/team**: editar nombre/correo de ejecutivos (`PATCH /users/{id}`) y generar enlace de recuperación (`POST /users/{id}/reset-link`). Diferenciación visual clara Administrador (corona, borde brand) vs Ejecutivo.
+- ✅ **Panel Master**: editar correo/nombre/teléfono de cada empresa (`PATCH /master/companies/{id}/contact`), generar reset del admin (`POST /master/users/{id}/reset-link`, `GET /master/company-admins`). Master cambia su propio correo/contraseña desde `/profile`.
+- ✅ **Bienvenida por rol** en dashboard: "Bienvenido, [nombre] · Administrador/Ejecutivo".
+- ✅ **Toggle credenciales demo** en /login vía env `SHOW_DEMO_CREDENTIALS` (`GET /public-config`).
+- ✅ **Catálogo público por empresa** `/c/:slug` (`PublicCatalog.jsx`, `GET /public/company/{slug}`): branding + grilla de paquetes activos enlazando a `/p/:slug/:code`.
+- ✅ **Aviso de backup**: `GET /backups/status` (freshness >24h) + banner rojo en Master; loop en background cada 6h envía correo de plataforma cuando haya `PLATFORM_RESEND_API_KEY`.
+- Tests: `/app/test_reports/iteration_21.json` (frontend 100%) + curl backend.
+
+### Pendiente de despliegue / acción del usuario
+- Agregar `PLATFORM_RESEND_API_KEY` y `PLATFORM_FROM_EMAIL` (no-reply@routiq.com.mx) al `.env` de producción para activar correos de plataforma (reset Master + aviso backup).
+- Agregar `EMERGENT_LLM_KEY` al `.env` de producción (resumen IA). Si persiste `FREE_USER_EXTERNAL_ACCESS_DENIED`: recargar saldo en Profile → Universal Key → Add Balance.
+- `SHOW_DEMO_CREDENTIALS=false` en producción para ocultar credenciales demo del login.
 
 ## Iteración 20 (jun-2026) — refactor + vista pública de paquete + leads
 - ✅ **Refactor Settings.jsx** (427→~160 líneas): dividido en `components/settings/{LogoSettings, PricingSettings, PaymentSettings, EmailSettings, BankingSettings}.jsx`. Sin cambios de comportamiento (todos los data-testid preservados; no-regresión validada).
