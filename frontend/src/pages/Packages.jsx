@@ -3,7 +3,7 @@ import { Link, useNavigate } from 'react-router-dom';
 import AppShell from '@/components/AppShell';
 import api, { formatApiError } from '@/lib/api';
 import { useAuth } from '@/context/AuthContext';
-import { Package as PackageIcon, MapPin, Calendar, Plus, Pencil, Trash2, Sun, FileSpreadsheet, Upload, X, CheckCircle2, AlertTriangle } from 'lucide-react';
+import { Package as PackageIcon, MapPin, Calendar, Plus, Pencil, Trash2, Sun, FileSpreadsheet, Upload, X, CheckCircle2, AlertTriangle, Download } from 'lucide-react';
 
 export default function Packages() {
   const { user } = useAuth();
@@ -38,6 +38,19 @@ export default function Packages() {
     } catch (e) { setError(formatApiError(e)); }
   };
 
+  const exportCatalog = async () => {
+    try {
+      const res = await api.get('/catalog/export', { responseType: 'blob' });
+      const cd = res.headers['content-disposition'] || '';
+      const m = cd.match(/filename="?([^"]+)"?/);
+      const url = window.URL.createObjectURL(new Blob([res.data]));
+      const a = document.createElement('a');
+      a.href = url; a.download = m ? m[1] : 'routiq-catalogo.xlsx';
+      document.body.appendChild(a); a.click(); a.remove();
+      window.URL.revokeObjectURL(url);
+    } catch (e) { setError(formatApiError(e)); }
+  };
+
   const handleImport = async (e) => {
     const file = e.target.files?.[0];
     if (file) e.target.value = '';
@@ -64,6 +77,9 @@ export default function Packages() {
           <div className="flex flex-wrap items-center gap-2">
             <button className="btn-ghost text-sm" onClick={downloadTemplate} data-testid="download-template-btn">
               <FileSpreadsheet className="w-4 h-4" /> Plantilla Excel
+            </button>
+            <button className="btn-ghost text-sm" onClick={exportCatalog} data-testid="export-catalog-btn">
+              <Download className="w-4 h-4" /> Exportar Excel
             </button>
             <button className="btn-ghost text-sm" onClick={() => fileRef.current?.click()} disabled={importing} data-testid="import-excel-btn">
               <Upload className="w-4 h-4" /> {importing ? 'Importando…' : 'Importar Excel'}

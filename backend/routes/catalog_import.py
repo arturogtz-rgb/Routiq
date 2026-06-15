@@ -101,6 +101,66 @@ async def download_template(user: dict = Depends(require_roles("company_admin"))
 
 
 # ---------------------------------------------------------------------------
+# Export current catalog (same format as the template)
+# ---------------------------------------------------------------------------
+@router.get("/catalog/export")
+async def export_catalog(user: dict = Depends(require_roles("company_admin"))):
+    db = get_db()
+    tenant_id = user["tenant_id"]
+    packages = await db.packages.find({"tenant_id": tenant_id}, {"_id": 0}).sort("created_at", -1).to_list(2000)
+    services = await db.services.find({"tenant_id": tenant_id}, {"_id": 0}).sort("created_at", -1).to_list(2000)
+
+    wb = openpyxl.Workbook()
+    header_font = Font(bold=True, color="FFFFFF")
+    header_fill = PatternFill("solid", fgColor="185FA5")
+
+    def header(ws, cols):
+        ws.append(cols)
+        for c in ws[1]:
+            c.font = header_font
+            c.fill = header_fill
+            c.alignment = Alignment(horizontal="center")
+        for i, _ in enumerate(cols, start=1):
+            ws.column_dimensions[openpyxl.utils.get_column_letter(i)].width = 20
+
+    ws_pkg = wb.active
+    ws_pkg.title = "Paquetes"
+    header(ws_pkg, PKG_COLS)
+    for p in packages:
+        hotel = (p.get("hotels") or [{}])[0]
+        occ = hotel.get("prices_by_occupancy", {}) if hotel else {}
+        ws_pkg.append([
+            p.get("code", ""), p.get("name", ""), p.get("nights", 0), p.get("description", ""),
+            ";".join(p.get("includes", [])), ";".join(p.get("excludes", [])),
+            hotel.get("name", "") if hotel else "",
+            occ.get("sencilla", 0), occ.get("doble", 0), occ.get("triple", 0),
+            occ.get("cuadruple", 0), hotel.get("minor_price", 0) if hotel else 0,
+        ])
+
+    def svc_sheet(title, category):
+        ws = wb.create_sheet(title)
+        header(ws, SVC_COLS)
+        for s in services:
+            if s.get("category") != category:
+                continue
+            ws.append([s.get("name", ""), s.get("description", ""),
+                       s.get("net_price", 0), s.get("public_price", 0), s.get("unit", "per_group")])
+
+    svc_sheet("Tours", "tour")
+    svc_sheet("Traslados", "traslado")
+
+    buf = io.BytesIO()
+    wb.save(buf)
+    buf.seek(0)
+    from datetime import datetime, timezone
+    stamp = datetime.now(timezone.utc).strftime("%Y%m%d")
+    return StreamingResponse(
+        buf, media_type=XLSX_MIME,
+        headers={"Content-Disposition": f'attachment; filename="routiq-catalogo-{stamp}.xlsx"'},
+    )
+
+
+# ---------------------------------------------------------------------------
 # Import
 # ---------------------------------------------------------------------------
 @router.post("/catalog/import")

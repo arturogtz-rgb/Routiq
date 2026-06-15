@@ -171,14 +171,24 @@ async def list_chats(number_id: str, user: dict = Depends(require_tenant)):
         {"$limit": 200},
     ]
     rows = await db.whatsapp_messages.aggregate(pipeline).to_list(200)
-    return [{
-        "chat_id": r["_id"],
-        "phone": (r["_id"] or "").split("@")[0],
-        "contact_name": r.get("contact_name") or (r["_id"] or "").split("@")[0],
-        "last_text": r.get("last_text", ""),
-        "last_at": r.get("last_at", ""),
-        "unread": r.get("unread", 0),
-    } for r in rows]
+    # join quotation links for this number
+    links = await db.whatsapp_links.find(
+        {"tenant_id": user["tenant_id"], "number_id": number_id}, {"_id": 0}).to_list(500)
+    link_by_chat = {l["chat_id"]: l for l in links}
+    out = []
+    for r in rows:
+        link = link_by_chat.get(r["_id"])
+        out.append({
+            "chat_id": r["_id"],
+            "phone": (r["_id"] or "").split("@")[0],
+            "contact_name": r.get("contact_name") or (r["_id"] or "").split("@")[0],
+            "last_text": r.get("last_text", ""),
+            "last_at": r.get("last_at", ""),
+            "unread": r.get("unread", 0),
+            "quotation_id": link["quotation_id"] if link else None,
+            "quotation_code": link["quotation_code"] if link else None,
+        })
+    return out
 
 
 @router.get("/whatsapp/messages")
@@ -257,3 +267,53 @@ async def whatsapp_webhook(body: dict = Body(...), x_baileys_secret: str | None 
         return {"ok": True}
 
     return {"ok": True}
+
+
+
+# ---------------------------------------------------------------------------
+# Quotation <-> WhatsApp chat linking (by folio)
+# ---------------------------------------------------------------------------
+class LinkInput(BaseModel):
+    quotation_id: str
+    number_id: str
+    chat_id: str
+
+
+@router.post("/whatsapp/link")
+async def link_chat(payload: LinkInput, user: dict = Depends(require_tenant)):
+    db = get_db()
+    quo = await db.quotations.find_one(
+        {"id": payload.quotation_id, "tenant_id": user["tenant_id"]}, {"_id": 0, "code": 1})
+    if not quo:
+        raise HTTPException(status_code=404, detail="Cotización no encontrada")
+    await _get_number(db, user["tenant_id"], payload.number_id)
+    link = {
+        "id": new_id(), "tenant_id": user["tenant_id"],
+        "quotation_id": payload.quotation_id, "quotation_code": quo.get("code", ""),
+        "number_id": payload.number_id, "chat_id": payload.chat_id,
+        "phone": payload.chat_id.split("@")[0], "created_at": now_iso(),
+    }
+    # one chat ↔ one quotation: replace any existing link for this quotation OR this chat
+    await db.whatsapp_links.delete_many({
+        "tenant_id": user["tenant_id"],
+        "$or": [{"quotation_id": payload.quotation_id},
+                {"number_id": payload.number_id, "chat_id": payload.chat_id}],
+    })
+    await db.whatsapp_links.insert_one(dict(link))
+    return {"ok": True, "quotation_code": link["quotation_code"], "phone": link["phone"]}
+
+
+@router.delete("/whatsapp/link/{quotation_id}")
+async def unlink_chat(quotation_id: str, user: dict = Depends(require_tenant)):
+    db = get_db()
+    await db.whatsapp_links.delete_many(
+        {"tenant_id": user["tenant_id"], "quotation_id": quotation_id})
+    return {"ok": True}
+
+
+@router.get("/whatsapp/links/by-quotation/{quotation_id}")
+async def link_by_quotation(quotation_id: str, user: dict = Depends(require_tenant)):
+    db = get_db()
+    link = await db.whatsapp_links.find_one(
+        {"tenant_id": user["tenant_id"], "quotation_id": quotation_id}, {"_id": 0})
+    return link or {}

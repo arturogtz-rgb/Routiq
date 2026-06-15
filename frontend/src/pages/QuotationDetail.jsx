@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { Link, useParams, useNavigate } from 'react-router-dom';
 import AppShell from '@/components/AppShell';
 import api, { formatApiError } from '@/lib/api';
-import { ArrowLeft, Download, MessageCircle, Mail, FileText, Sparkles, Link2, Copy, CheckCircle2, X, Tag, CreditCard, Pencil, Archive, Trash2, History, Briefcase, Users } from 'lucide-react';
+import { ArrowLeft, Download, MessageCircle, Mail, FileText, Sparkles, Link2, Copy, CheckCircle2, X, Tag, CreditCard, Pencil, Archive, Trash2, History, Briefcase, Users, Smartphone } from 'lucide-react';
 import { formatDateEs } from '@/lib/dates';
 
 const STATES = [
@@ -32,12 +32,19 @@ export default function QuotationDetail() {
   const [payAmount, setPayAmount] = useState('');
   const [payMsg, setPayMsg] = useState('');
   const [sendingEmail, setSendingEmail] = useState(false);
+  // WhatsApp link
+  const [waLink, setWaLink] = useState(null);
+  const [waModal, setWaModal] = useState(false);
+  const [waNumbers, setWaNumbers] = useState([]);
+  const [waSelNumber, setWaSelNumber] = useState('');
+  const [waChats, setWaChats] = useState([]);
 
   const load = async () => {
     const { data } = await api.get(`/quotations/${id}`);
     setQ(data);
     setPublicToken(data?.public_link?.token || '');
     if (data?.discount) setDiscount({ discount_type: data.discount.type, discount_value: data.discount.value });
+    api.get(`/whatsapp/links/by-quotation/${id}`).then(({ data: l }) => setWaLink(l && l.chat_id ? l : null)).catch(() => {});
     try {
       const reqs = [api.get('/clients'), api.get('/companies/me')];
       if (data.package_id) reqs.push(api.get(`/packages/${data.package_id}`));
@@ -49,6 +56,34 @@ export default function QuotationDetail() {
     } catch (_e) { /* noop */ }
   };
   useEffect(() => { load(); }, [id]); // eslint-disable-line
+
+  const openWaModal = async () => {
+    setWaModal(true);
+    try {
+      const { data } = await api.get('/whatsapp/numbers');
+      setWaNumbers(data);
+      if (data.length) { setWaSelNumber(data[0].id); loadWaChats(data[0].id); }
+    } catch (_e) { /* noop */ }
+  };
+
+  const loadWaChats = async (numId) => {
+    try { const { data } = await api.get('/whatsapp/chats', { params: { number_id: numId } }); setWaChats(data); }
+    catch { setWaChats([]); }
+  };
+
+  const linkChat = async (chat) => {
+    try {
+      await api.post('/whatsapp/link', { quotation_id: id, number_id: waSelNumber, chat_id: chat.chat_id });
+      setWaLink({ chat_id: chat.chat_id, phone: chat.phone, number_id: waSelNumber, quotation_code: q.code });
+      setWaModal(false);
+    } catch (e) { setAiError(formatApiError(e)); }
+  };
+
+  const unlinkChat = async () => {
+    if (!window.confirm('¿Desvincular esta conversación de WhatsApp?')) return;
+    await api.delete(`/whatsapp/link/${id}`);
+    setWaLink(null);
+  };
 
   const archive = async () => {
     if (!window.confirm(q.archived ? '¿Restaurar esta cotización?' : '¿Archivar esta cotización? Se ocultará de la lista principal.')) return;
@@ -350,6 +385,36 @@ export default function QuotationDetail() {
             )}
           </div>
 
+          {/* WhatsApp link Panel */}
+          <div className="card-surface p-6" data-testid="wa-link-panel">
+            <h3 className="font-display font-semibold text-ink-900 mb-2 flex items-center gap-2">
+              <Smartphone className="w-4 h-4 text-[#25D366]" /> Conversación WhatsApp
+            </h3>
+            {waLink ? (
+              <div className="space-y-2" data-testid="wa-linked">
+                <div className="rounded-lg bg-mint-100 border border-emerald-200 p-3 text-sm">
+                  <p className="text-emerald-800 font-semibold flex items-center gap-1.5"><CheckCircle2 className="w-4 h-4" /> Vinculada</p>
+                  <p className="text-ink-700 mt-1">Chat: <b>{waLink.phone}</b></p>
+                </div>
+                <div className="flex gap-2">
+                  <button className="btn-secondary text-xs flex-1 justify-center" onClick={() => navigate(`/app/whatsapp?number=${waLink.number_id}&chat=${encodeURIComponent(waLink.chat_id)}`)} data-testid="wa-open-inbox">
+                    <MessageCircle className="w-3.5 h-3.5" /> Abrir en el inbox
+                  </button>
+                  <button className="btn-ghost text-xs text-red-600" onClick={unlinkChat} data-testid="wa-unlink-btn">
+                    <X className="w-3.5 h-3.5" /> Desvincular
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <>
+                <p className="text-xs text-ink-500 mb-3">Vincula esta cotización a una conversación de WhatsApp para tener el chat y el folio juntos.</p>
+                <button className="btn-primary w-full text-sm justify-center" onClick={openWaModal} data-testid="wa-link-btn">
+                  <Link2 className="w-4 h-4" /> Vincular WhatsApp
+                </button>
+              </>
+            )}
+          </div>
+
           <div className="card-surface p-6">
             <h3 className="font-display font-semibold text-ink-900 mb-4 flex items-center gap-2"><FileText className="w-4 h-4 text-brand-500" /> Desglose</h3>
             {q.items?.map((it, i) => (
@@ -410,6 +475,41 @@ export default function QuotationDetail() {
           </div>
         </div>
       </div>
+
+      {waModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-ink-900/50" onClick={() => setWaModal(false)}>
+          <div className="bg-white rounded-2xl p-6 w-full max-w-md" onClick={(e) => e.stopPropagation()} data-testid="wa-link-modal">
+            <div className="flex items-center justify-between mb-3">
+              <h3 className="font-display text-lg font-semibold text-ink-900">Vincular conversación</h3>
+              <button onClick={() => setWaModal(false)} className="text-ink-400 hover:text-ink-700"><X className="w-5 h-5" /></button>
+            </div>
+            {waNumbers.length === 0 ? (
+              <p className="text-sm text-ink-500" data-testid="wa-link-no-numbers">No hay números de WhatsApp. Agrégalos en el inbox de WhatsApp.</p>
+            ) : (
+              <>
+                <label className="label-text">Número</label>
+                <select className="input-field mb-3" value={waSelNumber}
+                  onChange={(e) => { setWaSelNumber(e.target.value); loadWaChats(e.target.value); }} data-testid="wa-link-number-select">
+                  {waNumbers.map((n) => <option key={n.id} value={n.id}>{n.label} {n.status === 'connected' ? '· conectado' : ''}</option>)}
+                </select>
+                <label className="label-text">Conversación</label>
+                <div className="max-h-64 overflow-y-auto rounded-xl border border-ink-100 divide-y divide-ink-100">
+                  {waChats.length === 0 && <p className="p-4 text-sm text-ink-400" data-testid="wa-link-no-chats">No hay conversaciones en este número todavía.</p>}
+                  {waChats.map((c) => (
+                    <button key={c.chat_id} onClick={() => linkChat(c)} className="w-full text-left px-3 py-2.5 hover:bg-brand-50 transition-colors" data-testid={`wa-link-chat-${c.chat_id}`}>
+                      <p className="font-semibold text-ink-900 text-sm flex items-center justify-between">
+                        {c.contact_name}
+                        {c.quotation_code && <span className="pill bg-peach-100 text-amber-700 text-[10px]">{c.quotation_code}</span>}
+                      </p>
+                      <p className="text-xs text-ink-400">{c.phone}</p>
+                    </button>
+                  ))}
+                </div>
+              </>
+            )}
+          </div>
+        </div>
+      )}
     </AppShell>
   );
 }

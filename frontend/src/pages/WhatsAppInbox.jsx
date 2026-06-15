@@ -1,11 +1,17 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { useSearchParams, useNavigate } from 'react-router-dom';
 import AppShell from '@/components/AppShell';
 import api, { formatApiError } from '@/lib/api';
 import { useAuth } from '@/context/AuthContext';
-import { MessageCircle, Sparkles, Smartphone, Send, Search, Plus, QrCode, Power, X, RefreshCw, Phone } from 'lucide-react';
+import { MessageCircle, Sparkles, Smartphone, Send, Search, Plus, QrCode, Power, X, RefreshCw, Phone, FileText } from 'lucide-react';
 
 export default function WhatsAppInbox() {
   const { user } = useAuth();
+  const navigate = useNavigate();
+  const [params] = useSearchParams();
+  const wantNumber = params.get('number');
+  const wantChat = params.get('chat');
+  const appliedChat = useRef(false);
   const isAdmin = user?.role === 'company_admin';
   const [numbers, setNumbers] = useState([]);
   const [activeNumber, setActiveNumber] = useState(null);
@@ -35,7 +41,10 @@ export default function WhatsAppInbox() {
     try {
       const { data } = await api.get('/whatsapp/numbers');
       setNumbers(data);
-      if (data.length && !activeNumber) setActiveNumber(data[0].id);
+      if (data.length && !activeNumber) {
+        const pick = (wantNumber && data.find((n) => n.id === wantNumber)) ? wantNumber : data[0].id;
+        setActiveNumber(pick);
+      }
     } catch (e) { setError(formatApiError(e)); }
   };
 
@@ -54,6 +63,14 @@ export default function WhatsAppInbox() {
   useEffect(() => { loadNumbers(); }, []);
   useEffect(() => { if (activeNumber) { loadChats(activeNumber); setActiveChat(null); setMessages([]); } }, [activeNumber]);
   useEffect(() => { setAiSummary(''); if (activeChat) loadMessages(activeNumber, activeChat); }, [activeChat]);
+
+  // preselect chat from query (?number=&chat=) coming from a quotation
+  useEffect(() => {
+    if (!appliedChat.current && wantChat && chats.some((c) => c.chat_id === wantChat)) {
+      appliedChat.current = true;
+      setActiveChat(wantChat);
+    }
+  }, [chats, wantChat]);
 
   // poll chats + open conversation periodically (inbound messages)
   useEffect(() => {
@@ -195,6 +212,7 @@ export default function WhatsAppInbox() {
                   {c.unread > 0 && <span className="pill bg-brand-500 text-white text-[10px]">{c.unread}</span>}
                 </div>
                 <p className="text-xs text-ink-400 mt-0.5 flex items-center gap-1"><Phone className="w-3 h-3" />{c.phone}</p>
+                {c.quotation_code && <span className="inline-flex items-center gap-1 pill bg-peach-100 text-amber-700 text-[10px] mt-1" data-testid={`wa-chat-quote-${c.chat_id}`}><FileText className="w-3 h-3" />{c.quotation_code}</span>}
                 <p className="text-sm text-ink-500 mt-1 truncate">{c.last_text}</p>
               </button>
             ))}
@@ -213,8 +231,18 @@ export default function WhatsAppInbox() {
           ) : (
             <>
               <header className="p-4 border-b border-ink-100">
-                <p className="font-semibold text-ink-900">{activeChatObj?.contact_name}</p>
-                <p className="text-xs text-ink-400">{activeChatObj?.phone} · vía {activeNum?.label}</p>
+                <div className="flex items-center justify-between gap-2">
+                  <div>
+                    <p className="font-semibold text-ink-900">{activeChatObj?.contact_name}</p>
+                    <p className="text-xs text-ink-400">{activeChatObj?.phone} · vía {activeNum?.label}</p>
+                  </div>
+                  {activeChatObj?.quotation_code && (
+                    <button onClick={() => navigate(`/app/quotations/${activeChatObj.quotation_id}`)}
+                      className="pill bg-peach-100 text-amber-700 text-xs hover:brightness-95" data-testid="wa-header-quote">
+                      <FileText className="w-3.5 h-3.5" /> {activeChatObj.quotation_code}
+                    </button>
+                  )}
+                </div>
                 <div className="mt-3 rounded-xl bg-mint-100 p-3 flex gap-3" data-testid="ai-summary">
                   <Sparkles className="w-4 h-4 shrink-0 text-emerald-700 mt-0.5" />
                   <div className="flex-1">
