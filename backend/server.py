@@ -354,13 +354,18 @@ async def create_quotation(payload: QuotationCreate, user: dict = Depends(requir
     calc = compute_quotation(pack, payload.hotel_name, payload.pax.model_dump(),
                              pack["nights"], client["channel"], pricing_config)
     code = await _next_quotation_code(db, user["tenant_id"])
+    # Defensive: swap dates if start > end
+    d_start = payload.dates.start
+    d_end = payload.dates.end
+    if d_start and d_end and d_start > d_end:
+        d_start, d_end = d_end, d_start
     doc = {
         "id": new_id(), "tenant_id": user["tenant_id"], "code": code,
         "client_id": client["id"], "client_snapshot": {"name": client["name"], "channel": client["channel"]},
         "type": "paquete", "package_id": pack["id"],
         "package_snapshot": {"name": pack["name"], "code": pack["code"], "nights": pack["nights"]},
         "hotel_selected": payload.hotel_name,
-        "dates": payload.dates.model_dump(),
+        "dates": {"start": d_start, "end": d_end},
         "pax": payload.pax.model_dump(),
         "items": calc["items"],
         "subtotal": calc["subtotal"],

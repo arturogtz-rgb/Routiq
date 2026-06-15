@@ -20,12 +20,12 @@ TEXT_SOFT = colors.HexColor("#475569")
 def _styles():
     base = getSampleStyleSheet()
     styles = {
-        "title": ParagraphStyle("t", parent=base["Title"], fontName="Helvetica-Bold", fontSize=22, textColor=PRIMARY, alignment=TA_LEFT, spaceAfter=6),
-        "h2": ParagraphStyle("h2", parent=base["Heading2"], fontName="Helvetica-Bold", fontSize=13, textColor=PRIMARY, spaceBefore=14, spaceAfter=6),
-        "h3": ParagraphStyle("h3", parent=base["Heading3"], fontName="Helvetica-Bold", fontSize=11, textColor=TEXT, spaceBefore=8, spaceAfter=4),
-        "body": ParagraphStyle("b", parent=base["BodyText"], fontName="Helvetica", fontSize=10, textColor=TEXT, leading=14),
-        "soft": ParagraphStyle("s", parent=base["BodyText"], fontName="Helvetica", fontSize=9, textColor=TEXT_SOFT, leading=12),
-        "total": ParagraphStyle("tot", parent=base["BodyText"], fontName="Helvetica-Bold", fontSize=14, textColor=PRIMARY, alignment=TA_LEFT),
+        "title": ParagraphStyle("t", parent=base["Title"], fontName="Helvetica-Bold", fontSize=18, textColor=PRIMARY, alignment=TA_LEFT, spaceAfter=4),
+        "h2": ParagraphStyle("h2", parent=base["Heading2"], fontName="Helvetica-Bold", fontSize=11, textColor=PRIMARY, spaceBefore=8, spaceAfter=3),
+        "h3": ParagraphStyle("h3", parent=base["Heading3"], fontName="Helvetica-Bold", fontSize=9.5, textColor=TEXT, spaceBefore=4, spaceAfter=2),
+        "body": ParagraphStyle("b", parent=base["BodyText"], fontName="Helvetica", fontSize=8.5, textColor=TEXT, leading=11),
+        "soft": ParagraphStyle("s", parent=base["BodyText"], fontName="Helvetica", fontSize=8, textColor=TEXT_SOFT, leading=10),
+        "total": ParagraphStyle("tot", parent=base["BodyText"], fontName="Helvetica-Bold", fontSize=13, textColor=PRIMARY, alignment=TA_LEFT),
     }
     return styles
 
@@ -37,8 +37,8 @@ def _money(v: float, currency: str = "MXN") -> str:
 def generate_quotation_pdf(company: dict, quotation: dict, package: dict, client: dict) -> bytes:
     buf = io.BytesIO()
     doc = SimpleDocTemplate(buf, pagesize=letter,
-                            leftMargin=2 * cm, rightMargin=2 * cm,
-                            topMargin=2 * cm, bottomMargin=2 * cm,
+                            leftMargin=1.4 * cm, rightMargin=1.4 * cm,
+                            topMargin=1.3 * cm, bottomMargin=1.3 * cm,
                             title=f"Cotización {quotation.get('code', '')}")
     s = _styles()
     story = []
@@ -96,7 +96,12 @@ def generate_quotation_pdf(company: dict, quotation: dict, package: dict, client
     story.append(Paragraph(package.get("name", ""), s["h2"]))
     if package.get("description"):
         story.append(Paragraph(package["description"], s["soft"]))
-    dates = quotation.get("dates", {})
+    dates = quotation.get("dates", {}) or {}
+    # Defensive: ensure start <= end (some legacy quotations may have them swapped)
+    d_start = dates.get("start", "") or ""
+    d_end = dates.get("end", "") or ""
+    if d_start and d_end and d_start > d_end:
+        d_start, d_end = d_end, d_start
     pax = quotation.get("pax", {})
     story.append(Spacer(1, 6))
 
@@ -112,7 +117,7 @@ def generate_quotation_pdf(company: dict, quotation: dict, package: dict, client
 
     meta = Table([
         ["Hotel", quotation.get("hotel_selected", "")],
-        ["Fechas", f"{dates.get('start','')} → {dates.get('end','')}"],
+        ["Fechas", f"{d_start} → {d_end}"],
         ["Noches", str(package.get("nights", ""))],
         ["Habitaciones / Pax", pax_desc],
     ], colWidths=[3.5 * cm, 12 * cm])
@@ -181,19 +186,29 @@ def generate_quotation_pdf(company: dict, quotation: dict, package: dict, client
     ]))
     story.append(tot)
 
-    # Includes / Excludes
+    # Includes / Excludes (flow naturally — no forced page break, deja a reportlab decidir)
     if package.get("includes") or package.get("excludes"):
-        story.append(PageBreak())
+        inc_exc_data = []
         if package.get("includes"):
-            story.append(Paragraph("Incluye", s["h2"]))
-            for x in package["includes"]:
-                story.append(Paragraph(f"✓ {x}", s["body"]))
+            inc_text = "<b>Incluye:</b> " + " · ".join(f"✓ {x}" for x in package["includes"])
+            inc_exc_data.append([Paragraph(inc_text, s["soft"])])
         if package.get("excludes"):
-            story.append(Paragraph("No incluye", s["h2"]))
-            for x in package["excludes"]:
-                story.append(Paragraph(f"✗ {x}", s["body"]))
+            exc_text = "<b>No incluye:</b> " + " · ".join(f"✗ {x}" for x in package["excludes"])
+            inc_exc_data.append([Paragraph(exc_text, s["soft"])])
+        if inc_exc_data:
+            t = Table(inc_exc_data, colWidths=[17 * cm])
+            t.setStyle(TableStyle([
+                ("BACKGROUND", (0, 0), (-1, -1), colors.HexColor("#F8F9FA")),
+                ("LEFTPADDING", (0, 0), (-1, -1), 8),
+                ("RIGHTPADDING", (0, 0), (-1, -1), 8),
+                ("TOPPADDING", (0, 0), (-1, -1), 4),
+                ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
+                ("BOX", (0, 0), (-1, -1), 0.3, colors.HexColor("#E2E8F0")),
+            ]))
+            story.append(Spacer(1, 6))
+            story.append(t)
 
-    story.append(Spacer(1, 18))
+    story.append(Spacer(1, 10))
     story.append(Paragraph(
         "<b>Condiciones generales:</b> Cotización válida por 7 días. Precios sujetos a disponibilidad al momento de la reservación. "
         "Política de cancelación según contrato. Precios por persona en MXN.",

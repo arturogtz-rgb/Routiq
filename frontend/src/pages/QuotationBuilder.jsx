@@ -94,7 +94,12 @@ export default function QuotationBuilder() {
   const submit = async () => {
     setError(''); setLoading(true);
     try {
-      const { data } = await api.post('/quotations', form);
+      // Defensive: ensure start <= end
+      const payload = { ...form };
+      if (payload.dates.start && payload.dates.end && payload.dates.start > payload.dates.end) {
+        payload.dates = { start: payload.dates.end, end: payload.dates.start };
+      }
+      const { data } = await api.post('/quotations', payload);
       navigate(`/app/quotations/${data.id}`);
     } catch (e) { setError(formatApiError(e)); }
     finally { setLoading(false); }

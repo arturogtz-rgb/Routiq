@@ -45,6 +45,15 @@ async def ensure_indexes():
             {"id": c["id"]},
             {"$set": {"logo_url": "/api" + c["logo_url"]}},
         )
+    # Migration: swap quotation dates if start > end
+    async for q in db.quotations.find({}, {"_id": 0, "id": 1, "dates": 1}):
+        d = q.get("dates") or {}
+        s, e = d.get("start"), d.get("end")
+        if s and e and s > e:
+            await db.quotations.update_one(
+                {"id": q["id"]},
+                {"$set": {"dates": {"start": e, "end": s}}},
+            )
 
 
 DEFAULT_PRICING_CONFIG = {

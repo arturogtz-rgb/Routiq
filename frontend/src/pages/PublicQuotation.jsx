@@ -63,20 +63,24 @@ export default function PublicQuotation() {
     <div className="min-h-screen bg-cream" data-testid="public-quotation-page">
       {/* Header */}
       <header className="bg-white border-b border-ink-100 sticky top-0 z-10">
-        <div className="max-w-3xl mx-auto px-4 py-4 flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            {company.logo_url
-              ? <img src={`${backend}${company.logo_url}`} alt={company.name} className="h-10 max-w-[140px] object-contain" />
-              : <div className="font-display font-bold text-lg" style={{ color: primary }}>{company.name}</div>}
-          </div>
+        <div className="max-w-3xl mx-auto px-4 py-4 flex items-center justify-end">
           <span className="text-xs font-mono text-ink-500">{q.code}</span>
         </div>
       </header>
 
-      {/* Hero */}
+      {/* Hero with big centered logo */}
       <section className="bg-gradient-to-br from-white to-brand-50/40">
-        <div className="max-w-3xl mx-auto px-4 py-10 md:py-14">
-          <p className="pill mb-3" style={{ background: `${primary}15`, color: primary }}>Cotización personalizada</p>
+        <div className="max-w-3xl mx-auto px-4 py-12 md:py-16 text-center">
+          {company.logo_url ? (
+            <div className="flex justify-center mb-6">
+              <img src={`${backend}${company.logo_url}`} alt={company.name}
+                className="h-40 md:h-52 max-w-[320px] md:max-w-[420px] object-contain drop-shadow-sm"
+                data-testid="public-logo" />
+            </div>
+          ) : (
+            <div className="font-display font-bold text-3xl mb-4" style={{ color: primary }}>{company.name}</div>
+          )}
+          <p className="pill inline-block mb-3" style={{ background: `${primary}15`, color: primary }}>Cotización personalizada</p>
           <h1 className="font-display text-3xl md:text-5xl font-semibold text-ink-900 tracking-tight">
             ¡Hola{q.client_name ? `, ${q.client_name.split(' ')[0]}` : ''}!<br />
             Tu viaje está casi listo. ✨
