@@ -125,7 +125,9 @@ export default function PublicQuotation() {
   if (!data) return <div className="min-h-screen flex items-center justify-center text-ink-400">Cargando…</div>;
 
   const { quotation: q, company, itinerary, includes, excludes, payment } = data;
-  const primary = company.primary_color || '#185FA5';
+  // Inherit the brand theme configured in the Master panel (applied globally via
+  // CSS variables by ThemeApplier) for end-to-end brand consistency.
+  const primary = 'rgb(var(--brand-500))';
   const finalTotal = q.final_total != null ? q.final_total : q.total;
   const amountDue = q.amount_due != null ? q.amount_due : finalTotal;
   const isPaid = q.payment_status === 'paid';
