@@ -1,11 +1,12 @@
 import { useEffect, useState, useRef } from 'react';
 import AppShell from '@/components/AppShell';
 import api, { formatApiError } from '@/lib/api';
-import { Save, Calculator, Percent, Upload, Image as ImageIcon, X } from 'lucide-react';
+import { Save, Calculator, Percent, Upload, Image as ImageIcon, X, CreditCard, Mail, Coins } from 'lucide-react';
 
 export default function Settings() {
   const [company, setCompany] = useState(null);
   const [pricing, setPricing] = useState(null);
+  const [integ, setInteg] = useState(null);
   const [error, setError] = useState('');
   const [ok, setOk] = useState('');
   const [uploading, setUploading] = useState(false);
@@ -13,9 +14,10 @@ export default function Settings() {
   const backend = process.env.REACT_APP_BACKEND_URL || '';
 
   const reload = async () => {
-    const { data } = await api.get('/companies/me');
+    const [{ data }, ig] = await Promise.all([api.get('/companies/me'), api.get('/companies/me/integrations')]);
     setCompany(data);
     setPricing(data.pricing_config);
+    setInteg({ ...ig.data, stripe_secret_key: '', resend_api_key: '' });
   };
 
   useEffect(() => { reload(); }, []);
@@ -25,6 +27,20 @@ export default function Settings() {
     try {
       const { data } = await api.patch('/companies/me/pricing', pricing);
       setCompany(data); setOk('Configuración guardada');
+      setTimeout(() => setOk(''), 2500);
+    } catch (e) { setError(formatApiError(e)); }
+  };
+
+  const saveInteg = async () => {
+    setError(''); setOk('');
+    try {
+      const payload = { ...integ };
+      // don't send masked placeholders or empty secrets
+      if (!payload.stripe_secret_key) delete payload.stripe_secret_key;
+      if (!payload.resend_api_key) delete payload.resend_api_key;
+      const { data } = await api.patch('/companies/me/integrations', payload);
+      setInteg({ ...data, stripe_secret_key: '', resend_api_key: '' });
+      setOk('Integraciones guardadas');
       setTimeout(() => setOk(''), 2500);
     } catch (e) { setError(formatApiError(e)); }
   };
@@ -161,6 +177,80 @@ export default function Settings() {
           </div>
         </aside>
       </div>
+
+      {/* Pagos e integraciones */}
+      {integ && (
+        <div className="card-surface p-6 mt-6" data-testid="integrations-card">
+          <h2 className="font-display font-semibold text-lg text-ink-900 flex items-center gap-2"><CreditCard className="w-5 h-5 text-brand-500" /> Pagos e integraciones</h2>
+          <p className="text-sm text-ink-500 mt-1">Conecta tu propia cuenta de Stripe y tu correo. Todo se configura aquí, sin tocar servidores.</p>
+
+          <div className="grid lg:grid-cols-2 gap-8 mt-5">
+            {/* Stripe */}
+            <div className="space-y-4">
+              <h3 className="font-semibold text-ink-900 flex items-center gap-2"><CreditCard className="w-4 h-4 text-brand-500" /> Stripe (cobros)</h3>
+              <div>
+                <label className="label-text">Clave publicable (pk_live / pk_test)</label>
+                <input className="input-field" value={integ.stripe_publishable_key || ''}
+                  onChange={(e) => setInteg((s) => ({ ...s, stripe_publishable_key: e.target.value }))} data-testid="stripe-pk-input" />
+              </div>
+              <div>
+                <label className="label-text">Clave secreta (sk_live / sk_test)</label>
+                <input type="password" className="input-field" placeholder={integ.stripe_secret_set ? `Guardada ${integ.stripe_secret_key_masked}` : 'sk_...'}
+                  value={integ.stripe_secret_key || ''} onChange={(e) => setInteg((s) => ({ ...s, stripe_secret_key: e.target.value }))} data-testid="stripe-sk-input" />
+                <p className="text-xs text-ink-400 mt-1">Déjala vacía para conservar la actual. Nunca se muestra completa.</p>
+              </div>
+              <label className="flex items-center gap-2 cursor-pointer">
+                <input type="checkbox" checked={!!integ.stripe_enabled} onChange={(e) => setInteg((s) => ({ ...s, stripe_enabled: e.target.checked }))} data-testid="stripe-enabled-input" />
+                <span className="text-sm text-ink-700">Habilitar cobros con Stripe en el enlace público</span>
+              </label>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="label-text flex items-center gap-1"><Coins className="w-3.5 h-3.5" /> Moneda base</label>
+                  <select className="input-field" value={integ.base_currency || 'MXN'} onChange={(e) => setInteg((s) => ({ ...s, base_currency: e.target.value }))} data-testid="base-currency-input">
+                    <option value="MXN">MXN — Peso mexicano</option>
+                    <option value="USD">USD — Dólar</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="label-text">Anticipo / depósito (%)</label>
+                  <input type="number" min="1" max="100" className="input-field" value={integ.deposit_percent || 50}
+                    onChange={(e) => setInteg((s) => ({ ...s, deposit_percent: +e.target.value }))} data-testid="deposit-percent-input" />
+                </div>
+              </div>
+            </div>
+
+            {/* Email / Resend */}
+            <div className="space-y-4">
+              <h3 className="font-semibold text-ink-900 flex items-center gap-2"><Mail className="w-4 h-4 text-brand-500" /> Correo (Resend)</h3>
+              <div>
+                <label className="label-text">API key de Resend</label>
+                <input type="password" className="input-field" placeholder={integ.resend_api_key_set ? `Guardada ${integ.resend_api_key_masked}` : 're_...'}
+                  value={integ.resend_api_key || ''} onChange={(e) => setInteg((s) => ({ ...s, resend_api_key: e.target.value }))} data-testid="resend-key-input" />
+              </div>
+              <div>
+                <label className="label-text">Correo remitente (verificado en Resend)</label>
+                <input className="input-field" value={integ.resend_from_email || ''} placeholder="no-reply@tudominio.com"
+                  onChange={(e) => setInteg((s) => ({ ...s, resend_from_email: e.target.value }))} data-testid="resend-from-input" />
+              </div>
+              <div>
+                <label className="label-text">Nombre remitente</label>
+                <input className="input-field" value={integ.resend_from_name || ''} placeholder={company?.name || 'Tu empresa'}
+                  onChange={(e) => setInteg((s) => ({ ...s, resend_from_name: e.target.value }))} data-testid="resend-name-input" />
+              </div>
+              <div>
+                <label className="label-text">Correo de avisos (ventas / ejecutivo)</label>
+                <input className="input-field" value={integ.notify_email || ''} placeholder="ventas@tudominio.com"
+                  onChange={(e) => setInteg((s) => ({ ...s, notify_email: e.target.value }))} data-testid="notify-email-input" />
+                <p className="text-xs text-ink-400 mt-1">Recibe avisos cuando un cliente acepta o paga una cotización.</p>
+              </div>
+            </div>
+          </div>
+
+          <div className="pt-4 mt-2 border-t border-ink-100 flex justify-end">
+            <button className="btn-primary" onClick={saveInteg} data-testid="save-integrations-btn"><Save className="w-4 h-4" /> Guardar integraciones</button>
+          </div>
+        </div>
+      )}
     </AppShell>
   );
 }

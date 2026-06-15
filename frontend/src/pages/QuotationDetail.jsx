@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import AppShell from '@/components/AppShell';
 import api, { formatApiError } from '@/lib/api';
-import { ArrowLeft, Download, MessageCircle, Mail, FileText, Sparkles, Link2, Copy, CheckCircle2, X } from 'lucide-react';
+import { ArrowLeft, Download, MessageCircle, Mail, FileText, Sparkles, Link2, Copy, CheckCircle2, X, Tag, CreditCard } from 'lucide-react';
 
 const STATES = [
   { id: 'nueva_consulta', label: 'Nueva' },
@@ -24,17 +24,24 @@ export default function QuotationDetail() {
   const [aiError, setAiError] = useState('');
   const [publicToken, setPublicToken] = useState('');
   const [copiedPublic, setCopiedPublic] = useState(false);
+  const [discount, setDiscount] = useState({ discount_type: 'none', discount_value: 0 });
 
   const load = async () => {
     const { data } = await api.get(`/quotations/${id}`);
     setQ(data);
     setPublicToken(data?.public_link?.token || '');
+    if (data?.discount) setDiscount({ discount_type: data.discount.type, discount_value: data.discount.value });
     try {
       const p = await api.get(`/packages/${data.package_id}`);
       setPack(p.data);
     } catch (_e) { /* noop */ }
   };
   useEffect(() => { load(); }, [id]); // eslint-disable-line
+
+  const applyDiscount = async () => {
+    await api.patch(`/quotations/${id}/pricing-adjust`, discount);
+    await load();
+  };
 
   const changeState = async (state) => {
     await api.patch(`/quotations/${id}/state`, { state });
@@ -236,7 +243,39 @@ export default function QuotationDetail() {
             <div className="mt-4 pt-4 border-t border-ink-100 space-y-1 text-sm">
               <div className="flex justify-between"><span className="text-ink-500">Subtotal</span><span className="text-ink-900 font-medium">{money(q.subtotal, q.currency)}</span></div>
               {q.commission > 0 && <div className="flex justify-between"><span className="text-ink-500">Comisión</span><span className="text-red-600 font-medium">- {money(q.commission, q.currency)}</span></div>}
-              <div className="flex justify-between pt-2 border-t border-ink-100 mt-2"><span className="font-display text-lg font-semibold text-ink-900">Total</span><span className="font-display text-lg font-bold text-brand-500">{money(q.total, q.currency)}</span></div>
+              <div className="flex justify-between pt-2 border-t border-ink-100 mt-2"><span className="text-ink-700">Total</span><span className="text-ink-900 font-semibold">{money(q.total, q.currency)}</span></div>
+              {q.discount && q.discount.amount > 0 && (
+                <div className="flex justify-between"><span className="text-ink-500">Descuento ({q.discount.type === 'percent' ? `${q.discount.value}%` : 'fijo'})</span><span className="text-red-600 font-medium">- {money(q.discount.amount, q.currency)}</span></div>
+              )}
+              <div className="flex justify-between pt-2 border-t border-ink-100 mt-2"><span className="font-display text-lg font-semibold text-ink-900">Total final</span><span className="font-display text-lg font-bold text-brand-500">{money(q.final_total != null ? q.final_total : q.total, q.currency)}</span></div>
+            </div>
+
+            {/* Discount control */}
+            <div className="mt-4 pt-4 border-t border-ink-100" data-testid="discount-control">
+              <p className="text-xs uppercase tracking-widest text-ink-400 font-bold mb-2 flex items-center gap-1.5"><Tag className="w-3.5 h-3.5" /> Descuento</p>
+              <div className="flex gap-2">
+                <select className="input-field text-sm" value={discount.discount_type}
+                  onChange={(e) => setDiscount((d) => ({ ...d, discount_type: e.target.value }))} data-testid="discount-type-select">
+                  <option value="none">Sin descuento</option>
+                  <option value="percent">Porcentaje %</option>
+                  <option value="fixed">Monto fijo</option>
+                </select>
+                <input type="number" min="0" className="input-field text-sm w-28" disabled={discount.discount_type === 'none'}
+                  value={discount.discount_value} onChange={(e) => setDiscount((d) => ({ ...d, discount_value: +e.target.value || 0 }))} data-testid="discount-value-input" />
+                <button className="btn-primary text-sm" onClick={applyDiscount} data-testid="apply-discount-btn">Aplicar</button>
+              </div>
+            </div>
+
+            {/* Payment status */}
+            <div className="mt-4 pt-4 border-t border-ink-100" data-testid="payment-status">
+              <p className="text-xs uppercase tracking-widest text-ink-400 font-bold mb-2 flex items-center gap-1.5"><CreditCard className="w-3.5 h-3.5" /> Pago</p>
+              <div className="flex items-center justify-between text-sm">
+                <span className={`pill ${q.payment_status === 'paid' ? 'bg-mint-100 text-emerald-700' : q.payment_status === 'partial' ? 'bg-peach-100 text-amber-700' : 'bg-ink-100 text-ink-500'}`} data-testid="payment-badge">
+                  {q.payment_status === 'paid' ? 'Pagado' : q.payment_status === 'partial' ? 'Pago parcial' : 'Sin pagar'}
+                </span>
+                <span className="text-ink-700">Pagado: <b>{money(q.amount_paid || 0, q.currency)}</b></span>
+              </div>
+              <p className="text-xs text-ink-400 mt-2">El cliente paga desde el enlace público. Comparte el enlace por WhatsApp o correo.</p>
             </div>
           </div>
         </div>

@@ -1,0 +1,52 @@
+{
+  "summary": "Iteration 4 (Stripe payments + per-company integrations) backend tests: 11/12 PASS. The 1 failure (test_public_checkout_total) is the open critical bug below — payment-status endpoint 500s when polling a session created via platform fallback sk_test_emergent. Frontend smoke: Settings integrations-card, discount-control + payment-badge on QuotationDetail, and pay-total-btn/pay-deposit-btn/usd-equivalent on PublicQuotation all working. CRITICAL FINDING: The end-to-end Stripe payment polling flow CANNOT complete with the platform fallback key sk_test_emergent — the emergent stripe proxy creates sessions (returns cs_test_...) but cannot retrieve them on subsequent calls, causing GET /api/public/quotations/{token}/payment-status/{session_id} to return 500. Verified reproducibly via both the test suite and a direct standalone reproduction (see RCA). Result: a real customer paying with 4242 4242 4242 4242 would complete checkout on Stripe but the polling on /q/{token}?session_id=... would never show 'Pago confirmado' and the quotation would not transition to 'ganada' via polling. (Webhook path is wired and would still work if Stripe can reach the public webhook URL.)",
+  "backend_issues": {
+    "critical": [
+      {"endpoint": "GET /api/public/quotations/{token}/payment-status/{session_id}", "issue": "Returns 500 (CheckoutError: 'No such checkout.session: cs_test_...') when using platform fallback key sk_test_emergent. Sessions are created on the emergent stripe proxy (https://integrations.emergentagent.com/stripe) but the immediate retrieve raises ValidationError because stripe returns metadata as StripeObject (not dict). A few seconds later the same session is reported missing entirely. This breaks the polling flow end-to-end.", "priority": "CRITICAL"}
+    ],
+    "minor": [
+      {"endpoint": "PATCH /api/companies/me/integrations", "issue": "There is no way to clear a stored stripe_secret_key once set — the code only overwrites when a non-empty non-masked value is provided. An admin who wants to revert to the platform fallback must wait for backend assistance. Suggest supporting a sentinel like '__clear__' or an explicit stripe_secret_key: null with a separate clear flag."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [
+      {"flow": "Public link payment polling -> Pago confirmado", "issue": "Frontend polls payment-status which returns 500 under the platform key, so the success banner (payment-message / public-paid-banner) will never render even after a successful Stripe payment. Quotation state will remain pre-ganada via polling. Webhook may still flip it asynchronously if Stripe can reach the public webhook URL.", "affected_selectors": ["[data-testid=payment-message]", "[data-testid=public-paid-banner]"]}
+    ],
+    "design_issues": [
+      {"screen": "Settings /app/settings", "issues": ["data-testid naming mismatches the task spec but is internally consistent: actual ids are stripe-pk-input, stripe-sk-input, stripe-enabled-input, resend-key-input, resend-from-input (the task referred to stripe-publishable-key-input / stripe-secret-key-input / stripe-enabled-toggle / resend-api-key-input / resend-from-email-input). Functionally fine — just align test/spec naming."]}
+    ]
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_iteration4_payments.py",
+    "/app/test_reports/pytest/iter4_results.xml"
+  ],
+  "action_items": [
+    "HIGH: Fix /api/public/quotations/{token}/payment-status/{session_id} 500 with sk_test_emergent. Either (a) catch CheckoutError and fall back to checking the local payment_transactions doc (set via webhook) and return its last known payment_status (e.g. 'pending' until webhook flips to 'paid'), or (b) patch around the emergentintegrations library's metadata-validation/session-retrieve bug (pre-coerce stripe metadata to dict before validating, and short-circuit using the local txn row when retrieve fails).",
+    "HIGH: Verify the webhook path /api/webhook/stripe is reachable from Stripe in this preview environment — if yes, the webhook will at least flip the txn + quotation to 'paid'/'ganada' asynchronously even when polling 500s.",
+    "MEDIUM: Align Settings.jsx data-testids with the task naming convention (stripe-publishable-key-input, stripe-secret-key-input, stripe-enabled-toggle, resend-api-key-input, resend-from-email-input) OR update the task contract — pick one and keep it consistent across docs/tests.",
+    "LOW: Support clearing a stored stripe_secret_key via PATCH /api/companies/me/integrations (sentinel value or an explicit clear flag)."
+  ],
+  "critical_code_review_comments": [
+    "_resolve_stripe_key (server.py:844) correctly falls back to env STRIPE_API_KEY. ",
+    "public_checkout (server.py:876) computes amount server-side (never trusts client) — good. Creates payment_transactions doc with status=initiated/pending — good.",
+    "_apply_payment_to_quotation (server.py:849) is idempotent (gated by find_one_and_update on session_id with payment_status != 'paid') — good.",
+    "public_payment_status (server.py:934) has NO fallback when StripeCheckout.get_checkout_status raises — this is the root cause of the 500 leak. Wrap in try/except, log, and return the locally-known payment_status (from the txn doc) so the frontend can keep polling without HTTP 500s. Webhook + future retries can still flip it.",
+    "_apply_discount handles percent / fixed / none correctly and clamps within [0, total]. Resetting via discount_type='none' correctly produces amount=0 and final_total=total (verified).",
+    "_integrations_view masks secrets correctly (•••• + last4) and reports stripe_secret_set / resend_api_key_set — clean masking implementation.",
+    "update_my_integrations safely refuses to overwrite secrets when a masked value is echoed back (startswith '••') — good. But there is no path to CLEAR a secret (see minor backend issue).",
+    "exchange-rate endpoint is public (no auth) and returns mxn_per_usd/usd_per_mxn/updated_at — matches spec.",
+    "Library bug observed: emergentintegrations.payments.stripe.checkout.StripeCheckout.get_checkout_status passes stripe's session.metadata (StripeObject) into a pydantic model expecting Dict[str,str], producing a ValidationError before any retry could help. Consider pinning a fix or pre-coercing metadata to dict in the wrapper."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_iteration4_payments.py (new)",
+    "/app/test_reports/pytest/iter4_results.xml (new)"
+  ],
+  "success_rate": {"backend": "92% (11/12 pytest — the 1 failure is the documented critical payment-status 500 bug)", "frontend": "Settings card OK; QuotationDetail discount + payment-badge OK; PublicQuotation pay-total/pay-deposit/usd-equivalent OK. End-to-end Stripe polling NOT verifiable due to backend 500 (see RCA)."},
+  "test_credentials": "admin@aventurate.mx / Demo2026! ; ejecutivo@aventurate.mx / Demo2026! (matches /app/memory/test_credentials.md)",
+  "seed_data_creation": "Applied 10%/fixed/none discounts and generated a public-link token on quotation COT-2026025 (id 2f8d2bb6-22b3-4cfb-8e12-29e32cddedf3) on the Aventúrate tenant. PATCHED /companies/me/integrations: deposit_percent=45, notify_email=TEST_notify2@aventurate.mx, base_currency=MXN, stripe_enabled=true. The masked-secret test temporarily set a fake sk_test_FAKE_ABCDEF1234 then cleaned it up via direct mongo $unset (the only way to clear, per minor issue above). Several cs_test_... Stripe sessions were created during testing.",
+  "retest_needed": true,
+  "main_agent_can_self_test": false,
+  "context_for_next_testing_agent": "Run: pytest /app/backend/tests/test_iteration4_payments.py -v (expect 12/12). If checkout tests intermittently fail with 500 on payment-status, that's the open critical bug — NOT a flaky test. To reproduce the polling bug standalone: from emergentintegrations.payments.stripe.checkout import StripeCheckout, CheckoutSessionRequest ; create a session with sk_test_emergent then call get_checkout_status(session_id) — you'll see (1) pydantic ValidationError on metadata immediately, and (2) 'No such checkout.session' after ~3s. Settings page actual data-testids: stripe-pk-input, stripe-sk-input, stripe-enabled-input, resend-key-input, resend-from-input (NOT the names in the task spec). The PublicQuotation page works perfectly for everything except the post-payment confirmation banner (which depends on the broken polling endpoint).",
+  "rca of the issue": "RCA for payment-status 500: (a) StripeCheckout writes stripe.api_base = 'https://integrations.emergentagent.com/stripe' globally on the stripe module when api_key contains 'sk_test_emergent'. Creating a session works and returns cs_test_*. (b) Immediately retrieving via stripe.checkout.Session.retrieve(...) returns a session whose .metadata is a StripeObject — emergentintegrations.payments.stripe.checkout.CheckoutStatusResponse declares metadata: Dict[str, str], so pydantic v2 raises 'Input should be a valid dictionary' and the wrapper wraps it in CheckoutError('Unexpected error retrieving session status: ...'). (c) After a short delay (~1-3 s) the same retrieve hits InvalidRequestError 'No such checkout.session: cs_test_...' — i.e. the proxy's session is no longer queryable. (d) public_payment_status in server.py:944 does not catch CheckoutError, so the request 500s. Reproduction: run the standalone snippet captured in the test report; observed in /var/log/supervisor/backend.err.log. Mitigation: wrap get_checkout_status in try/except, return the locally-cached payment_transactions.payment_status / .status (initially 'pending' / 'initiated') on failure, and rely on /api/webhook/stripe to flip the row to 'paid' (which then triggers _apply_payment_to_quotation -> state=ganada). This makes the polling endpoint resilient and the UX flow viable."
+}

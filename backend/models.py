@@ -81,6 +81,29 @@ class CompanyUpdate(BaseModel):
     pricing_config: Optional[PricingConfig] = None
 
 
+# ---------- Company integrations & payments ----------
+class CompanyIntegrationsUpdate(BaseModel):
+    stripe_publishable_key: Optional[str] = None
+    stripe_secret_key: Optional[str] = None
+    stripe_enabled: Optional[bool] = None
+    resend_api_key: Optional[str] = None
+    resend_from_email: Optional[str] = None
+    resend_from_name: Optional[str] = None
+    base_currency: Optional[Literal["MXN", "USD"]] = None
+    deposit_percent: Optional[float] = Field(default=None, ge=1, le=100)
+    notify_email: Optional[str] = None
+
+
+class QuotationPricingAdjust(BaseModel):
+    discount_type: Literal["none", "fixed", "percent"] = "none"
+    discount_value: float = Field(default=0.0, ge=0)
+
+
+class PublicCheckoutRequest(BaseModel):
+    origin_url: str
+    pay_type: Literal["total", "deposit"] = "total"
+
+
 # ---------- Users ----------
 class InviteExecutive(BaseModel):
     name: str

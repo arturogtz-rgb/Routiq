@@ -24,11 +24,15 @@ from models import (
     LoginInput, UserPublic, CompanyCreate, CompanyPublic, CompanyUpdate, PricingConfig,
     InviteExecutive, PackageCreate, PackageUpdate, ClientCreate,
     QuotationCreate, QuotationStateUpdate, QuotationUpdate, WhatsAppNumber,
-    ServiceCreate, ServiceUpdate,
+    ServiceCreate, ServiceUpdate, CompanyIntegrationsUpdate, QuotationPricingAdjust,
+    PublicCheckoutRequest,
 )
 from pricing import compute_quotation
 from pdf_generator import generate_quotation_pdf
 import ai_service
+import currency
+import notifications
+from emergentintegrations.payments.stripe.checkout import StripeCheckout, CheckoutSessionRequest
 
 UPLOAD_DIR = _Path("/app/uploads") if _Path("/app/uploads").exists() or os.environ.get("DOCKER") else _Path(__file__).parent / "uploads"
 LOGO_DIR = UPLOAD_DIR / "logos"
@@ -175,6 +179,81 @@ async def update_pricing(payload: PricingConfig, user: dict = Depends(require_ro
     )
     company = await db.companies.find_one({"id": user["tenant_id"]}, {"_id": 0})
     return company
+
+
+# ---------------------------------------------------------------------------
+# Company integrations (Stripe / Resend / currency) — admin configurable, no SSH
+# ---------------------------------------------------------------------------
+def _mask_secret(value: str) -> str:
+    if not value:
+        return ""
+    return "••••" + value[-4:] if len(value) > 4 else "••••"
+
+
+def _integrations_view(company: dict) -> dict:
+    stripe = company.get("stripe") or {}
+    resend = company.get("resend") or {}
+    return {
+        "stripe_publishable_key": stripe.get("publishable_key", ""),
+        "stripe_secret_key_masked": _mask_secret(stripe.get("secret_key", "")),
+        "stripe_secret_set": bool(stripe.get("secret_key")),
+        "stripe_enabled": bool(stripe.get("enabled", False)),
+        "resend_api_key_masked": _mask_secret(resend.get("api_key", "")),
+        "resend_api_key_set": bool(resend.get("api_key")),
+        "resend_from_email": resend.get("from_email", ""),
+        "resend_from_name": resend.get("from_name", ""),
+        "base_currency": company.get("base_currency", "MXN"),
+        "deposit_percent": company.get("deposit_percent", 50),
+        "notify_email": company.get("notify_email", ""),
+    }
+
+
+@api.get("/companies/me/integrations")
+async def get_my_integrations(user: dict = Depends(require_roles("company_admin"))):
+    db = get_db()
+    company = await db.companies.find_one({"id": user["tenant_id"]}, {"_id": 0})
+    if not company:
+        raise HTTPException(status_code=404, detail="Empresa no encontrada")
+    return _integrations_view(company)
+
+
+@api.patch("/companies/me/integrations")
+async def update_my_integrations(payload: CompanyIntegrationsUpdate, user: dict = Depends(require_roles("company_admin"))):
+    db = get_db()
+    data = payload.model_dump(exclude_unset=True)
+    updates: dict = {}
+    if "stripe_publishable_key" in data:
+        updates["stripe.publishable_key"] = data["stripe_publishable_key"] or ""
+    if "stripe_secret_key" in data and data["stripe_secret_key"]:
+        # only overwrite when a non-empty value is provided (avoid wiping with masked value)
+        if not data["stripe_secret_key"].startswith("••"):
+            updates["stripe.secret_key"] = data["stripe_secret_key"]
+    if "stripe_enabled" in data:
+        updates["stripe.enabled"] = bool(data["stripe_enabled"])
+    if "resend_api_key" in data and data["resend_api_key"]:
+        if not data["resend_api_key"].startswith("••"):
+            updates["resend.api_key"] = data["resend_api_key"]
+    if "resend_from_email" in data:
+        updates["resend.from_email"] = data["resend_from_email"] or ""
+    if "resend_from_name" in data:
+        updates["resend.from_name"] = data["resend_from_name"] or ""
+    if "base_currency" in data and data["base_currency"]:
+        updates["base_currency"] = data["base_currency"]
+        # keep pricing currency in sync
+        updates["pricing_config.currency"] = data["base_currency"]
+    if "deposit_percent" in data and data["deposit_percent"]:
+        updates["deposit_percent"] = float(data["deposit_percent"])
+    if "notify_email" in data:
+        updates["notify_email"] = data["notify_email"] or ""
+    if updates:
+        await db.companies.update_one({"id": user["tenant_id"]}, {"$set": updates})
+    company = await db.companies.find_one({"id": user["tenant_id"]}, {"_id": 0})
+    return _integrations_view(company)
+
+
+@api.get("/exchange-rate")
+async def exchange_rate():
+    return await currency.get_rates()
 
 
 @api.patch("/companies/{company_id}/status")
@@ -461,6 +540,35 @@ async def update_quotation_state(quotation_id: str, payload: QuotationStateUpdat
     return {"ok": True, "state": payload.state}
 
 
+def _apply_discount(total: float, discount: dict) -> tuple[float, float]:
+    dt = discount.get("type", "none")
+    dv = float(discount.get("value", 0) or 0)
+    if dt == "percent":
+        amount = round(total * dv / 100.0, 2)
+    elif dt == "fixed":
+        amount = round(dv, 2)
+    else:
+        amount = 0.0
+    amount = max(0.0, min(amount, total))
+    return round(total - amount, 2), amount
+
+
+@api.patch("/quotations/{quotation_id}/pricing-adjust")
+async def adjust_quotation_pricing(quotation_id: str, payload: QuotationPricingAdjust, user: dict = Depends(require_tenant)):
+    db = get_db()
+    q = await db.quotations.find_one({"id": quotation_id, "tenant_id": user["tenant_id"]}, {"_id": 0})
+    if not q:
+        raise HTTPException(status_code=404, detail="Cotización no encontrada")
+    discount = {"type": payload.discount_type, "value": payload.discount_value}
+    final_total, amount = _apply_discount(float(q.get("total", 0) or 0), discount)
+    discount["amount"] = amount
+    await db.quotations.update_one(
+        {"id": quotation_id, "tenant_id": user["tenant_id"]},
+        {"$set": {"discount": discount, "final_total": final_total, "last_activity_at": now_iso()}},
+    )
+    return await db.quotations.find_one({"id": quotation_id, "tenant_id": user["tenant_id"]}, {"_id": 0})
+
+
 @api.patch("/quotations/{quotation_id}")
 async def update_quotation(quotation_id: str, payload: QuotationUpdate, user: dict = Depends(require_tenant)):
     db = get_db()
@@ -512,6 +620,24 @@ async def download_quotation_pdf(quotation_id: str, user: dict = Depends(require
 # ---------------------------------------------------------------------------
 # Dashboard metrics
 # ---------------------------------------------------------------------------
+# ---------------------------------------------------------------------------
+# In-app notifications (executive alerts)
+# ---------------------------------------------------------------------------
+@api.get("/notifications")
+async def list_notifications(user: dict = Depends(require_tenant)):
+    db = get_db()
+    items = await db.notifications.find({"tenant_id": user["tenant_id"]}, {"_id": 0}).sort("created_at", -1).to_list(50)
+    unread = await db.notifications.count_documents({"tenant_id": user["tenant_id"], "read": False})
+    return {"items": items, "unread": unread}
+
+
+@api.post("/notifications/read-all")
+async def mark_notifications_read(user: dict = Depends(require_tenant)):
+    db = get_db()
+    await db.notifications.update_many({"tenant_id": user["tenant_id"], "read": False}, {"$set": {"read": True}})
+    return {"ok": True}
+
+
 @api.get("/metrics/dashboard")
 async def dashboard_metrics(user: dict = Depends(require_tenant)):
     db = get_db()
@@ -645,12 +771,25 @@ async def get_public_quotation(token: str):
         raise HTTPException(status_code=410, detail="Enlace expirado")
     company = await db.companies.find_one({"id": q["tenant_id"]}, {"_id": 0, "pricing_config": 0})
     pack = await db.packages.find_one({"id": q["package_id"]}, {"_id": 0})
+    base_currency = company.get("base_currency", q.get("currency", "MXN"))
+    final_total = q.get("final_total")
+    if final_total is None:
+        final_total = q.get("total", 0)
+    amount_paid = q.get("amount_paid", 0) or 0
+    payment_enabled = bool(((company.get("stripe") or {}).get("secret_key")) or os.environ.get("STRIPE_API_KEY"))
+    rates = await currency.get_rates()
+    total_usd = currency.convert(final_total, base_currency, "USD", rates) if base_currency == "MXN" else None
     return {
         "quotation": {
             "code": q["code"], "package_snapshot": q["package_snapshot"],
             "hotel_selected": q["hotel_selected"], "dates": q["dates"], "pax": q["pax"],
             "items": q["items"], "subtotal": q["subtotal"], "commission": q.get("commission", 0),
             "total": q["total"], "currency": q.get("currency", "MXN"), "state": q["state"],
+            "discount": q.get("discount"),
+            "final_total": round(final_total, 2),
+            "amount_paid": round(amount_paid, 2),
+            "amount_due": round(max(0.0, final_total - amount_paid), 2),
+            "payment_status": q.get("payment_status", "unpaid"),
             "client_name": q.get("client_snapshot", {}).get("name", ""),
             "accepted_at": q.get("public_link", {}).get("accepted_at"),
         },
@@ -659,6 +798,13 @@ async def get_public_quotation(token: str):
             "primary_color": company.get("primary_color", "#185FA5"),
             "contact_email": company.get("contact_email", ""),
             "contact_phone": company.get("contact_phone", ""),
+        },
+        "payment": {
+            "enabled": payment_enabled,
+            "base_currency": base_currency,
+            "deposit_percent": company.get("deposit_percent", 50),
+            "total_usd_equivalent": total_usd,
+            "rate_mxn_per_usd": rates.get("mxn_per_usd"),
         },
         "itinerary": (pack or {}).get("itinerary", []),
         "includes": (pack or {}).get("includes", []),
@@ -684,7 +830,157 @@ async def accept_public_quotation(token: str):
             "last_activity_at": accepted_at,
         }},
     )
+    try:
+        q["final_total"] = q.get("final_total", q.get("total"))
+        await notifications.notify_acceptance(db, q)
+    except Exception:
+        log.exception("acceptance notification failed")
     return {"ok": True, "accepted_at": accepted_at}
+
+
+# ---------------------------------------------------------------------------
+# Stripe payments (per-tenant key, partial/total from public link)
+# ---------------------------------------------------------------------------
+def _resolve_stripe_key(company: dict) -> str:
+    sk = ((company or {}).get("stripe") or {}).get("secret_key")
+    return sk or os.environ.get("STRIPE_API_KEY", "")
+
+
+async def _apply_payment_to_quotation(txn: dict):
+    """Idempotent: called only once per session_id (guarded by caller)."""
+    db = get_db()
+    q = await db.quotations.find_one({"id": txn["quotation_id"]}, {"_id": 0})
+    if not q:
+        return
+    amount_paid = round((q.get("amount_paid", 0) or 0) + float(txn["amount"]), 2)
+    final_total = q.get("final_total")
+    if final_total is None:
+        final_total = q.get("total", 0)
+    pay_status = "paid" if amount_paid >= round(final_total, 2) - 0.01 else "partial"
+    updates = {
+        "amount_paid": amount_paid,
+        "payment_status": pay_status,
+        "last_activity_at": now_iso(),
+    }
+    # move to ganada when client pays
+    if q.get("state") not in ("ganada",):
+        updates["state"] = "ganada"
+    await db.quotations.update_one({"id": q["id"]}, {"$set": updates})
+    # Fire executive notification (email + log) — best effort
+    try:
+        await notifications.notify_payment(db, q, txn, amount_paid, pay_status)
+    except Exception:
+        log.exception("payment notification failed")
+
+
+@api.post("/public/quotations/{token}/checkout")
+async def public_checkout(token: str, payload: PublicCheckoutRequest, request: Request):
+    db = get_db()
+    q = await db.quotations.find_one({"public_link.token": token}, {"_id": 0})
+    if not q:
+        raise HTTPException(status_code=404, detail="Enlace inválido")
+    expires = q.get("public_link", {}).get("expires_at")
+    if expires and datetime.fromisoformat(expires) < datetime.now(timezone.utc):
+        raise HTTPException(status_code=410, detail="Enlace expirado")
+    company = await db.companies.find_one({"id": q["tenant_id"]}, {"_id": 0})
+    api_key = _resolve_stripe_key(company)
+    if not api_key:
+        raise HTTPException(status_code=400, detail="Pagos no configurados para esta empresa")
+
+    final_total = q.get("final_total")
+    if final_total is None:
+        final_total = q.get("total", 0)
+    amount_paid = q.get("amount_paid", 0) or 0
+    amount_due = round(max(0.0, final_total - amount_paid), 2)
+    if amount_due <= 0:
+        raise HTTPException(status_code=400, detail="Esta cotización ya está pagada")
+
+    if payload.pay_type == "deposit":
+        deposit_pct = float(company.get("deposit_percent", 50) or 50)
+        amount = round(final_total * deposit_pct / 100.0, 2)
+        amount = min(amount, amount_due)
+    else:
+        amount = amount_due
+    if amount <= 0:
+        raise HTTPException(status_code=400, detail="Monto inválido")
+
+    base_currency = (company.get("base_currency") or q.get("currency", "MXN")).lower()
+    host_url = str(request.base_url)
+    webhook_url = f"{host_url}api/webhook/stripe"
+    stripe_checkout = StripeCheckout(api_key=api_key, webhook_url=webhook_url)
+    origin = payload.origin_url.rstrip("/")
+    success_url = f"{origin}/q/{token}?session_id={{CHECKOUT_SESSION_ID}}"
+    cancel_url = f"{origin}/q/{token}"
+    metadata = {
+        "quotation_id": q["id"], "tenant_id": q["tenant_id"],
+        "token": token, "pay_type": payload.pay_type, "code": q.get("code", ""),
+    }
+    req = CheckoutSessionRequest(
+        amount=float(amount), currency=base_currency,
+        success_url=success_url, cancel_url=cancel_url, metadata=metadata,
+    )
+    session = await stripe_checkout.create_checkout_session(req)
+    await db.payment_transactions.insert_one({
+        "id": new_id(), "session_id": session.session_id,
+        "quotation_id": q["id"], "tenant_id": q["tenant_id"],
+        "amount": float(amount), "currency": base_currency.upper(),
+        "pay_type": payload.pay_type, "metadata": metadata,
+        "status": "initiated", "payment_status": "pending",
+        "created_at": now_iso(),
+    })
+    return {"url": session.url, "session_id": session.session_id}
+
+
+@api.get("/public/quotations/{token}/payment-status/{session_id}")
+async def public_payment_status(token: str, session_id: str, request: Request):
+    db = get_db()
+    txn = await db.payment_transactions.find_one({"session_id": session_id}, {"_id": 0})
+    if not txn:
+        raise HTTPException(status_code=404, detail="Transacción no encontrada")
+    company = await db.companies.find_one({"id": txn["tenant_id"]}, {"_id": 0})
+    api_key = _resolve_stripe_key(company)
+    host_url = str(request.base_url)
+    stripe_checkout = StripeCheckout(api_key=api_key, webhook_url=f"{host_url}api/webhook/stripe")
+    status = await stripe_checkout.get_checkout_status(session_id)
+    # idempotently flip + apply on first paid
+    if status.payment_status == "paid":
+        flipped = await db.payment_transactions.find_one_and_update(
+            {"session_id": session_id, "payment_status": {"$ne": "paid"}},
+            {"$set": {"payment_status": "paid", "status": status.status, "paid_at": now_iso()}},
+        )
+        if flipped is not None:
+            await _apply_payment_to_quotation(flipped)
+    else:
+        await db.payment_transactions.update_one(
+            {"session_id": session_id, "payment_status": {"$ne": "paid"}},
+            {"$set": {"status": status.status, "payment_status_stripe": status.payment_status}},
+        )
+    return {
+        "payment_status": status.payment_status,
+        "status": status.status,
+        "amount_total": status.amount_total,
+        "currency": status.currency,
+    }
+
+
+@api.post("/webhook/stripe")
+async def stripe_webhook(request: Request):
+    db = get_db()
+    body = await request.body()
+    sig = request.headers.get("Stripe-Signature")
+    try:
+        stripe_checkout = StripeCheckout(api_key=os.environ.get("STRIPE_API_KEY", ""), webhook_url="")
+        event = await stripe_checkout.handle_webhook(body, sig)
+        if event.payment_status == "paid":
+            flipped = await db.payment_transactions.find_one_and_update(
+                {"session_id": event.session_id, "payment_status": {"$ne": "paid"}},
+                {"$set": {"payment_status": "paid", "status": "complete", "paid_at": now_iso()}},
+            )
+            if flipped is not None:
+                await _apply_payment_to_quotation(flipped)
+    except Exception as e:
+        log.warning("stripe webhook error: %s", e)
+    return {"ok": True}
 
 
 # ---------------------------------------------------------------------------

@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
-import { useParams } from 'react-router-dom';
+import { useParams, useSearchParams } from 'react-router-dom';
 import api, { formatApiError } from '@/lib/api';
-import { CheckCircle2, Calendar, MapPin, Users, FileText, Sparkles } from 'lucide-react';
+import { CheckCircle2, Calendar, MapPin, Users, FileText, Sparkles, CreditCard, Loader2 } from 'lucide-react';
 
 function money(v, c = 'MXN') { return `$${Number(v || 0).toLocaleString('es-MX')} ${c}`; }
 
@@ -9,11 +9,14 @@ const OCC = { sencilla: 1, doble: 2, triple: 3, cuadruple: 4 };
 
 export default function PublicQuotation() {
   const { token } = useParams();
+  const [searchParams, setSearchParams] = useSearchParams();
   const backend = process.env.REACT_APP_BACKEND_URL || '';
   const [data, setData] = useState(null);
   const [error, setError] = useState('');
   const [accepting, setAccepting] = useState(false);
   const [accepted, setAccepted] = useState(false);
+  const [paying, setPaying] = useState(false);
+  const [payMsg, setPayMsg] = useState(null); // { type, text }
 
   const load = async () => {
     try {
@@ -24,6 +27,36 @@ export default function PublicQuotation() {
   };
   useEffect(() => { load(); }, [token]); // eslint-disable-line
 
+  // Detect return from Stripe and poll status
+  useEffect(() => {
+    const sessionId = searchParams.get('session_id');
+    if (!sessionId) return;
+    let attempts = 0;
+    setPayMsg({ type: 'pending', text: 'Verificando tu pago…' });
+    const poll = async () => {
+      try {
+        const { data: st } = await api.get(`/public/quotations/${token}/payment-status/${sessionId}`);
+        if (st.payment_status === 'paid') {
+          setPayMsg({ type: 'success', text: '¡Pago confirmado! Gracias por tu reserva.' });
+          await load();
+          return;
+        }
+        if (st.status === 'expired') {
+          setPayMsg({ type: 'error', text: 'La sesión de pago expiró. Intenta de nuevo.' });
+          return;
+        }
+        if (attempts++ < 6) { setTimeout(poll, 2000); }
+        else setPayMsg({ type: 'error', text: 'No pudimos confirmar el pago aún. Revisa más tarde.' });
+      } catch (_e) {
+        if (attempts++ < 6) setTimeout(poll, 2000);
+        else setPayMsg({ type: 'error', text: 'Error verificando el pago.' });
+      }
+    };
+    poll();
+    // clear the session_id from URL so refresh doesn't re-poll endlessly
+    const sp = new URLSearchParams(searchParams); sp.delete('session_id'); setSearchParams(sp, { replace: true });
+  }, [token]); // eslint-disable-line
+
   const accept = async () => {
     setAccepting(true);
     try {
@@ -32,6 +65,16 @@ export default function PublicQuotation() {
       await load();
     } catch (e) { setError(formatApiError(e)); }
     finally { setAccepting(false); }
+  };
+
+  const pay = async (payType) => {
+    setPaying(true); setPayMsg(null);
+    try {
+      const { data: res } = await api.post(`/public/quotations/${token}/checkout`, {
+        origin_url: window.location.origin, pay_type: payType,
+      });
+      window.location.href = res.url;
+    } catch (e) { setPayMsg({ type: 'error', text: formatApiError(e) }); setPaying(false); }
   };
 
   if (error) {
@@ -46,8 +89,11 @@ export default function PublicQuotation() {
   }
   if (!data) return <div className="min-h-screen flex items-center justify-center text-ink-400">Cargando…</div>;
 
-  const { quotation: q, company, itinerary, includes, excludes } = data;
+  const { quotation: q, company, itinerary, includes, excludes, payment } = data;
   const primary = company.primary_color || '#185FA5';
+  const finalTotal = q.final_total != null ? q.final_total : q.total;
+  const amountDue = q.amount_due != null ? q.amount_due : finalTotal;
+  const isPaid = q.payment_status === 'paid';
 
   const paxDesc = (() => {
     const p = q.pax || {};
@@ -172,28 +218,70 @@ export default function PublicQuotation() {
         )}
 
         {/* Total + Accept */}
-        <div className="card-surface p-6 sticky bottom-4">
-          <div className="flex items-center justify-between mb-5">
+        <div className="card-surface p-6 sticky bottom-4" data-testid="public-total-card">
+          <div className="flex items-center justify-between mb-2">
             <p className="text-ink-500 text-sm">Total final</p>
-            <p className="font-display text-3xl md:text-4xl font-bold" style={{ color: primary }}>{money(q.total, q.currency)}</p>
+            <p className="font-display text-3xl md:text-4xl font-bold" style={{ color: primary }}>{money(finalTotal, q.currency)}</p>
           </div>
-          {accepted ? (
-            <div className="rounded-xl bg-mint-100 text-emerald-800 px-5 py-4 flex items-center gap-3" data-testid="public-accepted-banner">
+          {payment?.total_usd_equivalent && payment?.base_currency === 'MXN' && (
+            <p className="text-right text-xs text-ink-400 mb-4" data-testid="usd-equivalent">≈ ${Number(payment.total_usd_equivalent).toLocaleString('en-US')} USD (TC {payment.rate_mxn_per_usd})</p>
+          )}
+          {q.amount_paid > 0 && !isPaid && (
+            <p className="text-right text-xs text-emerald-700 mb-3">Pagado: {money(q.amount_paid, q.currency)} · Resta: {money(amountDue, q.currency)}</p>
+          )}
+
+          {payMsg && (
+            <div className={`rounded-xl px-4 py-3 mb-4 text-sm flex items-center gap-2 ${payMsg.type === 'success' ? 'bg-mint-100 text-emerald-800' : payMsg.type === 'error' ? 'bg-red-50 text-red-700' : 'bg-peach-100 text-amber-800'}`} data-testid="payment-message">
+              {payMsg.type === 'pending' && <Loader2 className="w-4 h-4 animate-spin" />}
+              {payMsg.type === 'success' && <CheckCircle2 className="w-4 h-4" />}
+              {payMsg.text}
+            </div>
+          )}
+
+          {isPaid ? (
+            <div className="rounded-xl bg-mint-100 text-emerald-800 px-5 py-4 flex items-center gap-3" data-testid="public-paid-banner">
               <CheckCircle2 className="w-6 h-6 shrink-0" />
               <div>
-                <p className="font-semibold">¡Cotización aceptada!</p>
-                <p className="text-sm">{company.name} se pondrá en contacto contigo en breve.</p>
+                <p className="font-semibold">¡Pago completado!</p>
+                <p className="text-sm">{company.name} confirmará tu reserva en breve.</p>
               </div>
             </div>
           ) : (
-            <button onClick={accept} disabled={accepting}
-              className="w-full text-white font-display font-semibold py-4 rounded-2xl text-lg transition-all hover:scale-[1.01] disabled:opacity-60"
-              style={{ background: primary }} data-testid="accept-quotation-btn">
-              {accepting ? 'Confirmando…' : <span className="flex items-center justify-center gap-2"><Sparkles className="w-5 h-5" /> Confirmar y reservar</span>}
-            </button>
+            <>
+              {payment?.enabled && (
+                <div className="space-y-2 mb-3" data-testid="payment-buttons">
+                  <button onClick={() => pay('total')} disabled={paying}
+                    className="w-full text-white font-display font-semibold py-4 rounded-2xl text-lg transition-all hover:scale-[1.01] disabled:opacity-60 flex items-center justify-center gap-2"
+                    style={{ background: primary }} data-testid="pay-total-btn">
+                    {paying ? <Loader2 className="w-5 h-5 animate-spin" /> : <CreditCard className="w-5 h-5" />}
+                    Pagar {money(amountDue, q.currency)}
+                  </button>
+                  <button onClick={() => pay('deposit')} disabled={paying}
+                    className="w-full font-display font-semibold py-3 rounded-2xl border-2 transition-all hover:bg-brand-50 disabled:opacity-60"
+                    style={{ borderColor: primary, color: primary }} data-testid="pay-deposit-btn">
+                    Pagar anticipo ({payment.deposit_percent}%)
+                  </button>
+                </div>
+              )}
+              {accepted ? (
+                <div className="rounded-xl bg-mint-100 text-emerald-800 px-5 py-4 flex items-center gap-3" data-testid="public-accepted-banner">
+                  <CheckCircle2 className="w-6 h-6 shrink-0" />
+                  <div>
+                    <p className="font-semibold">¡Cotización aceptada!</p>
+                    <p className="text-sm">{company.name} se pondrá en contacto contigo en breve.</p>
+                  </div>
+                </div>
+              ) : (
+                <button onClick={accept} disabled={accepting}
+                  className={`w-full font-display font-semibold py-3 rounded-2xl text-base transition-all hover:scale-[1.01] disabled:opacity-60 ${payment?.enabled ? 'border-2 text-ink-700 border-ink-200 hover:bg-cream' : 'text-white'}`}
+                  style={payment?.enabled ? {} : { background: primary }} data-testid="accept-quotation-btn">
+                  {accepting ? 'Confirmando…' : <span className="flex items-center justify-center gap-2"><Sparkles className="w-5 h-5" /> {payment?.enabled ? 'Confirmar sin pagar ahora' : 'Confirmar y reservar'}</span>}
+                </button>
+              )}
+            </>
           )}
           <p className="text-xs text-ink-400 mt-3 text-center">
-            <FileText className="w-3 h-3 inline mr-1" /> Cotización válida. Al confirmar, {company.name} procederá con la reserva.
+            <FileText className="w-3 h-3 inline mr-1" /> Pago seguro procesado por Stripe. Al confirmar, {company.name} procederá con la reserva.
           </p>
         </div>
 
