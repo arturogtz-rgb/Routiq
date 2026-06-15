@@ -25,7 +25,11 @@ import MasterAdmin, { MasterCompanies } from '@/pages/Master';
 import MasterSite from '@/pages/MasterSite';
 import PublicQuotation from '@/pages/PublicQuotation';
 import PublicPackage from '@/pages/PublicPackage';
+import PublicCatalog from '@/pages/PublicCatalog';
 import Leads from '@/pages/Leads';
+import Profile from '@/pages/Profile';
+import ForgotPassword from '@/pages/ForgotPassword';
+import ResetPassword from '@/pages/ResetPassword';
 
 function HomeRedirect() {
   const { user, loading } = useAuth();
@@ -56,8 +60,11 @@ export default function App() {
           <Route path="/" element={<HomeRedirect />} />
           <Route path="/login" element={<Login />} />
           <Route path="/signup" element={<Signup />} />
+          <Route path="/forgot-password" element={<ForgotPassword />} />
+          <Route path="/reset-password" element={<ResetPassword />} />
           <Route path="/q/:token" element={<PublicQuotation />} />
           <Route path="/p/:slug/:code" element={<PublicPackage />} />
+          <Route path="/c/:slug" element={<PublicCatalog />} />
 
           {/* Company app */}
           <Route path="/app/dashboard" element={<ProtectedRoute roles={['company_admin', 'executive']}><Dashboard /></ProtectedRoute>} />
@@ -75,6 +82,7 @@ export default function App() {
           <Route path="/app/whatsapp" element={<ProtectedRoute roles={['company_admin', 'executive']}><WhatsAppInbox /></ProtectedRoute>} />
           <Route path="/app/team" element={<ProtectedRoute roles={['company_admin']}><Team /></ProtectedRoute>} />
           <Route path="/app/settings" element={<ProtectedRoute roles={['company_admin']}><Settings /></ProtectedRoute>} />
+          <Route path="/profile" element={<ProtectedRoute roles={['company_admin', 'executive', 'super_admin']}><Profile /></ProtectedRoute>} />
 
           {/* Master panel */}
           <Route path="/master" element={<ProtectedRoute roles={['super_admin']}><MasterAdmin /></ProtectedRoute>} />

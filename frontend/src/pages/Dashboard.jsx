@@ -64,7 +64,9 @@ export default function Dashboard() {
     <AppShell>
       <div className="flex flex-col md:flex-row md:items-end md:justify-between gap-4 mb-8">
         <div>
-          <p className="pill bg-brand-50 text-brand-500 mb-3" data-testid="welcome-pill">Buen día, {user?.name?.split(' ')[0]} 👋</p>
+          <p className="pill bg-brand-50 text-brand-500 mb-3" data-testid="welcome-pill">
+            Bienvenido, {user?.name?.split(' ')[0]} · {user?.role === 'company_admin' ? 'Administrador' : 'Ejecutivo'} 👋
+          </p>
           <h1 className="font-display text-3xl md:text-4xl font-semibold text-ink-900 tracking-tight">Dashboard</h1>
           <p className="text-ink-500 mt-1">Tu operación en una sola vista.</p>
         </div>

@@ -26,6 +26,33 @@ def _with_footer(company: dict, html: str) -> str:
     return html + ROUTIQ_FOOTER
 
 
+async def send_platform_email(to_email: str, subject: str, html: str) -> bool:
+    """Send a platform-level email (no tenant) via Resend using PLATFORM_* env vars.
+    Used for Master notifications and Master password resets. Best-effort."""
+    api_key = os.environ.get("PLATFORM_RESEND_API_KEY")
+    from_email = os.environ.get("PLATFORM_FROM_EMAIL", "no-reply@routiq.com.mx")
+    if not api_key or not to_email:
+        log.info("platform email skipped (no key/recipient) -> %s", subject)
+        return False
+    html = html + ROUTIQ_FOOTER
+    try:
+        async with httpx.AsyncClient(timeout=12) as client:
+            r = await client.post(
+                "https://api.resend.com/emails",
+                headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
+                json={"from": f"Routiq <{from_email}>", "to": [to_email], "subject": subject, "html": html},
+            )
+            ok = r.status_code in (200, 201)
+            if not ok:
+                log.warning("platform Resend rejected (%s): %s", r.status_code, r.text[:300])
+            return ok
+    except Exception as e:
+        log.warning("platform email failed: %s", e)
+        return False
+
+
+
+
 async def _send_smtp(company: dict, to_email: str, subject: str, html: str) -> bool:
     smtp = (company or {}).get("smtp") or {}
     host = smtp.get("host")

@@ -5,7 +5,7 @@ import Logo from '@/components/Logo';
 import NotificationBell from '@/components/NotificationBell';
 import api from '@/lib/api';
 import {
-  LayoutDashboard, Kanban, FileText, Package, Users, Settings, MessageCircle, LogOut, Menu, X, ChevronRight, Sparkles, Globe, ShieldCheck, Inbox,
+  LayoutDashboard, Kanban, FileText, Package, Users, Settings, MessageCircle, LogOut, Menu, X, ChevronRight, Sparkles, Globe, ShieldCheck, Inbox, UserCog,
 } from 'lucide-react';
 
 const NAV_BY_ROLE = {
@@ -90,7 +90,7 @@ export default function AppShell({ children }) {
           ))}
         </nav>
         <div className="p-4 border-t border-ink-100">
-          <div className="flex items-center gap-3 mb-3">
+          <NavLink to="/profile" data-testid="nav-profile" className="flex items-center gap-3 mb-3 rounded-xl p-1.5 -m-1.5 hover:bg-brand-50 transition-colors">
             <div className="w-9 h-9 rounded-full bg-brand-500 text-white flex items-center justify-center font-display font-semibold">
               {(user?.name || 'U').slice(0, 1).toUpperCase()}
             </div>
@@ -98,7 +98,8 @@ export default function AppShell({ children }) {
               <p className="text-sm font-semibold text-ink-900 truncate">{user?.name}</p>
               <p className="text-xs text-ink-400 truncate">{user?.email}</p>
             </div>
-          </div>
+            <UserCog className="w-4 h-4 text-ink-300 ml-auto" />
+          </NavLink>
           <button onClick={handleLogout} data-testid="logout-btn" className="btn-ghost w-full justify-center text-sm">
             <LogOut className="w-4 h-4" /> Cerrar sesión
           </button>
@@ -145,9 +146,14 @@ export default function AppShell({ children }) {
                 </NavLink>
               ))}
             </nav>
-            <div className="p-4 border-t border-ink-100 text-sm text-ink-500">
-              <p className="font-semibold text-ink-900">{user?.name}</p>
-              <p className="text-xs text-ink-400">{user?.email}</p>
+            <div className="p-4 border-t border-ink-100 space-y-2">
+              <NavLink to="/profile" onClick={() => setMobileOpen(false)} data-testid="m-nav-profile" className="flex items-center gap-3 px-3 py-3 rounded-xl text-base font-medium text-ink-700 hover:bg-brand-50">
+                <UserCog className="w-5 h-5" /> Mi perfil
+              </NavLink>
+              <div className="px-3 text-sm text-ink-500">
+                <p className="font-semibold text-ink-900">{user?.name}</p>
+                <p className="text-xs text-ink-400">{user?.email}</p>
+              </div>
             </div>
           </aside>
         </div>

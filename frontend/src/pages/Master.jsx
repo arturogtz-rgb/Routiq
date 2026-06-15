@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import AppShell from '@/components/AppShell';
 import api, { formatApiError } from '@/lib/api';
-import { Building2, Plus, Power, PowerOff, Users as UsersIcon, FileText, TrendingUp, SlidersHorizontal, Bot, CreditCard, Landmark, BadgeCheck, ImageIcon, Crown, X, Inbox, Check, Clock, Copy, Database, Download } from 'lucide-react';
+import { Building2, Plus, Power, PowerOff, Users as UsersIcon, FileText, TrendingUp, SlidersHorizontal, Bot, CreditCard, Landmark, BadgeCheck, ImageIcon, Crown, X, Inbox, Check, Clock, Copy, Database, Download, KeyRound, AlertTriangle } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
 
 export default function MasterAdmin() {
@@ -92,7 +92,40 @@ export function MasterCompanies() {
   const [historyFilter, setHistoryFilter] = useState('all');
   const [funnel, setFunnel] = useState(null);
   const [backups, setBackups] = useState(null);
+  const [backupStatus, setBackupStatus] = useState(null);
   const [downloading, setDownloading] = useState(false);
+  const [admins, setAdmins] = useState([]);
+  const [editCompany, setEditCompany] = useState(null);
+  const [editCompanyForm, setEditCompanyForm] = useState({ name: '', contact_email: '', contact_phone: '' });
+  const [resetInfo, setResetInfo] = useState(null);
+  const [copied, setCopied] = useState(false);
+
+  const adminFor = (tenantId) => admins.find((a) => a.tenant_id === tenantId);
+
+  const openEditCompany = (c) => { setEditCompany(c); setEditCompanyForm({ name: c.name || '', contact_email: c.contact_email || '', contact_phone: c.contact_phone || '' }); setError(''); };
+
+  const saveCompanyContact = async () => {
+    setError('');
+    try {
+      await api.patch(`/master/companies/${editCompany.id}/contact`, editCompanyForm);
+      setEditCompany(null); load();
+    } catch (e) { setError(formatApiError(e)); }
+  };
+
+  const resetAdmin = async (c) => {
+    setError('');
+    const a = adminFor(c.id);
+    if (!a) { setError('No se encontró el administrador de esta empresa.'); return; }
+    try {
+      const { data } = await api.post(`/master/users/${a.id}/reset-link`);
+      setResetInfo({ email: data.email, link: data.link, company: c.name }); setCopied(false);
+    } catch (e) { setError(formatApiError(e)); }
+  };
+
+  const copyReset = async () => {
+    try { await navigator.clipboard.writeText(resetInfo.link); setCopied(true); setTimeout(() => setCopied(false), 2000); }
+    catch { window.prompt('Copia el enlace:', resetInfo.link); }
+  };
 
   const loadHistory = async (filter = historyFilter) => {
     try {
@@ -116,6 +149,8 @@ export function MasterCompanies() {
     loadHistory();
     api.get('/tenant-requests/metrics').then(({ data }) => setFunnel(data)).catch(() => {});
     api.get('/backups').then(({ data }) => setBackups(data)).catch(() => {});
+    api.get('/backups/status').then(({ data }) => setBackupStatus(data)).catch(() => {});
+    api.get('/master/company-admins').then(({ data }) => setAdmins(data || [])).catch(() => {});
   };
   useEffect(() => { load(); }, []);
 
@@ -272,6 +307,12 @@ export function MasterCompanies() {
             </div>
             <div className="flex items-center gap-3">
               <span className={`pill ${c.status === 'active' ? 'bg-mint-100 text-emerald-700' : 'bg-red-100 text-red-700'}`}>{c.status}</span>
+              <button onClick={() => openEditCompany(c)} className="btn-ghost text-xs" data-testid={`edit-company-${c.slug}`}>
+                <Building2 className="w-4 h-4" /> Editar
+              </button>
+              <button onClick={() => resetAdmin(c)} className="btn-ghost text-xs" data-testid={`reset-admin-${c.slug}`}>
+                <KeyRound className="w-4 h-4" /> Reset admin
+              </button>
               <button onClick={() => openPlan(c)} className="btn-ghost text-xs" data-testid={`manage-plan-${c.slug}`}>
                 <SlidersHorizontal className="w-4 h-4" /> Plan
               </button>
@@ -332,7 +373,45 @@ export function MasterCompanies() {
             <Download className="w-4 h-4" /> {downloading ? 'Descargando…' : 'Descargar último respaldo'}
           </button>
         </div>
+        {backupStatus && backupStatus.stale && (
+          <div className="mt-4 rounded-xl bg-red-50 border border-red-200 text-red-700 px-4 py-3 text-sm flex items-start gap-2" data-testid="backup-stale-warning">
+            <AlertTriangle className="w-4 h-4 mt-0.5 shrink-0" />
+            <span>{backupStatus.message}{backupStatus.hours_since != null ? ` (hace ${backupStatus.hours_since} h)` : ''} Se enviará un aviso por correo al Master cuando el correo de plataforma esté configurado.</span>
+          </div>
+        )}
       </div>
+
+      {editCompany && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-ink-900/50" onClick={() => setEditCompany(null)}>
+          <div className="bg-white rounded-2xl p-6 w-full max-w-md" onClick={(e) => e.stopPropagation()} data-testid="edit-company-modal">
+            <h3 className="font-display text-xl font-semibold text-ink-900 mb-4">Editar {editCompany.name}</h3>
+            {error && <div className="rounded-xl border border-red-200 bg-red-50 text-red-700 px-4 py-3 text-sm mb-3" data-testid="edit-company-error">{error}</div>}
+            <div className="space-y-3">
+              <div><label className="label-text">Nombre comercial</label><input className="input-field" value={editCompanyForm.name} onChange={(e) => setEditCompanyForm((f) => ({ ...f, name: e.target.value }))} data-testid="edit-company-name" /></div>
+              <div><label className="label-text">Correo principal de contacto</label><input type="email" className="input-field" value={editCompanyForm.contact_email} onChange={(e) => setEditCompanyForm((f) => ({ ...f, contact_email: e.target.value }))} data-testid="edit-company-email" /></div>
+              <div><label className="label-text">Teléfono</label><input className="input-field" value={editCompanyForm.contact_phone} onChange={(e) => setEditCompanyForm((f) => ({ ...f, contact_phone: e.target.value }))} data-testid="edit-company-phone" /></div>
+            </div>
+            <div className="flex justify-end gap-2 mt-5">
+              <button className="btn-ghost" onClick={() => setEditCompany(null)} data-testid="edit-company-cancel">Cancelar</button>
+              <button className="btn-primary" onClick={saveCompanyContact} data-testid="edit-company-save">Guardar</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {resetInfo && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-ink-900/50" onClick={() => setResetInfo(null)}>
+          <div className="bg-white rounded-2xl p-6 w-full max-w-lg" onClick={(e) => e.stopPropagation()} data-testid="master-reset-link-modal">
+            <h3 className="font-display text-xl font-semibold text-ink-900 mb-1">Restablecer contraseña — {resetInfo.company}</h3>
+            <p className="text-sm text-ink-500 mb-4">Comparte este enlace con <b>{resetInfo.email}</b>. Válido 1 hora. También se intentó enviar por correo.</p>
+            <div className="flex gap-2">
+              <input readOnly className="input-field flex-1 text-xs" value={resetInfo.link} data-testid="master-reset-link-value" />
+              <button className="btn-secondary" onClick={copyReset} data-testid="master-reset-link-copy">{copied ? <Check className="w-4 h-4" /> : <Copy className="w-4 h-4" />}</button>
+            </div>
+            <div className="flex justify-end mt-5"><button className="btn-primary" onClick={() => setResetInfo(null)} data-testid="master-reset-link-close">Listo</button></div>
+          </div>
+        </div>
+      )}
 
       {open && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-ink-900/50" onClick={() => setOpen(false)}>

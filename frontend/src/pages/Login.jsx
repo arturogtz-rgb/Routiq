@@ -1,6 +1,7 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '@/context/AuthContext';
+import api from '@/lib/api';
 import Logo from '@/components/Logo';
 import { useSiteContent } from '@/lib/useSiteContent';
 import { ArrowRight, Eye, EyeOff } from 'lucide-react';
@@ -26,6 +27,11 @@ export default function Login() {
   const [showPwd, setShowPwd] = useState(false);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+  const [showDemo, setShowDemo] = useState(false);
+
+  useEffect(() => {
+    api.get('/public-config').then(({ data }) => setShowDemo(!!data.show_demo_credentials)).catch(() => setShowDemo(false));
+  }, []);
 
   const onSubmit = async (e) => {
     e.preventDefault();
@@ -105,9 +111,13 @@ export default function Login() {
               data-testid="login-submit-btn">
               {loading ? 'Entrando…' : 'Entrar'} {!loading && <ArrowRight className="w-4 h-4" />}
             </button>
+            <p className="text-center text-sm text-ink-500">
+              <Link to="/forgot-password" className="hover:text-brand-500" data-testid="forgot-password-link">¿Olvidaste tu contraseña?</Link>
+            </p>
           </form>
 
-          <div className="rounded-xl border border-dashed border-ink-200 bg-white p-4 text-sm">
+          {showDemo && (
+          <div className="rounded-xl border border-dashed border-ink-200 bg-white p-4 text-sm" data-testid="demo-credentials-box">
             <p className="font-semibold text-ink-900 mb-2">Credenciales de demo</p>
             <div className="space-y-2">
               <button onClick={() => quickFill('admin@aventurate.mx', 'Demo2026!')}
@@ -127,6 +137,7 @@ export default function Login() {
               </button>
             </div>
           </div>
+          )}
 
           <p className="text-center text-sm text-ink-500">
             <Link to="/" className="hover:text-brand-500" data-testid="back-to-landing">← Volver al sitio</Link>

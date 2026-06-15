@@ -107,6 +107,36 @@ async def request_package(slug: str, code: str, payload: PackageRequestInput):
 
 
 # ---------------------------------------------------------------------------
+# Public per-company catalog (no auth) — /c/:slug landing
+# ---------------------------------------------------------------------------
+@router.get("/public/company/{slug}")
+async def public_company_catalog(slug: str):
+    db = get_db()
+    company = await db.companies.find_one({"slug": slug}, {"_id": 0})
+    if not company or company.get("status") == "suspended":
+        raise HTTPException(status_code=404, detail="Empresa no encontrada")
+    packs = await db.packages.find(
+        {"tenant_id": company["id"], "status": {"$ne": "inactive"}}, {"_id": 0}
+    ).sort("created_at", -1).to_list(500)
+    return {
+        "company": {
+            "name": company.get("name", ""), "slug": company.get("slug", ""),
+            "logo_url": company.get("logo_url", ""),
+            "primary_color": company.get("primary_color", "#185FA5"),
+            "contact_email": company.get("contact_email", ""),
+            "contact_phone": company.get("contact_phone", ""),
+            "address": company.get("address", ""),
+        },
+        "packages": [{
+            "code": p["code"], "name": p["name"], "nights": p.get("nights"),
+            "description": p.get("description", ""), "image_url": p.get("image_url", ""),
+            "base_price": _base_price(p), "currency": company.get("base_currency", "MXN"),
+            "hotels_count": len(p.get("hotels") or []),
+        } for p in packs],
+    }
+
+
+# ---------------------------------------------------------------------------
 # Tenant lead management (auth)
 # ---------------------------------------------------------------------------
 @router.get("/quote-requests")

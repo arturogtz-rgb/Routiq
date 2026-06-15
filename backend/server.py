@@ -63,6 +63,30 @@ async def _startup():
     await seed_demo_tenant()
     log.info("Startup complete — super admin + demo tenant seeded")
     asyncio.create_task(_reminder_loop())
+    asyncio.create_task(_backup_check_loop())
+
+
+async def _backup_check_loop():
+    """Every 6h, alert the Master if the daily MongoDB backup is missing/stale (>24h).
+    Sends a platform email when PLATFORM_RESEND_API_KEY is configured (no-op otherwise)."""
+    import routes.backups as backups_mod
+    import notifications
+    while True:
+        try:
+            await asyncio.sleep(6 * 3600)
+            status = backups_mod.freshness()
+            if status.get("stale"):
+                to = os.environ.get("SUPER_ADMIN_EMAIL", "")
+                log.warning("BACKUP ALERT: %s", status.get("message"))
+                html = (f"<h2 style='color:#b91c1c'>⚠️ Alerta de respaldo</h2>"
+                        f"<p>{status.get('message')}</p>"
+                        f"<p>Último respaldo: {status.get('last_at') or '—'} "
+                        f"(hace {status.get('hours_since') if status.get('hours_since') is not None else '—'} h).</p>")
+                await notifications.send_platform_email(to, "⚠️ Respaldo de MongoDB pendiente — Routiq", html)
+        except asyncio.CancelledError:
+            break
+        except Exception:
+            log.exception("backup check loop error")
 
 
 async def _reminder_loop():
@@ -734,6 +758,7 @@ from routes import (
     catalog_import as catalog_import_routes,
     gmail_oauth as gmail_oauth_routes,
     public_package as public_package_routes,
+    account as account_routes,
 )
 
 api.include_router(quotations_routes.router)
@@ -746,6 +771,7 @@ api.include_router(backups_routes.router)
 api.include_router(catalog_import_routes.router)
 api.include_router(gmail_oauth_routes.router)
 api.include_router(public_package_routes.router)
+api.include_router(account_routes.router)
 
 app.include_router(api)
 

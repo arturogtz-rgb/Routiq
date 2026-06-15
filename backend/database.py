@@ -49,6 +49,9 @@ async def ensure_indexes():
     await db.tenant_requests.create_index([("status", 1), ("created_at", -1)])
     await db.signup_attempts.create_index("at", expireAfterSeconds=86400)
     await db.signup_attempts.create_index([("ip", 1), ("at", -1)])
+    # Password reset tokens: TTL purge once expired
+    await db.password_reset_tokens.create_index("expires_at", expireAfterSeconds=0)
+    await db.password_reset_tokens.create_index("token_hash")
     # WhatsApp (Baileys) inbound/outbound messages
     await db.whatsapp_messages.create_index([("tenant_id", 1), ("number_id", 1), ("chat_id", 1), ("timestamp", 1)])
     await db.whatsapp_messages.create_index([("tenant_id", 1), ("number_id", 1), ("message_id", 1)], unique=True)

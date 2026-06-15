@@ -1,0 +1,26 @@
+{
+  "summary": "Iter 21 frontend e2e (ES): forgot-password flow, reset-password no-token, login demo gate, admin/exec dashboard welcome-pill, /profile (name save + current-password validation error), /app/team (role badges Administrador/Ejecutivo, edit-user modal + reset-user link with /reset-password?token=), Master /master/companies (edit-company-aventurate + reset-admin-aventurate modal con token, backup card y backup-stale-warning visibles), catálogo público /c/aventurate (tarjetas + navegación a /p/:slug/:code) y /c/noexiste -> catalog-error. Todas las credenciales demo preservadas (nombres restaurados, contraseñas no modificadas).",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "El review_request mencionaba data-testids 'edit-company-tour-quotes-dev' y 'reset-admin-tour-quotes-dev' pero los testids reales usan el slug de la empresa demo: 'edit-company-aventurate' / 'reset-admin-aventurate'. Funciona correctamente; solo es discrepancia en la descripción del request, no un bug del código.",
+    "Console muestra 401 en assets/requests pre-login (esperado para /api/auth/me sin sesión), pero no son errores funcionales."
+  ],
+  "updated_files": [],
+  "success_rate": {"backend": "skipped", "frontend": "100%"},
+  "test_credentials": "admin@aventurate.mx/Demo2026!, ejecutivo@aventurate.mx/Demo2026!, owner@routiq.mx/Routiq2026! — todas validadas y preservadas",
+  "seed_data_creation": "Ninguno. Solo cambios temporales (nombre admin, nombre ejecutivo, email empresa) que fueron restaurados.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Todos los flujos de iteración 21 verdes. Slug real de la empresa demo es 'aventurate' (no 'tour-quotes-dev'). El URL canónico que devuelve el backend para reset-password apunta a cluster-5.preview.emergentcf.cloud (PUBLIC_BASE_URL configurada), pero el path /reset-password?token=... es válido y funciona. Demo credentials box visible por defecto (SHOW_DEMO_CREDENTIALS=true). backup-stale-warning visible porque no hay respaldos en preview (cron VPS no corre).",
+  "rca of the issue": "N/A — sin bugs encontrados."
+}

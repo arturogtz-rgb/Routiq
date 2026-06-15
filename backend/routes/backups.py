@@ -40,6 +40,29 @@ def _meta(path: str) -> dict:
     }
 
 
+def freshness() -> dict:
+    """Backup freshness status (used by the status endpoint and the alert loop)."""
+    files = _list_files()
+    if not files:
+        return {"ok": False, "available": 0, "stale": True, "last_at": None,
+                "hours_since": None, "message": "No hay respaldos. Activa el cron diario (06-backup-mongo.sh) en el VPS."}
+    st = os.stat(files[0])
+    last = datetime.fromtimestamp(st.st_mtime, tz=timezone.utc)
+    hours = (datetime.now(timezone.utc) - last).total_seconds() / 3600
+    stale = hours > 24
+    return {
+        "ok": not stale, "available": len(files), "stale": stale,
+        "last_at": last.isoformat(), "hours_since": round(hours, 1),
+        "message": ("El último respaldo tiene más de 24 horas. Revisa el cron diario en el VPS."
+                    if stale else "Respaldos al día."),
+    }
+
+
+@router.get("/backups/status")
+async def backup_status(user: dict = Depends(require_roles("super_admin"))):
+    return freshness()
+
+
 @router.get("/backups")
 async def list_backups(user: dict = Depends(require_roles("super_admin"))):
     files = _list_files()
