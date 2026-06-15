@@ -1,0 +1,31 @@
+{
+  "summary": "Iteration 10 — Fase B (servicios sin paquete, contactos agencia/turista, edicion+historial, archivar/eliminar+auditoria) end-to-end PASS. Backend 6/6 (2 from test_fase_b_quotations + 4 new in test_iteration10_regression: package+PDF+public link, audit visibility/RBAC, archived filter). Frontend UI: full happy-path executed as company_admin (admin@aventurate.mx) — Type selector at /app/quotations/new shows BOTH type-paquete and type-servicios; selecting Servicios switches to 3-step flow (Cliente + step-servicios + Revision, step-package/step-dates absent) and selecting Paquete restores the 5-step flow with step-package + step-dates + step-services. Servicios quotation E2E: picked Agencia Viajes del Sol (channel=agencia) → contacts-block appeared and accepted agency-name/contact/email + traveler-name/phone; on step-servicios set servicios-personas=4 and toggled 1 service; builder-submit landed on detail showing 'Servicios a la carta' badge, total $416.84 MXN (>0), no itinerary/hotel, detail-contacts rendering 'Agencia XYZ / Ana Lopez / ana@xyz.com' and 'Juan Pérez / 5512345678', history 'Cotización creada (servicios a la carta)'. Selecting Laura Ramírez (channel=directo) correctly DOES NOT render contacts-block. Edit: edit-quotation-btn navigated to /:id/edit, type-paquete disabled (HTML disabled attribute present), changing servicios-personas + builder-submit returned to detail and history-panel showed 'Editó: fechas, habitaciones/pax, servicios, noches extra, contactos, notas'. state-btn-ganada added 'Estado: Nueva consulta → Ganada' to history-panel. archive-quotation-btn excluded quotation from /app/quotations default list; toggle-archived showed it under archived; delete-quotation-btn removed it. nav-audit in the sidebar opened /app/audit with audit-table + audit-filter listing the new Ganada/Archivada/Eliminada rows for COT-2026046, plus a working 'Todas las acciones' filter. Regression: backend confirmed package quotation creation + PDF (%PDF header) + public link (GET /quotations/public/{token} 200), and the new UI flow surfaces 'temporada' season-pricing copy on the dates step. Console showed no errors beyond the expected pre-login 401s on /auth/me. No mocks. All test data created during this run was cleaned up via Eliminar/DELETE.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_fase_b_quotations.py",
+    "/app/backend/tests/test_iteration10_regression.py",
+    "/app/test_reports/pytest/iter10_fase_b.xml",
+    "/app/test_reports/pytest/iter10_regression.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "QuotationBuilder.jsx: package cards on the Paquete step do not expose a data-testid (e.g. package-card-<id>). Other steps do (type-paquete, step-servicios, servicios-personas, service-toggle-<id>, contacts-block, builder-submit, etc.) — adding `data-testid=package-card-<id>` and `hotel-option-<idx>` would close the only remaining gap for full Playwright coverage of the package flow. Currently the package regression flow has to be validated through the API.",
+    "QuotationBuilder edit mode disables type cards via the HTML `disabled` attribute on the button but does not also set `aria-disabled` (a11y nit). Functional behavior is correct.",
+    "Pre-login the frontend hits /api/auth/me which returns 401 (visible in console). Expected, but a quick `withCredentials` fast-path / skip on `/login` would silence the noise.",
+    "AuditLog filter is a native <select>; consider migrating to the shadcn Select for visual consistency with the rest of the company-admin panel (Cotizaciones list filters use shadcn)."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_iteration10_regression.py (new — 4 tests, all PASS: package+PDF+public link, audit visibility, audit RBAC for executive, archived filter restore)"
+  ],
+  "success_rate": {"backend": "100% (6/6)", "frontend": "100% on every required Fase B testid (type-paquete, type-servicios, step-servicios, step-package, step-dates, step-services, servicios-personas, service-toggle-<id>, builder-submit, contacts-block, contact-agency-*, contact-traveler-*, detail-contacts, edit-quotation-btn, history-panel, state-btn-ganada, archive-quotation-btn, delete-quotation-btn, toggle-archived, nav-audit, audit-table, audit-filter)"},
+  "test_credentials": "admin@aventurate.mx / Demo2026! (company_admin) + ejecutivo@aventurate.mx / Demo2026! (executive, used to assert 403 on /api/audit-log). Matches /app/memory/test_credentials.md.",
+  "seed_data_creation": "No persistent test data left behind: the servicios quotation COT-2026046 was archived → restored → deleted as part of the flow; the package regression quotation was created and DELETEd in test_package_quotation_with_pdf_and_public_link; archived-filter test restored+deleted its own item. (Pre-existing leftover client 'TEST Cliente 1776985520' from an earlier iteration is still in /clients but unrelated to Fase B — main agent may wipe via /api/clients/{id} if desired.)",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Fase B is green end-to-end. To re-run quickly: `pytest /app/backend/tests/test_fase_b_quotations.py /app/backend/tests/test_iteration10_regression.py -v` (6 tests, ~3s). UI flow uses data-testids listed in success_rate; the only missing one is `package-card-<id>` on the Paquete step — main agent should add it before any future package-step UI automation. Sidebar Auditoría link is /app/audit and is gated to company_admin (executive gets 403)."
+}

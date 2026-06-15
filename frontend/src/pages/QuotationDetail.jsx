@@ -1,8 +1,8 @@
 import { useEffect, useState } from 'react';
-import { Link, useParams } from 'react-router-dom';
+import { Link, useParams, useNavigate } from 'react-router-dom';
 import AppShell from '@/components/AppShell';
 import api, { formatApiError } from '@/lib/api';
-import { ArrowLeft, Download, MessageCircle, Mail, FileText, Sparkles, Link2, Copy, CheckCircle2, X, Tag, CreditCard } from 'lucide-react';
+import { ArrowLeft, Download, MessageCircle, Mail, FileText, Sparkles, Link2, Copy, CheckCircle2, X, Tag, CreditCard, Pencil, Archive, Trash2, History, Briefcase, Users } from 'lucide-react';
 import { formatDateEs } from '@/lib/dates';
 
 const STATES = [
@@ -18,6 +18,7 @@ function money(v, c = 'MXN') { return `$${Number(v || 0).toLocaleString('es-MX')
 
 export default function QuotationDetail() {
   const { id } = useParams();
+  const navigate = useNavigate();
   const [q, setQ] = useState(null);
   const [pack, setPack] = useState(null);
   const [ai, setAi] = useState({ next: '', missing: [], message: '' });
@@ -35,18 +36,28 @@ export default function QuotationDetail() {
     setPublicToken(data?.public_link?.token || '');
     if (data?.discount) setDiscount({ discount_type: data.discount.type, discount_value: data.discount.value });
     try {
-      const [p, clients, company] = await Promise.all([
-        api.get(`/packages/${data.package_id}`),
-        api.get('/clients'),
-        api.get('/companies/me'),
-      ]);
-      setPack(p.data);
+      const reqs = [api.get('/clients'), api.get('/companies/me')];
+      if (data.package_id) reqs.push(api.get(`/packages/${data.package_id}`));
+      const [clients, company, p] = await Promise.all(reqs);
+      setPack(p?.data || null);
       const cl = (clients.data || []).find((c) => c.id === data.client_id);
       setClientPhone(cl?.phone || '');
       setCompanyName(company.data?.name || 'Routiq');
     } catch (_e) { /* noop */ }
   };
   useEffect(() => { load(); }, [id]); // eslint-disable-line
+
+  const archive = async () => {
+    if (!window.confirm(q.archived ? '¿Restaurar esta cotización?' : '¿Archivar esta cotización? Se ocultará de la lista principal.')) return;
+    await api.patch(`/quotations/${id}/archive`, { archived: !q.archived });
+    await load();
+  };
+
+  const remove = async () => {
+    if (!window.confirm('¿Eliminar esta cotización? Quedará registrada en la auditoría.')) return;
+    await api.delete(`/quotations/${id}`);
+    navigate('/app/quotations');
+  };
 
   const applyDiscount = async () => {
     await api.patch(`/quotations/${id}/pricing-adjust`, discount);
@@ -118,6 +129,7 @@ export default function QuotationDetail() {
 
   const paxDesc = (() => {
     const p = q.pax || {};
+    if (q.type === 'servicios') return `${p.adultos || 0} persona(s)`;
     if (p.rooms?.length) {
       const rooms = p.rooms.map((r) => `${r.count} ${r.ocupacion}`).join(' · ');
       const adults = p.rooms.reduce((s, r) => s + ({ sencilla: 1, doble: 2, triple: 3, cuadruple: 4 }[r.ocupacion] || 0) * r.count, 0);
@@ -134,19 +146,25 @@ export default function QuotationDetail() {
 
       <div className="flex flex-col md:flex-row md:items-start md:justify-between gap-4 mb-6">
         <div>
-          <p className="font-mono text-sm text-brand-500 font-semibold">{q.code}</p>
-          <h1 className="font-display text-3xl font-semibold text-ink-900 mt-1">{q.package_snapshot?.name}</h1>
+          <p className="font-mono text-sm text-brand-500 font-semibold">{q.code}
+            {q.type === 'servicios' && <span className="pill bg-peach-100 text-amber-700 ml-2">Servicios a la carta</span>}
+            {q.archived && <span className="pill bg-ink-100 text-ink-500 ml-2">Archivada</span>}
+          </p>
+          <h1 className="font-display text-3xl font-semibold text-ink-900 mt-1">{q.package_snapshot?.name || 'Servicios a la carta'}</h1>
           <p className="text-ink-500 mt-1">Cliente: <span className="text-ink-900 font-medium">{q.client_snapshot?.name}</span></p>
         </div>
         <div className="flex flex-wrap gap-2">
+          <button onClick={() => navigate(`/app/quotations/${id}/edit`)} className="btn-secondary text-sm" data-testid="edit-quotation-btn">
+            <Pencil className="w-4 h-4" /> Editar
+          </button>
           <button onClick={downloadPdf} className="btn-primary text-sm" data-testid="download-pdf-btn">
             <Download className="w-4 h-4" /> Descargar PDF
           </button>
-          <button className="btn-secondary text-sm opacity-60 cursor-not-allowed" disabled title="Disponible con WhatsApp conectado" data-testid="send-whatsapp-btn">
-            <MessageCircle className="w-4 h-4" /> Enviar por WhatsApp
+          <button onClick={archive} className="btn-ghost text-sm" data-testid="archive-quotation-btn">
+            <Archive className="w-4 h-4" /> {q.archived ? 'Restaurar' : 'Archivar'}
           </button>
-          <button className="btn-ghost text-sm opacity-60 cursor-not-allowed" disabled data-testid="send-email-btn">
-            <Mail className="w-4 h-4" /> Enviar por email
+          <button onClick={remove} className="btn-ghost text-sm text-red-600 hover:bg-red-50" data-testid="delete-quotation-btn">
+            <Trash2 className="w-4 h-4" /> Eliminar
           </button>
         </div>
       </div>
@@ -167,25 +185,63 @@ export default function QuotationDetail() {
           <div className="card-surface p-6">
             <h3 className="font-display font-semibold text-ink-900 mb-4">Detalles</h3>
             <div className="grid md:grid-cols-2 gap-4 text-sm">
-              <div><p className="text-xs uppercase tracking-widest text-ink-400 font-bold">Hotel</p><p className="text-ink-900 font-medium mt-1">{q.hotel_selected}</p></div>
-              <div><p className="text-xs uppercase tracking-widest text-ink-400 font-bold">Fechas</p><p className="text-ink-900 font-medium mt-1">{formatDateEs(q.dates?.start)} → {formatDateEs(q.dates?.end)}</p></div>
-              <div><p className="text-xs uppercase tracking-widest text-ink-400 font-bold">Habitaciones / Pax</p><p className="text-ink-900 font-medium mt-1">{paxDesc}</p></div>
+              {q.hotel_selected && <div><p className="text-xs uppercase tracking-widest text-ink-400 font-bold">Hotel</p><p className="text-ink-900 font-medium mt-1">{q.hotel_selected}</p></div>}
+              {(q.dates?.start || q.dates?.end) && <div><p className="text-xs uppercase tracking-widest text-ink-400 font-bold">Fechas</p><p className="text-ink-900 font-medium mt-1">{formatDateEs(q.dates?.start)} → {formatDateEs(q.dates?.end)}</p></div>}
+              <div><p className="text-xs uppercase tracking-widest text-ink-400 font-bold">{q.type === 'servicios' ? 'Personas' : 'Habitaciones / Pax'}</p><p className="text-ink-900 font-medium mt-1">{paxDesc}</p></div>
             </div>
+            {(q.contacts?.agency?.name || q.contacts?.traveler?.name) && (
+              <div className="grid md:grid-cols-2 gap-4 mt-6 pt-4 border-t border-ink-100" data-testid="detail-contacts">
+                {q.contacts?.agency?.name && (
+                  <div>
+                    <p className="text-xs uppercase tracking-widest text-ink-400 font-bold flex items-center gap-1.5"><Briefcase className="w-3.5 h-3.5" /> Agencia / Vendedor</p>
+                    <p className="text-ink-900 font-medium mt-1">{q.contacts.agency.name}</p>
+                    <p className="text-ink-500 text-xs">{q.contacts.agency.contact} · {q.contacts.agency.email}</p>
+                  </div>
+                )}
+                {q.contacts?.traveler?.name && (
+                  <div>
+                    <p className="text-xs uppercase tracking-widest text-ink-400 font-bold flex items-center gap-1.5"><Users className="w-3.5 h-3.5" /> Cliente final / Turista</p>
+                    <p className="text-ink-900 font-medium mt-1">{q.contacts.traveler.name}</p>
+                    <p className="text-ink-500 text-xs">Tel: {q.contacts.traveler.phone}</p>
+                  </div>
+                )}
+              </div>
+            )}
             {q.notes && <><p className="text-xs uppercase tracking-widest text-ink-400 font-bold mt-6">Notas</p><p className="text-ink-700 mt-1 text-sm">{q.notes}</p></>}
           </div>
 
-          <div className="card-surface p-6">
-            <h3 className="font-display font-semibold text-ink-900 mb-4">Itinerario</h3>
-            {pack?.itinerary?.map((d) => (
-              <div key={d.day} className="flex gap-4 mb-4 last:mb-0">
-                <div className="shrink-0 w-10 h-10 rounded-xl bg-brand-50 text-brand-500 font-display font-bold flex items-center justify-center">{d.day}</div>
-                <div>
-                  <p className="font-semibold text-ink-900">{d.title}</p>
-                  <p className="text-sm text-ink-500 mt-0.5">{d.description}</p>
+          {pack?.itinerary?.length > 0 && (
+            <div className="card-surface p-6">
+              <h3 className="font-display font-semibold text-ink-900 mb-4">Itinerario</h3>
+              {pack.itinerary.map((d) => (
+                <div key={d.day} className="flex gap-4 mb-4 last:mb-0">
+                  <div className="shrink-0 w-10 h-10 rounded-xl bg-brand-50 text-brand-500 font-display font-bold flex items-center justify-center">{d.day}</div>
+                  <div>
+                    <p className="font-semibold text-ink-900">{d.title}</p>
+                    <p className="text-sm text-ink-500 mt-0.5">{d.description}</p>
+                  </div>
                 </div>
-              </div>
-            ))}
-          </div>
+              ))}
+            </div>
+          )}
+
+          {/* History */}
+          {q.history?.length > 0 && (
+            <div className="card-surface p-6" data-testid="history-panel">
+              <h3 className="font-display font-semibold text-ink-900 mb-4 flex items-center gap-2"><History className="w-4 h-4 text-brand-500" /> Historial de cambios</h3>
+              <ol className="space-y-3">
+                {[...q.history].reverse().map((h, i) => (
+                  <li key={i} className="flex gap-3 text-sm" data-testid={`history-item-${i}`}>
+                    <div className="shrink-0 w-2 h-2 rounded-full bg-brand-400 mt-1.5" />
+                    <div>
+                      <p className="text-ink-800">{h.detail || h.action}</p>
+                      <p className="text-xs text-ink-400">{h.user_name || 'Sistema'} · {formatDateEs(h.at)}</p>
+                    </div>
+                  </li>
+                ))}
+              </ol>
+            </div>
+          )}
         </div>
 
         <div className="space-y-6">

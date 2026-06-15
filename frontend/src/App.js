@@ -13,6 +13,7 @@ import Services from '@/pages/Services';
 import QuotationBuilder from '@/pages/QuotationBuilder';
 import QuotationsList from '@/pages/QuotationsList';
 import QuotationDetail from '@/pages/QuotationDetail';
+import AuditLog from '@/pages/AuditLog';
 import WhatsAppInbox from '@/pages/WhatsAppInbox';
 import Team from '@/pages/Team';
 import Settings from '@/pages/Settings';
@@ -50,7 +51,9 @@ export default function App() {
           <Route path="/app/services" element={<ProtectedRoute roles={['company_admin', 'executive']}><Services /></ProtectedRoute>} />
           <Route path="/app/quotations" element={<ProtectedRoute roles={['company_admin', 'executive']}><QuotationsList /></ProtectedRoute>} />
           <Route path="/app/quotations/new" element={<ProtectedRoute roles={['company_admin', 'executive']}><QuotationBuilder /></ProtectedRoute>} />
+          <Route path="/app/quotations/:id/edit" element={<ProtectedRoute roles={['company_admin', 'executive']}><QuotationBuilder /></ProtectedRoute>} />
           <Route path="/app/quotations/:id" element={<ProtectedRoute roles={['company_admin', 'executive']}><QuotationDetail /></ProtectedRoute>} />
+          <Route path="/app/audit" element={<ProtectedRoute roles={['company_admin']}><AuditLog /></ProtectedRoute>} />
           <Route path="/app/whatsapp" element={<ProtectedRoute roles={['company_admin', 'executive']}><WhatsAppInbox /></ProtectedRoute>} />
           <Route path="/app/team" element={<ProtectedRoute roles={['company_admin']}><Team /></ProtectedRoute>} />
           <Route path="/app/settings" element={<ProtectedRoute roles={['company_admin']}><Settings /></ProtectedRoute>} />

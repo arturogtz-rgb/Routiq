@@ -214,6 +214,23 @@ class ClientCreate(BaseModel):
     notes: str = ""
 
 
+# ---------- Quotation contacts (agency + final traveler) ----------
+class AgencyContact(BaseModel):
+    name: str = ""
+    contact: str = ""
+    email: str = ""
+
+
+class TravelerContact(BaseModel):
+    name: str = ""
+    phone: str = ""
+
+
+class QuotationContacts(BaseModel):
+    agency: AgencyContact = Field(default_factory=AgencyContact)
+    traveler: TravelerContact = Field(default_factory=TravelerContact)
+
+
 # ---------- Quotations ----------
 OCCUPANCY_COUNT = {"sencilla": 1, "doble": 2, "triple": 3, "cuadruple": 4}
 
@@ -238,8 +255,8 @@ class QuotationPax(BaseModel):
 
 
 class QuotationDates(BaseModel):
-    start: str
-    end: str
+    start: str = ""
+    end: str = ""
 
 
 class ExtraNights(BaseModel):
@@ -249,12 +266,14 @@ class ExtraNights(BaseModel):
 
 class QuotationCreate(BaseModel):
     client_id: str
-    package_id: str
-    hotel_name: str
-    dates: QuotationDates
-    pax: QuotationPax
+    type: Literal["paquete", "servicios"] = "paquete"
+    package_id: Optional[str] = None
+    hotel_name: str = ""
+    dates: QuotationDates = Field(default_factory=QuotationDates)
+    pax: QuotationPax = Field(default_factory=QuotationPax)
     services: List[SelectedService] = []
     extra_nights: Optional[ExtraNights] = None
+    contacts: Optional[QuotationContacts] = None
     notes: str = ""
     assigned_to: Optional[str] = None
 
@@ -263,11 +282,16 @@ class QuotationStateUpdate(BaseModel):
     state: Literal["nueva_consulta", "cotizando", "enviada", "negociacion", "ganada", "perdida"]
 
 
+class QuotationArchive(BaseModel):
+    archived: bool = True
+
+
 class QuotationUpdate(BaseModel):
     dates: Optional[QuotationDates] = None
     pax: Optional[QuotationPax] = None
     hotel_name: Optional[str] = None
     services: Optional[List[SelectedService]] = None
     extra_nights: Optional[ExtraNights] = None
+    contacts: Optional[QuotationContacts] = None
     notes: Optional[str] = None
     assigned_to: Optional[str] = None

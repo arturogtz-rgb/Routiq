@@ -25,7 +25,7 @@ from models import (
     InviteExecutive, PackageCreate, PackageUpdate, ClientCreate,
     QuotationCreate, QuotationStateUpdate, QuotationUpdate, WhatsAppNumber,
     ServiceCreate, ServiceUpdate, CompanyIntegrationsUpdate, QuotationPricingAdjust,
-    PublicCheckoutRequest,
+    PublicCheckoutRequest, QuotationArchive,
 )
 from pricing import compute_quotation
 from pdf_generator import generate_quotation_pdf
@@ -485,10 +485,44 @@ async def _next_quotation_code(db, tenant_id: str) -> str:
     return f"COT-{2026000 + count + 1}"
 
 
+async def _append_history(db, quotation_id: str, user: dict, action: str, detail: str = ""):
+    """Append an immutable change-log entry to the quotation's history array."""
+    entry = {
+        "at": now_iso(),
+        "user_id": user.get("id"),
+        "user_name": user.get("name", ""),
+        "action": action,
+        "detail": detail,
+    }
+    await db.quotations.update_one({"id": quotation_id}, {"$push": {"history": entry}})
+
+
+async def _record_audit(db, tenant_id: str, user: dict, action: str, q: dict, detail: str = ""):
+    """Write an audit-log entry (deleted / archived / restored / won)."""
+    await db.audit_log.insert_one({
+        "id": new_id(),
+        "tenant_id": tenant_id,
+        "action": action,
+        "quotation_id": q.get("id"),
+        "quotation_code": q.get("code", ""),
+        "client_name": (q.get("client_snapshot") or {}).get("name", ""),
+        "total": q.get("final_total", q.get("total", 0)),
+        "currency": q.get("currency", "MXN"),
+        "executive_id": user.get("id"),
+        "executive_name": user.get("name", ""),
+        "detail": detail,
+        "at": now_iso(),
+    })
+
+
 @api.get("/quotations")
-async def list_quotations(state: str | None = None, user: dict = Depends(require_tenant)):
+async def list_quotations(state: str | None = None, archived: bool = False, user: dict = Depends(require_tenant)):
     db = get_db()
-    q = {"tenant_id": user["tenant_id"]}
+    q = {"tenant_id": user["tenant_id"], "deleted": {"$ne": True}}
+    if archived:
+        q["archived"] = True
+    else:
+        q["archived"] = {"$ne": True}
     if state:
         q["state"] = state
     items = await db.quotations.find(q, {"_id": 0}).sort("created_at", -1).to_list(500)
@@ -518,33 +552,45 @@ async def create_quotation(payload: QuotationCreate, user: dict = Depends(requir
     client = await db.clients.find_one({"id": payload.client_id, "tenant_id": user["tenant_id"]}, {"_id": 0})
     if not client:
         raise HTTPException(status_code=404, detail="Cliente no encontrado")
-    pack = await db.packages.find_one({"id": payload.package_id, "tenant_id": user["tenant_id"]}, {"_id": 0})
-    if not pack:
-        raise HTTPException(status_code=404, detail="Paquete no encontrado")
     company = await db.companies.find_one({"id": user["tenant_id"]}, {"_id": 0})
     pricing_config = company.get("pricing_config") or DEFAULT_PRICING_CONFIG
     services_sel = [s.model_dump() for s in payload.services]
     services_catalog = await _load_services_catalog(db, user["tenant_id"], services_sel)
+
+    is_services = payload.type == "servicios" or not payload.package_id
+    pack = None
+    package_snapshot = None
+    if not is_services:
+        pack = await db.packages.find_one({"id": payload.package_id, "tenant_id": user["tenant_id"]}, {"_id": 0})
+        if not pack:
+            raise HTTPException(status_code=404, detail="Paquete no encontrado")
+        package_snapshot = {"name": pack["name"], "code": pack["code"], "nights": pack["nights"]}
+    elif not services_sel:
+        raise HTTPException(status_code=400, detail="Agrega al menos un servicio para una cotización a la carta")
+
     # Defensive: swap dates if start > end
     d_start = payload.dates.start
     d_end = payload.dates.end
     if d_start and d_end and d_start > d_end:
         d_start, d_end = d_end, d_start
     extra_cfg = payload.extra_nights.model_dump() if payload.extra_nights else None
+    pack_nights = pack["nights"] if pack else 0
     calc = compute_quotation(pack, payload.hotel_name, payload.pax.model_dump(),
-                             pack["nights"], client["channel"], pricing_config,
+                             pack_nights, client["channel"], pricing_config,
                              services_catalog, services_sel,
                              dates={"start": d_start, "end": d_end}, extra_nights_cfg=extra_cfg)
     code = await _next_quotation_code(db, user["tenant_id"])
     doc = {
         "id": new_id(), "tenant_id": user["tenant_id"], "code": code,
         "client_id": client["id"], "client_snapshot": {"name": client["name"], "channel": client["channel"]},
-        "type": "paquete", "package_id": pack["id"],
-        "package_snapshot": {"name": pack["name"], "code": pack["code"], "nights": pack["nights"]},
-        "hotel_selected": payload.hotel_name,
+        "type": "servicios" if is_services else "paquete",
+        "package_id": pack["id"] if pack else None,
+        "package_snapshot": package_snapshot,
+        "hotel_selected": payload.hotel_name if pack else "",
         "dates": {"start": d_start, "end": d_end},
         "pax": payload.pax.model_dump(),
         "services": services_sel,
+        "contacts": payload.contacts.model_dump() if payload.contacts else None,
         "extra_nights_cfg": extra_cfg,
         "nights_total": calc["nights_total"],
         "extra_nights": calc["extra_nights"],
@@ -556,9 +602,15 @@ async def create_quotation(payload: QuotationCreate, user: dict = Depends(requir
         "total": calc["total"],
         "currency": calc["currency"],
         "state": "nueva_consulta",
+        "archived": False,
+        "deleted": False,
         "assigned_to": payload.assigned_to or user["id"],
         "created_by": user["id"],
         "notes": payload.notes,
+        "history": [{
+            "at": now_iso(), "user_id": user["id"], "user_name": user.get("name", ""),
+            "action": "created", "detail": f"Cotización creada ({'servicios a la carta' if is_services else 'paquete'})",
+        }],
         "last_activity_at": now_iso(),
         "created_at": now_iso(),
     }
@@ -572,10 +624,19 @@ async def update_quotation_state(quotation_id: str, payload: QuotationStateUpdat
     q = await db.quotations.find_one({"id": quotation_id, "tenant_id": user["tenant_id"]}, {"_id": 0})
     if not q:
         raise HTTPException(status_code=404, detail="Cotización no encontrada")
+    prev = q.get("state")
     await db.quotations.update_one(
         {"id": quotation_id, "tenant_id": user["tenant_id"]},
         {"$set": {"state": payload.state, "last_activity_at": now_iso()}},
     )
+    STATE_LABELS = {
+        "nueva_consulta": "Nueva consulta", "cotizando": "Cotizando", "enviada": "Enviada",
+        "negociacion": "En negociación", "ganada": "Ganada", "perdida": "Perdida",
+    }
+    await _append_history(db, quotation_id, user, "state_change",
+                          f"Estado: {STATE_LABELS.get(prev, prev)} → {STATE_LABELS.get(payload.state, payload.state)}")
+    if payload.state == "ganada" and prev != "ganada":
+        await _record_audit(db, user["tenant_id"], user, "won", q, "Marcada como ganada")
     return {"ok": True, "state": payload.state}
 
 
@@ -605,6 +666,9 @@ async def adjust_quotation_pricing(quotation_id: str, payload: QuotationPricingA
         {"id": quotation_id, "tenant_id": user["tenant_id"]},
         {"$set": {"discount": discount, "final_total": final_total, "last_activity_at": now_iso()}},
     )
+    dlabel = "sin descuento" if payload.discount_type == "none" else (
+        f"{payload.discount_value}%" if payload.discount_type == "percent" else f"${payload.discount_value}")
+    await _append_history(db, quotation_id, user, "discount", f"Descuento aplicado: {dlabel}")
     return await db.quotations.find_one({"id": quotation_id, "tenant_id": user["tenant_id"]}, {"_id": 0})
 
 
@@ -616,8 +680,11 @@ async def update_quotation(quotation_id: str, payload: QuotationUpdate, user: di
     q = await db.quotations.find_one({"id": quotation_id, "tenant_id": user["tenant_id"]}, {"_id": 0})
     if not q:
         raise HTTPException(status_code=404, detail="Cotización no encontrada")
+    changed_fields = [k for k in updates.keys()]
     if any(k in updates for k in ("pax", "hotel_name", "services", "dates", "extra_nights")):
-        pack = await db.packages.find_one({"id": q["package_id"], "tenant_id": user["tenant_id"]}, {"_id": 0})
+        pack = None
+        if q.get("package_id"):
+            pack = await db.packages.find_one({"id": q["package_id"], "tenant_id": user["tenant_id"]}, {"_id": 0})
         client = await db.clients.find_one({"id": q["client_id"], "tenant_id": user["tenant_id"]}, {"_id": 0})
         company = await db.companies.find_one({"id": user["tenant_id"]}, {"_id": 0})
         pricing_config = company.get("pricing_config") or DEFAULT_PRICING_CONFIG
@@ -629,11 +696,12 @@ async def update_quotation(quotation_id: str, payload: QuotationUpdate, user: di
             new_dates = {"start": new_dates["end"], "end": new_dates["start"]}
         extra_cfg = updates.get("extra_nights", q.get("extra_nights_cfg"))
         services_catalog = await _load_services_catalog(db, user["tenant_id"], services_sel)
-        calc = compute_quotation(pack, hotel, pax, pack["nights"], client["channel"], pricing_config,
+        pack_nights = pack["nights"] if pack else 0
+        calc = compute_quotation(pack, hotel, pax, pack_nights, client["channel"], pricing_config,
                                  services_catalog, services_sel,
                                  dates=new_dates, extra_nights_cfg=extra_cfg)
         updates.update({
-            "hotel_selected": hotel,
+            "hotel_selected": hotel if pack else "",
             "services": services_sel,
             "dates": new_dates,
             "extra_nights_cfg": extra_cfg,
@@ -645,9 +713,64 @@ async def update_quotation(quotation_id: str, payload: QuotationUpdate, user: di
             "total": calc["total"],
         })
         updates.pop("hotel_name", None)
+        # Re-apply an existing discount so final_total stays consistent
+        if q.get("discount") and q["discount"].get("type") != "none":
+            final_total, amount = _apply_discount(calc["total"], q["discount"])
+            disc = dict(q["discount"]); disc["amount"] = amount
+            updates["discount"] = disc
+            updates["final_total"] = final_total
     updates["last_activity_at"] = now_iso()
     await db.quotations.update_one({"id": quotation_id, "tenant_id": user["tenant_id"]}, {"$set": updates})
+    if changed_fields:
+        FIELD_ES = {"dates": "fechas", "pax": "habitaciones/pax", "services": "servicios",
+                    "extra_nights": "noches extra", "hotel_name": "hotel", "contacts": "contactos",
+                    "notes": "notas", "assigned_to": "responsable"}
+        detail = "Editó: " + ", ".join(FIELD_ES.get(f, f) for f in changed_fields)
+        await _append_history(db, quotation_id, user, "edited", detail)
     return await db.quotations.find_one({"id": quotation_id, "tenant_id": user["tenant_id"]}, {"_id": 0})
+
+
+@api.patch("/quotations/{quotation_id}/archive")
+async def archive_quotation(quotation_id: str, payload: QuotationArchive, user: dict = Depends(require_tenant)):
+    db = get_db()
+    q = await db.quotations.find_one({"id": quotation_id, "tenant_id": user["tenant_id"]}, {"_id": 0})
+    if not q:
+        raise HTTPException(status_code=404, detail="Cotización no encontrada")
+    await db.quotations.update_one(
+        {"id": quotation_id, "tenant_id": user["tenant_id"]},
+        {"$set": {"archived": payload.archived, "last_activity_at": now_iso()}},
+    )
+    action = "archived" if payload.archived else "restored"
+    await _append_history(db, quotation_id, user, action, "Archivada" if payload.archived else "Restaurada")
+    await _record_audit(db, user["tenant_id"], user, action, q,
+                        "Cotización archivada" if payload.archived else "Cotización restaurada")
+    return {"ok": True, "archived": payload.archived}
+
+
+@api.delete("/quotations/{quotation_id}")
+async def delete_quotation(quotation_id: str, user: dict = Depends(require_tenant)):
+    db = get_db()
+    q = await db.quotations.find_one({"id": quotation_id, "tenant_id": user["tenant_id"]}, {"_id": 0})
+    if not q:
+        raise HTTPException(status_code=404, detail="Cotización no encontrada")
+    await db.quotations.update_one(
+        {"id": quotation_id, "tenant_id": user["tenant_id"]},
+        {"$set": {"deleted": True, "deleted_at": now_iso(), "deleted_by": user["id"]}},
+    )
+    await _record_audit(db, user["tenant_id"], user, "deleted", q, "Cotización eliminada")
+    return {"ok": True}
+
+
+# ---------------------------------------------------------------------------
+# Audit log (company_admin) — deleted / archived / won quotations
+# ---------------------------------------------------------------------------
+@api.get("/audit-log")
+async def get_audit_log(action: str | None = None, user: dict = Depends(require_roles("company_admin"))):
+    db = get_db()
+    q = {"tenant_id": user["tenant_id"]}
+    if action:
+        q["action"] = action
+    return await db.audit_log.find(q, {"_id": 0}).sort("at", -1).to_list(500)
 
 
 @api.get("/quotations/{quotation_id}/pdf")
@@ -657,9 +780,11 @@ async def download_quotation_pdf(quotation_id: str, user: dict = Depends(require
     if not q:
         raise HTTPException(status_code=404, detail="Cotización no encontrada")
     company = await db.companies.find_one({"id": user["tenant_id"]}, {"_id": 0})
-    pack = await db.packages.find_one({"id": q["package_id"], "tenant_id": user["tenant_id"]}, {"_id": 0})
+    pack = None
+    if q.get("package_id"):
+        pack = await db.packages.find_one({"id": q["package_id"], "tenant_id": user["tenant_id"]}, {"_id": 0})
     client = await db.clients.find_one({"id": q["client_id"], "tenant_id": user["tenant_id"]}, {"_id": 0})
-    pdf = generate_quotation_pdf(company, q, pack, client or {"name": q.get("client_snapshot", {}).get("name", "")})
+    pdf = generate_quotation_pdf(company, q, pack or {}, client or {"name": q.get("client_snapshot", {}).get("name", "")})
     return StreamingResponse(
         io.BytesIO(pdf), media_type="application/pdf",
         headers={"Content-Disposition": f'attachment; filename="{q["code"]}.pdf"'},
@@ -875,6 +1000,7 @@ async def accept_public_quotation(token: str):
     if expires and datetime.fromisoformat(expires) < datetime.now(timezone.utc):
         raise HTTPException(status_code=410, detail="Enlace expirado")
     accepted_at = now_iso()
+    was_won = q.get("state") == "ganada"
     await db.quotations.update_one(
         {"id": q["id"]},
         {"$set": {
@@ -883,6 +1009,14 @@ async def accept_public_quotation(token: str):
             "last_activity_at": accepted_at,
         }},
     )
+    try:
+        await _append_history(db, q["id"], {"id": None, "name": "Cliente (enlace público)"},
+                              "accepted", "El cliente aceptó la cotización desde el enlace público")
+        if not was_won:
+            await _record_audit(db, q["tenant_id"], {"id": None, "name": "Cliente (enlace público)"},
+                                "won", q, "Aceptada por el cliente (enlace público)")
+    except Exception:
+        log.exception("audit accept failed")
     try:
         q["final_total"] = q.get("final_total", q.get("total"))
         await notifications.notify_acceptance(db, q)
@@ -919,6 +1053,12 @@ async def _apply_payment_to_quotation(txn: dict):
     if q.get("state") not in ("ganada",):
         updates["state"] = "ganada"
     await db.quotations.update_one({"id": q["id"]}, {"$set": updates})
+    if updates.get("state") == "ganada":
+        try:
+            await _record_audit(db, q["tenant_id"], {"id": None, "name": "Pago en línea"},
+                                "won", q, "Ganada por pago del cliente")
+        except Exception:
+            log.exception("audit payment-won failed")
     # Fire executive notification (email + log) — best effort
     try:
         await notifications.notify_payment(db, q, txn, amount_paid, pay_status)

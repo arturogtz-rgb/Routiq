@@ -68,75 +68,82 @@ def resolve_hotel_prices(pack: dict, hotel: dict, checkin: str | None):
     return base_prices, base_minor, season_name
 
 
-def compute_quotation(pack: dict, hotel_name: str, pax: dict, nights: int,
+def compute_quotation(pack: dict | None, hotel_name: str, pax: dict, nights: int,
                       client_channel: str, pricing_config: dict,
                       services_catalog: dict | None = None,
                       selected_services: list | None = None,
                       dates: dict | None = None,
                       extra_nights_cfg: dict | None = None) -> dict:
-    """Returns items, subtotal, commission, total, plus nights_total / extra_nights."""
-    hotel = next((h for h in pack.get("hotels", []) if h["name"] == hotel_name), None)
-    if hotel is None:
-        raise ValueError(f"Hotel '{hotel_name}' not found in package")
+    """Returns items, subtotal, commission, total, plus nights_total / extra_nights.
 
-    checkin = dates.get("start") if dates else None
-    eff_prices, eff_minor, season_name = resolve_hotel_prices(pack, hotel, checkin)
-
+    When `pack` is None the quotation is "servicios a la carta": there is no
+    hospedaje nor extra nights; only the selected services are priced."""
     rooms: List[dict] = pax.get("rooms") or []
     menores = int(pax.get("menores", 0))
     items: List[dict] = []
     num_rooms = sum(int(r.get("count", 1)) for r in rooms) if rooms else 1
-
-    if rooms:
-        for room in rooms:
-            ocupacion = room["ocupacion"]
-            count = int(room.get("count", 1))
-            occ_count = OCCUPANCY_COUNT[ocupacion]
-            price_per_pax = float(eff_prices.get(ocupacion, 0))
-            pax_in_rooms = occ_count * count
-            items.append({
-                "label": f"{count} hab {ocupacion} × {occ_count} pax — {hotel['name']}",
-                "unit_price": price_per_pax, "qty": pax_in_rooms,
-                "rooms_count": count, "ocupacion": ocupacion, "kind": "hospedaje",
-                "subtotal": price_per_pax * pax_in_rooms,
-            })
-    else:
-        ocupacion = pax.get("ocupacion", "doble")
-        adultos = int(pax.get("adultos", 2))
-        price_adult = float(eff_prices.get(ocupacion, 0))
-        if adultos > 0:
-            items.append({
-                "label": f"{pack['name']} - {hotel['name']} ({ocupacion}) - Adulto",
-                "unit_price": price_adult, "qty": adultos, "subtotal": price_adult * adultos,
-                "kind": "hospedaje",
-            })
-
-    if menores > 0:
-        price_minor = float(eff_minor or 0)
-        items.append({
-            "label": f"{hotel['name']} - Menor",
-            "unit_price": price_minor, "qty": menores, "subtotal": price_minor * menores,
-            "kind": "hospedaje",
-        })
+    season_name = None
 
     total_pax = (sum(OCCUPANCY_COUNT[r["ocupacion"]] * int(r.get("count", 1)) for r in rooms)
                  if rooms else int(pax.get("adultos", 0))) + menores
 
-    # ---- Extra nights (beyond package duration) ----
     nights_total = nights_between(dates.get("start"), dates.get("end")) if dates else int(nights or 0)
     if nights_total <= 0:
         nights_total = int(nights or 0)
-    extra_nights = max(0, nights_total - int(nights or 0))
-    if extra_nights > 0 and extra_nights_cfg and float(extra_nights_cfg.get("cost_per_night", 0) or 0) > 0:
-        cost = float(extra_nights_cfg["cost_per_night"])
-        unit = extra_nights_cfg.get("unit", "per_reservation")
-        mult = total_pax if unit == "per_person" else (num_rooms if unit == "per_room" else 1)
-        qty = extra_nights * mult
-        items.append({
-            "label": f"Noche extra × {extra_nights} ({EXTRA_UNIT_ES.get(unit, unit)})",
-            "unit_price": cost, "qty": qty, "subtotal": round(cost * qty, 2),
-            "kind": "noche_extra", "extra_nights": extra_nights, "unit": unit,
-        })
+    extra_nights = 0
+
+    if pack is not None:
+        hotel = next((h for h in pack.get("hotels", []) if h["name"] == hotel_name), None)
+        if hotel is None:
+            raise ValueError(f"Hotel '{hotel_name}' not found in package")
+
+        checkin = dates.get("start") if dates else None
+        eff_prices, eff_minor, season_name = resolve_hotel_prices(pack, hotel, checkin)
+
+        if rooms:
+            for room in rooms:
+                ocupacion = room["ocupacion"]
+                count = int(room.get("count", 1))
+                occ_count = OCCUPANCY_COUNT[ocupacion]
+                price_per_pax = float(eff_prices.get(ocupacion, 0))
+                pax_in_rooms = occ_count * count
+                items.append({
+                    "label": f"{count} hab {ocupacion} × {occ_count} pax — {hotel['name']}",
+                    "unit_price": price_per_pax, "qty": pax_in_rooms,
+                    "rooms_count": count, "ocupacion": ocupacion, "kind": "hospedaje",
+                    "subtotal": price_per_pax * pax_in_rooms,
+                })
+        else:
+            ocupacion = pax.get("ocupacion", "doble")
+            adultos = int(pax.get("adultos", 2))
+            price_adult = float(eff_prices.get(ocupacion, 0))
+            if adultos > 0:
+                items.append({
+                    "label": f"{pack['name']} - {hotel['name']} ({ocupacion}) - Adulto",
+                    "unit_price": price_adult, "qty": adultos, "subtotal": price_adult * adultos,
+                    "kind": "hospedaje",
+                })
+
+        if menores > 0:
+            price_minor = float(eff_minor or 0)
+            items.append({
+                "label": f"{hotel['name']} - Menor",
+                "unit_price": price_minor, "qty": menores, "subtotal": price_minor * menores,
+                "kind": "hospedaje",
+            })
+
+        # ---- Extra nights (beyond package duration) ----
+        extra_nights = max(0, nights_total - int(nights or 0))
+        if extra_nights > 0 and extra_nights_cfg and float(extra_nights_cfg.get("cost_per_night", 0) or 0) > 0:
+            cost = float(extra_nights_cfg["cost_per_night"])
+            unit = extra_nights_cfg.get("unit", "per_reservation")
+            mult = total_pax if unit == "per_person" else (num_rooms if unit == "per_room" else 1)
+            qty = extra_nights * mult
+            items.append({
+                "label": f"Noche extra × {extra_nights} ({EXTRA_UNIT_ES.get(unit, unit)})",
+                "unit_price": cost, "qty": qty, "subtotal": round(cost * qty, 2),
+                "kind": "noche_extra", "extra_nights": extra_nights, "unit": unit,
+            })
 
     # ---- A la carte services (by billing unit) ----
     services_catalog = services_catalog or {}

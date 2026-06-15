@@ -104,9 +104,38 @@ def generate_quotation_pdf(company: dict, quotation: dict, package: dict, client
         s["body"],
     ))
 
-    # Package block
-    story.append(Paragraph(package.get("name", ""), s["h2"]))
-    if package.get("description"):
+    # Agency + final traveler contacts (B2B quotations)
+    contacts = quotation.get("contacts") or {}
+    agency = contacts.get("agency") or {}
+    traveler = contacts.get("traveler") or {}
+    if any(agency.values()) or any(traveler.values()):
+        ct_rows = []
+        if any(agency.values()):
+            ct_rows.append([
+                Paragraph("<b>Agencia / Vendedor</b>", s["body"]),
+                Paragraph(f"{agency.get('name','')}<br/><font color='#475569' size=8>{agency.get('contact','')} · {agency.get('email','')}</font>", s["soft"]),
+            ])
+        if any(traveler.values()):
+            ct_rows.append([
+                Paragraph("<b>Cliente final / Turista</b>", s["body"]),
+                Paragraph(f"{traveler.get('name','')}<br/><font color='#475569' size=8>Tel: {traveler.get('phone','')}</font>", s["soft"]),
+            ])
+        ct = Table(ct_rows, colWidths=[4.5 * cm, 12.5 * cm])
+        ct.setStyle(TableStyle([
+            ("BACKGROUND", (0, 0), (0, -1), PASTEL),
+            ("VALIGN", (0, 0), (-1, -1), "TOP"),
+            ("GRID", (0, 0), (-1, -1), 0.5, colors.HexColor("#E2E8F0")),
+            ("LEFTPADDING", (0, 0), (-1, -1), 8), ("RIGHTPADDING", (0, 0), (-1, -1), 8),
+            ("TOPPADDING", (0, 0), (-1, -1), 6), ("BOTTOMPADDING", (0, 0), (-1, -1), 6),
+        ]))
+        story.append(Spacer(1, 6))
+        story.append(ct)
+
+    # Package / type block
+    is_services = quotation.get("type") == "servicios" or not package.get("name")
+    title_txt = "Servicios a la carta" if is_services else package.get("name", "")
+    story.append(Paragraph(title_txt, s["h2"]))
+    if not is_services and package.get("description"):
         story.append(Paragraph(package["description"], s["soft"]))
     dates = quotation.get("dates", {}) or {}
     # Defensive: ensure start <= end (some legacy quotations may have them swapped)
@@ -132,12 +161,15 @@ def generate_quotation_pdf(company: dict, quotation: dict, package: dict, client
     nights_label = str(nights_total)
     if extra_nights > 0:
         nights_label += f"  ({package.get('nights','')} del paquete + {extra_nights} extra)"
-    meta = Table([
-        ["Hotel", quotation.get("hotel_selected", "")],
-        ["Fechas", f"{_fmt_date(d_start)}  →  {_fmt_date(d_end)}"],
-        ["Noches", nights_label],
-        ["Habitaciones / Pax", pax_desc],
-    ], colWidths=[3.5 * cm, 12 * cm])
+    meta_rows = []
+    if quotation.get("hotel_selected"):
+        meta_rows.append(["Hotel", quotation.get("hotel_selected", "")])
+    if d_start or d_end:
+        meta_rows.append(["Fechas", f"{_fmt_date(d_start)}  →  {_fmt_date(d_end)}"])
+    if not is_services and nights_total:
+        meta_rows.append(["Noches", nights_label])
+    meta_rows.append(["Pax" if is_services else "Habitaciones / Pax", pax_desc])
+    meta = Table(meta_rows, colWidths=[3.5 * cm, 12 * cm])
     meta.setStyle(TableStyle([
         ("BACKGROUND", (0, 0), (0, -1), PASTEL),
         ("TEXTCOLOR", (0, 0), (0, -1), PRIMARY),

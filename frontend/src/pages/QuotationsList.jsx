@@ -19,14 +19,20 @@ export default function QuotationsList() {
   const [items, setItems] = useState([]);
   const [q, setQ] = useState('');
   const [state, setState] = useState('');
+  const [showArchived, setShowArchived] = useState(false);
 
-  useEffect(() => { (async () => { const { data } = await api.get('/quotations'); setItems(data); })(); }, []);
+  useEffect(() => {
+    (async () => {
+      const { data } = await api.get('/quotations', { params: showArchived ? { archived: true } : {} });
+      setItems(data);
+    })();
+  }, [showArchived]);
 
   const filtered = items.filter((x) => {
     if (state && x.state !== state) return false;
     if (q) {
       const s = q.toLowerCase();
-      return (x.code + x.client_snapshot?.name + x.package_snapshot?.name).toLowerCase().includes(s);
+      return ((x.code || '') + (x.client_snapshot?.name || '') + (x.package_snapshot?.name || '')).toLowerCase().includes(s);
     }
     return true;
   });
@@ -36,7 +42,7 @@ export default function QuotationsList() {
       <div className="flex items-end justify-between gap-4 mb-8">
         <div>
           <h1 className="font-display text-3xl font-semibold text-ink-900 tracking-tight">Cotizaciones</h1>
-          <p className="text-ink-500 mt-1">{items.length} en total</p>
+          <p className="text-ink-500 mt-1">{items.length} {showArchived ? 'archivadas' : 'en total'}</p>
         </div>
         <Link to="/app/quotations/new" className="btn-primary" data-testid="new-quotation-btn"><Plus className="w-4 h-4" /> Nueva</Link>
       </div>
@@ -50,6 +56,9 @@ export default function QuotationsList() {
           <option value="">Todos los estados</option>
           {Object.entries(STATE_LABELS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
         </select>
+        <button onClick={() => setShowArchived((v) => !v)} className={`pill whitespace-nowrap ${showArchived ? 'bg-brand-500 text-white' : 'bg-white border border-ink-200 text-ink-600'}`} data-testid="toggle-archived">
+          {showArchived ? 'Ver activas' : 'Ver archivadas'}
+        </button>
       </div>
 
       <div className="card-surface overflow-hidden" data-testid="quotations-table">
@@ -64,7 +73,7 @@ export default function QuotationsList() {
             className="grid grid-cols-12 gap-2 px-6 py-4 border-b border-ink-100 last:border-0 hover:bg-brand-50/40 transition-colors">
             <div className="col-span-12 md:col-span-2 font-mono text-sm text-brand-500 font-semibold">{x.code}</div>
             <div className="col-span-6 md:col-span-3 text-sm text-ink-900 font-medium">{x.client_snapshot?.name}</div>
-            <div className="col-span-6 md:col-span-3 text-sm text-ink-500 truncate">{x.package_snapshot?.name}</div>
+            <div className="col-span-6 md:col-span-3 text-sm text-ink-500 truncate">{x.package_snapshot?.name || 'Servicios a la carta'}</div>
             <div className="col-span-6 md:col-span-2"><span className={`pill ${STATE_TONES[x.state]}`}>{STATE_LABELS[x.state]}</span></div>
             <div className="col-span-6 md:col-span-2 md:text-right font-display font-semibold text-ink-900">{money(x.total, x.currency)}</div>
           </Link>
