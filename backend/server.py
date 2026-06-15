@@ -5,6 +5,7 @@ load_dotenv(Path(__file__).parent / ".env")
 
 import os
 import io
+import re
 import asyncio
 import logging
 import secrets
@@ -563,6 +564,11 @@ async def site_settings_get(user: dict = Depends(require_roles("super_admin"))):
 @api.patch("/site-settings")
 async def site_settings_patch(payload: dict, user: dict = Depends(require_roles("super_admin"))):
     db = get_db()
+    # Validate theme primary color to avoid persisting a value that breaks the UI
+    theme_in = payload.get("theme")
+    if isinstance(theme_in, dict) and theme_in.get("primary"):
+        if not re.match(r"^#[0-9A-Fa-f]{6}$", str(theme_in["primary"]).strip()):
+            raise HTTPException(status_code=400, detail="Color principal inválido (usa formato #RRGGBB)")
     doc = await db.site_settings.find_one({"id": "default"}) or {"draft": {}, "published": {}}
     draft = doc.get("draft") or {}
     for section in ("landing", "login", "theme"):
