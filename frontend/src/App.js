@@ -23,6 +23,7 @@ import Team from '@/pages/Team';
 import Settings from '@/pages/Settings';
 import MasterAdmin, { MasterCompanies } from '@/pages/Master';
 import MasterSite from '@/pages/MasterSite';
+import MasterAI from '@/pages/MasterAI';
 import PublicQuotation from '@/pages/PublicQuotation';
 import PublicPackage from '@/pages/PublicPackage';
 import PublicCatalog from '@/pages/PublicCatalog';
@@ -87,6 +88,7 @@ export default function App() {
           {/* Master panel */}
           <Route path="/master" element={<ProtectedRoute roles={['super_admin']}><MasterAdmin /></ProtectedRoute>} />
           <Route path="/master/companies" element={<ProtectedRoute roles={['super_admin']}><MasterCompanies /></ProtectedRoute>} />
+          <Route path="/master/ai" element={<ProtectedRoute roles={['super_admin']}><MasterAI /></ProtectedRoute>} />
           <Route path="/master/site" element={<ProtectedRoute roles={['super_admin']}><MasterSite /></ProtectedRoute>} />
 
           <Route path="*" element={<Navigate to="/" replace />} />

@@ -1,0 +1,24 @@
+{
+  "summary": "Iter 23 frontend e2e (ES): IA BYOK Master (provider switch + model defaults + test inválido + save + reload con key enmascarada), mensaje IA amistoso en cotización (Asistente IA muestra 'IA no disponible: La API key de Anthropic no es válida...' en ai-error), catálogo público con catalog-hero-logo centrado, paquete público con aspect-ratio container, mini-dashboard de leads completo (4 tarjetas + top packages bars + lead creado visible), y gating del modal Limpiar datos (deshabilitado vacío y con 'limpiar' minúsculas, habilitado solo con 'LIMPIAR'; se canceló sin confirmar). Lead de prueba archivado al final.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "PublicPackage.jsx: el data-testid='pkg-hero-image' solo se renderiza cuando hay imagen (línea 76); para paquetes sin imagen (como el demo GDL-TEQ-3N) cae al gradiente fallback (línea 77). El contenedor con aspect-[16/9] sm:aspect-[21/9] siempre está presente, por lo que el FIX de proporciones es correcto. Considerar añadir un data-testid='pkg-hero-fallback' al gradiente para que sea testable cuando no hay imagen.",
+    "Leads.jsx: labels reales son 'Total solicitudes', 'Nuevas', 'Últimos 7 días', 'Atendidas' (no 'Total' a secas como dice el review_request). Los testids resultantes son 'leads-stat-Total solicitudes' (con espacios). Funciona pero los testids con espacios son menos ideales — considerar slugificar (leads-stat-total, leads-stat-nuevas, etc.) para selectores más limpios.",
+    "Console muestra 401 en /api/auth/me previo a login (esperado) y 503 cuando IA está mal configurada (manejado correctamente con mensaje amistoso en ai-error)."
+  ],
+  "updated_files": [],
+  "success_rate": {"backend": "skipped", "frontend": "100%"},
+  "test_credentials": "owner@routiq.mx/Routiq2026!, admin@aventurate.mx/Demo2026! — preservadas",
+  "seed_data_creation": "1 lead creado vía /p/aventurate/GDL-TEQ-3N (TEST Lead Mini Dashboard / test_minidash@example.com) y luego archivado vía PATCH /api/quote-requests/{id} status=archived (200). NO se ejecutó clear-data real (solo se validó el gating del modal y se canceló). Configuración IA guardada con key inválida 'sk-ant-fake123' tipo Anthropic modelo claude-sonnet-4-5; al recargar muestra '••••e123' enmascarada — el siguiente agente puede sobrescribirla con una key real.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Iteración 23 verde end-to-end. Notas: (1) Los modelos por defecto sugeridos por proveedor son: anthropic=claude-sonnet-4-5, openai=gpt-4o, google=gemini-1.5-pro — todos válidos. (2) El testid 'pkg-hero-image' solo aparece cuando el paquete tiene imagen; el contenedor con aspect ratio sí está siempre presente. (3) Los testids de leads-stat usan el label completo con espacios (ej. 'leads-stat-Total solicitudes', 'leads-stat-Últimos 7 días'). (4) DELETE /api/leads/{id} no existe — usar PATCH /api/quote-requests/{id} con {status:'archived'}. (5) Las pruebas IA no validan el camino exitoso porque no hay API key real en preview; solo errores amistosos. (6) Configuración IA actual: provider=anthropic, key=••••e123 (inválida) — esperada respuesta 503 amistosa en cualquier llamada IA hasta que se guarde una key real.",
+  "rca of the issue": "N/A — sin bugs encontrados. Todos los flujos del review_request validados."
+}

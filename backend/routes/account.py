@@ -249,3 +249,21 @@ async def master_list_company_admins(user: dict = Depends(require_roles("super_a
 async def public_config():
     show = os.environ.get("SHOW_DEMO_CREDENTIALS", "true").lower() in ("1", "true", "yes")
     return {"show_demo_credentials": show}
+
+
+# ---------------------------------------------------------------------------
+# Company admin: clear test/demo transactional data (keeps catalog & settings)
+# ---------------------------------------------------------------------------
+@router.post("/companies/me/clear-data")
+async def clear_company_data(user: dict = Depends(require_roles("company_admin"))):
+    db = get_db()
+    tid = user["tenant_id"]
+    deleted = {}
+    for coll in ("quotations", "clients", "quote_requests", "notifications",
+                 "whatsapp_messages", "whatsapp_links", "payments", "payment_transactions"):
+        try:
+            res = await db[coll].delete_many({"tenant_id": tid})
+            deleted[coll] = res.deleted_count
+        except Exception:
+            deleted[coll] = 0
+    return {"ok": True, "deleted": deleted}

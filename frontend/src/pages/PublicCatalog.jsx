@@ -37,8 +37,8 @@ export default function PublicCatalog() {
       <header className="bg-white border-b border-ink-100">
         <div className="max-w-6xl mx-auto px-5 py-4 flex items-center justify-between">
           <div className="flex items-center gap-3">
-            {logo ? <img src={logo} alt={company.name} className="h-10 max-w-[180px] object-contain" />
-              : <span className="font-display font-bold text-lg text-ink-900">{company.name}</span>}
+            {logo ? <img src={logo} alt={company.name} className="h-12 max-w-[220px] object-contain" />
+              : <span className="font-display font-bold text-xl text-ink-900">{company.name}</span>}
           </div>
           <div className="hidden sm:flex items-center gap-4 text-sm text-ink-500">
             {company.contact_phone && <span className="flex items-center gap-1"><Phone className="w-3.5 h-3.5" /> {company.contact_phone}</span>}
@@ -48,7 +48,12 @@ export default function PublicCatalog() {
       </header>
 
       <div className="text-white" style={{ background: `linear-gradient(135deg, ${brand}, #0f2f52)` }}>
-        <div className="max-w-6xl mx-auto px-5 py-14">
+        <div className="max-w-6xl mx-auto px-5 py-16 flex flex-col items-center text-center">
+          {logo && (
+            <div className="bg-white rounded-2xl px-6 py-4 mb-6 shadow-lg">
+              <img src={logo} alt={company.name} className="h-16 sm:h-20 max-w-[280px] object-contain" data-testid="catalog-hero-logo" />
+            </div>
+          )}
           <h1 className="font-display text-4xl sm:text-5xl font-bold tracking-tight">{company.name}</h1>
           <p className="text-white/85 mt-3 max-w-2xl">Explora nuestros paquetes y solicita tu cotización personalizada en segundos.</p>
         </div>

@@ -1,7 +1,7 @@
 import { useEffect, useState, useRef } from 'react';
 import AppShell from '@/components/AppShell';
 import api, { formatApiError } from '@/lib/api';
-import { CreditCard, Save } from 'lucide-react';
+import { CreditCard, Save, AlertTriangle, Trash2 } from 'lucide-react';
 import { LogoSettings } from '@/components/settings/LogoSettings';
 import { PricingSettings, PricingExample } from '@/components/settings/PricingSettings';
 import { PaymentSettings } from '@/components/settings/PaymentSettings';
@@ -19,6 +19,9 @@ export default function Settings() {
   const [uploading, setUploading] = useState(false);
   const [smtpTesting, setSmtpTesting] = useState(false);
   const [smtpTestEmail, setSmtpTestEmail] = useState('');
+  const [showClear, setShowClear] = useState(false);
+  const [clearText, setClearText] = useState('');
+  const [clearing, setClearing] = useState(false);
   const fileInputRef = useRef(null);
   const backend = process.env.REACT_APP_BACKEND_URL || '';
 
@@ -141,6 +144,18 @@ export default function Settings() {
     } catch (e) { setError(formatApiError(e)); }
   };
 
+  const clearData = async () => {
+    setError(''); setOk(''); setClearing(true);
+    try {
+      const { data } = await api.post('/companies/me/clear-data');
+      const total = Object.values(data.deleted || {}).reduce((a, b) => a + b, 0);
+      setShowClear(false); setClearText('');
+      setOk(`Datos de prueba eliminados (${total} registros). Tu catálogo y configuración se conservaron.`);
+      setTimeout(() => setOk(''), 5000);
+    } catch (e) { setError(formatApiError(e)); }
+    finally { setClearing(false); }
+  };
+
   if (!pricing) return <AppShell><div className="p-8 text-ink-400">Cargando…</div></AppShell>;
 
   const marginPct = Math.round((1 - pricing.margin_divisor) * 100);
@@ -181,6 +196,31 @@ export default function Settings() {
 
           <div className="pt-4 mt-2 border-t border-ink-100 flex justify-end">
             <button className="btn-primary" onClick={saveInteg} data-testid="save-integrations-btn"><Save className="w-4 h-4" /> Guardar integraciones</button>
+          </div>
+        </div>
+      )}
+
+      <div className="card-surface p-6 mt-6 border border-red-200" data-testid="danger-zone">
+        <h2 className="font-display font-semibold text-lg text-red-700 flex items-center gap-2"><AlertTriangle className="w-5 h-5" /> Zona de peligro</h2>
+        <p className="text-sm text-ink-500 mt-1">Limpia los datos de prueba (cotizaciones, clientes, solicitudes/leads, mensajes de WhatsApp y notificaciones) para empezar en limpio con clientes reales. <b>Tu catálogo de paquetes, servicios, equipo y configuración NO se borran.</b> Esta acción no se puede deshacer.</p>
+        <button className="btn-ghost text-sm text-red-600 mt-3 border border-red-200" onClick={() => { setShowClear(true); setClearText(''); }} data-testid="clear-data-btn">
+          <Trash2 className="w-4 h-4" /> Limpiar datos de prueba
+        </button>
+      </div>
+
+      {showClear && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-ink-900/50" onClick={() => !clearing && setShowClear(false)}>
+          <div className="bg-white rounded-2xl p-6 w-full max-w-md" onClick={(e) => e.stopPropagation()} data-testid="clear-data-modal">
+            <h3 className="font-display text-xl font-semibold text-ink-900 flex items-center gap-2"><AlertTriangle className="w-5 h-5 text-red-600" /> Limpiar datos de prueba</h3>
+            <p className="text-sm text-ink-500 mt-2">Se eliminarán cotizaciones, clientes, solicitudes/leads, pagos, mensajes de WhatsApp y notificaciones de tu empresa. El catálogo y la configuración se conservan.</p>
+            <p className="text-sm text-ink-700 mt-3">Escribe <b>LIMPIAR</b> para confirmar:</p>
+            <input className="input-field mt-2" value={clearText} onChange={(e) => setClearText(e.target.value)} placeholder="LIMPIAR" data-testid="clear-data-confirm-input" />
+            <div className="flex justify-end gap-2 mt-5">
+              <button className="btn-ghost" onClick={() => setShowClear(false)} data-testid="clear-data-cancel">Cancelar</button>
+              <button className="btn-primary !bg-red-600" disabled={clearText !== 'LIMPIAR' || clearing} onClick={clearData} data-testid="clear-data-confirm">
+                <Trash2 className="w-4 h-4" /> {clearing ? 'Limpiando…' : 'Sí, limpiar'}
+              </button>
+            </div>
           </div>
         </div>
       )}

@@ -759,6 +759,7 @@ from routes import (
     gmail_oauth as gmail_oauth_routes,
     public_package as public_package_routes,
     account as account_routes,
+    ai_settings as ai_settings_routes,
 )
 
 api.include_router(quotations_routes.router)
@@ -772,6 +773,7 @@ api.include_router(catalog_import_routes.router)
 api.include_router(gmail_oauth_routes.router)
 api.include_router(public_package_routes.router)
 api.include_router(account_routes.router)
+api.include_router(ai_settings_routes.router)
 
 app.include_router(api)
 

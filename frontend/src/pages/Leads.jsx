@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import AppShell from '@/components/AppShell';
 import api, { formatApiError } from '@/lib/api';
 import { formatDateEs } from '@/lib/dates';
-import { Inbox, Phone, Mail, Calendar, Users, MessageCircle, FileText, Check, Archive, RotateCcw } from 'lucide-react';
+import { Inbox, Phone, Mail, Calendar, Users, MessageCircle, FileText, Check, Archive, RotateCcw, TrendingUp, Sparkles, Clock } from 'lucide-react';
 
 const STATUS_LABEL = { new: 'Nueva', attended: 'Atendida', archived: 'Archivada' };
 const STATUS_STYLE = {
@@ -15,11 +15,15 @@ const STATUS_STYLE = {
 export default function Leads() {
   const navigate = useNavigate();
   const [leads, setLeads] = useState([]);
+  const [stats, setStats] = useState(null);
   const [filter, setFilter] = useState('active'); // active | all | archived
   const [error, setError] = useState('');
 
   const load = async () => {
-    try { const { data } = await api.get('/quote-requests'); setLeads(data); }
+    try {
+      const [l, s] = await Promise.all([api.get('/quote-requests'), api.get('/quote-requests/stats').catch(() => ({ data: null }))]);
+      setLeads(l.data); setStats(s.data);
+    }
     catch (e) { setError(formatApiError(e)); }
   };
   useEffect(() => { load(); }, []);
@@ -55,6 +59,40 @@ export default function Leads() {
       </div>
 
       {error && <div className="rounded-xl border border-red-200 bg-red-50 text-red-700 px-4 py-3 text-sm mb-4" data-testid="leads-error">{error}</div>}
+
+      {stats && stats.total > 0 && (
+        <div className="grid grid-cols-1 lg:grid-cols-4 gap-4 mb-6" data-testid="leads-dashboard">
+          {[
+            { icon: Inbox, label: 'Total solicitudes', v: stats.total, tone: 'bg-brand-50 text-brand-500' },
+            { icon: Sparkles, label: 'Nuevas', v: stats.new, tone: 'bg-peach-100 text-amber-700' },
+            { icon: Clock, label: 'Últimos 7 días', v: stats.this_week, tone: 'bg-mint-100 text-emerald-700' },
+            { icon: Check, label: 'Atendidas', v: stats.attended, tone: 'bg-brand-500 text-white' },
+          ].map(({ icon: Icon, label, v, tone }) => (
+            <div key={label} className="card-surface p-5" data-testid={`leads-stat-${label}`}>
+              <div className={`w-9 h-9 rounded-xl ${tone} flex items-center justify-center`}><Icon className="w-4 h-4" /></div>
+              <p className="text-xs uppercase tracking-widest text-ink-400 font-bold mt-3">{label}</p>
+              <p className="font-display text-3xl font-bold text-ink-900 mt-1">{v}</p>
+            </div>
+          ))}
+          {stats.top_packages?.length > 0 && (
+            <div className="card-surface p-5 lg:col-span-4" data-testid="leads-top-packages">
+              <p className="text-xs uppercase tracking-widest text-ink-400 font-bold flex items-center gap-1.5 mb-3"><TrendingUp className="w-4 h-4" /> Paquetes más solicitados</p>
+              <div className="space-y-2">
+                {stats.top_packages.map((p) => {
+                  const pct = Math.round((p.count / stats.total) * 100);
+                  return (
+                    <div key={p.name} className="flex items-center gap-3">
+                      <span className="text-sm text-ink-700 w-48 truncate">{p.name}</span>
+                      <div className="flex-1 h-2.5 rounded-full bg-ink-100 overflow-hidden"><div className="h-full bg-brand-500 rounded-full" style={{ width: `${pct}%` }} /></div>
+                      <span className="text-sm font-semibold text-ink-900 w-10 text-right">{p.count}</span>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
 
       <div className="space-y-3">
         {visible.map((l) => (

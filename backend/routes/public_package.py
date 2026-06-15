@@ -139,6 +139,26 @@ async def public_company_catalog(slug: str):
 # ---------------------------------------------------------------------------
 # Tenant lead management (auth)
 # ---------------------------------------------------------------------------
+@router.get("/quote-requests/stats")
+async def quote_request_stats(user: dict = Depends(require_tenant)):
+    db = get_db()
+    from datetime import datetime, timezone, timedelta
+    tid = user["tenant_id"]
+    leads = await db.quote_requests.find({"tenant_id": tid}, {"_id": 0}).to_list(2000)
+    week_ago = (datetime.now(timezone.utc) - timedelta(days=7)).isoformat()
+    by_pkg = {}
+    for l in leads:
+        by_pkg[l.get("package_name", "—")] = by_pkg.get(l.get("package_name", "—"), 0) + 1
+    top = sorted(by_pkg.items(), key=lambda x: -x[1])[:5]
+    return {
+        "total": len(leads),
+        "new": sum(1 for l in leads if l.get("status") == "new"),
+        "this_week": sum(1 for l in leads if (l.get("created_at") or "") >= week_ago),
+        "attended": sum(1 for l in leads if l.get("status") == "attended"),
+        "top_packages": [{"name": n, "count": c} for n, c in top],
+    }
+
+
 @router.get("/quote-requests")
 async def list_quote_requests(user: dict = Depends(require_tenant)):
     db = get_db()

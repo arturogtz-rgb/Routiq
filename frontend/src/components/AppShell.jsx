@@ -33,6 +33,7 @@ const NAV_BY_ROLE = {
   super_admin: [
     { to: '/master', label: 'Panel Master', icon: LayoutDashboard, testid: 'nav-master' },
     { to: '/master/companies', label: 'Empresas', icon: Users, testid: 'nav-companies' },
+    { to: '/master/ai', label: 'Inteligencia Artificial', icon: Sparkles, testid: 'nav-ai' },
     { to: '/master/site', label: 'Sitio web', icon: Globe, testid: 'nav-site' },
   ],
 };

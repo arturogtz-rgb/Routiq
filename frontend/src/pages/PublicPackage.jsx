@@ -72,8 +72,8 @@ export default function PublicPackage() {
 
       {/* Hero */}
       <div className="relative">
-        <div className="h-64 sm:h-80 w-full overflow-hidden bg-ink-200">
-          {heroImg ? <img src={heroImg} alt={p.name} className="w-full h-full object-cover" data-testid="pkg-hero-image" />
+        <div className="aspect-[16/9] sm:aspect-[21/9] max-h-[420px] w-full overflow-hidden bg-ink-200">
+          {heroImg ? <img src={heroImg} alt={p.name} className="w-full h-full object-cover object-center" data-testid="pkg-hero-image" />
             : <div className="w-full h-full" style={{ background: `linear-gradient(135deg, ${brand}, #0f2f52)` }} />}
           <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent" />
         </div>
