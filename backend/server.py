@@ -731,6 +731,7 @@ from routes import (
     signup as signup_routes,
     whatsapp as whatsapp_routes,
     backups as backups_routes,
+    catalog_import as catalog_import_routes,
 )
 
 api.include_router(quotations_routes.router)
@@ -740,6 +741,7 @@ api.include_router(integrations_routes.router)
 api.include_router(signup_routes.router)
 api.include_router(whatsapp_routes.router)
 api.include_router(backups_routes.router)
+api.include_router(catalog_import_routes.router)
 
 app.include_router(api)
 

@@ -1,7 +1,7 @@
 import { useEffect, useState, useRef } from 'react';
 import AppShell from '@/components/AppShell';
 import api, { formatApiError } from '@/lib/api';
-import { Save, Calculator, Percent, Upload, Image as ImageIcon, X, CreditCard, Mail, Coins, Landmark, Server, Send } from 'lucide-react';
+import { Save, Calculator, Percent, Upload, Image as ImageIcon, X, CreditCard, Mail, Coins, Landmark, Server, Send, Trash2 } from 'lucide-react';
 
 export default function Settings() {
   const [company, setCompany] = useState(null);
@@ -47,6 +47,18 @@ export default function Settings() {
       setTimeout(() => setOk(''), 2500);
     } catch (e) { setError(formatApiError(e)); }
   };
+
+  const clearStripeSecret = async () => {
+    if (!window.confirm('¿Borrar la clave secreta de Stripe guardada? Se desactivarán los cobros con Stripe hasta que ingreses una nueva.')) return;
+    setError(''); setOk('');
+    try {
+      const { data } = await api.delete('/companies/me/integrations/stripe-secret');
+      setInteg({ ...data, stripe_secret_key: '', resend_api_key: '', smtp_password: '' });
+      setOk('Clave secreta de Stripe eliminada');
+      setTimeout(() => setOk(''), 2500);
+    } catch (e) { setError(formatApiError(e)); }
+  };
+
 
   const testSmtp = async () => {
     setError(''); setOk(''); setSmtpTesting(true);
@@ -219,7 +231,14 @@ export default function Settings() {
                 <label className="label-text">Clave secreta (sk_live / sk_test)</label>
                 <input type="password" className="input-field" placeholder={integ.stripe_secret_set ? `Guardada ${integ.stripe_secret_key_masked}` : 'sk_...'}
                   value={integ.stripe_secret_key || ''} onChange={(e) => setInteg((s) => ({ ...s, stripe_secret_key: e.target.value }))} data-testid="stripe-sk-input" />
-                <p className="text-xs text-ink-400 mt-1">Déjala vacía para conservar la actual. Nunca se muestra completa.</p>
+                <div className="flex items-center justify-between mt-1">
+                  <p className="text-xs text-ink-400">Déjala vacía para conservar la actual. Nunca se muestra completa.</p>
+                  {integ.stripe_secret_set && (
+                    <button type="button" onClick={clearStripeSecret} className="text-xs text-red-600 hover:text-red-700 inline-flex items-center gap-1" data-testid="clear-stripe-secret-btn">
+                      <Trash2 className="w-3.5 h-3.5" /> Borrar clave guardada
+                    </button>
+                  )}
+                </div>
               </div>
               <label className="flex items-center gap-2 cursor-pointer">
                 <input type="checkbox" checked={!!integ.stripe_enabled} onChange={(e) => setInteg((s) => ({ ...s, stripe_enabled: e.target.checked }))} data-testid="stripe-enabled-input" />

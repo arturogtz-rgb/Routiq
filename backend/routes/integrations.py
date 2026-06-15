@@ -84,6 +84,18 @@ async def update_my_integrations(payload: CompanyIntegrationsUpdate, user: dict 
     company = await db.companies.find_one({"id": user["tenant_id"]}, {"_id": 0})
     return _integrations_view(company)
 
+
+@router.delete("/companies/me/integrations/stripe-secret")
+async def clear_stripe_secret(user: dict = Depends(require_roles("company_admin"))):
+    """Remove the saved Stripe secret key and disable Stripe (no SSH needed)."""
+    db = get_db()
+    await db.companies.update_one(
+        {"id": user["tenant_id"]},
+        {"$unset": {"stripe.secret_key": ""}, "$set": {"stripe.enabled": False}},
+    )
+    company = await db.companies.find_one({"id": user["tenant_id"]}, {"_id": 0})
+    return _integrations_view(company)
+
 @router.post("/companies/me/test-smtp")
 async def test_smtp(payload: SMTPTestInput, user: dict = Depends(require_roles("company_admin"))):
     db = get_db()
