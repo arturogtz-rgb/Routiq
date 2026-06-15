@@ -9,9 +9,13 @@ RUN apt-get update \
 
 WORKDIR /usr/src/app
 
-# Install dependencies first (better layer caching)
-COPY package.json yarn.lock ./
-RUN yarn install --production --frozen-lockfile
+# Install dependencies first (better layer caching).
+# yarn.lock* (con comodín) hace que el COPY no falle si el lockfile no está
+# presente en el contexto. Intentamos frozen-lockfile (reproducible) y si el
+# lockfile faltara, hacemos un install normal: el pin EXACTO de baileys en
+# package.json garantiza la versión segura igual.
+COPY package.json yarn.lock* ./
+RUN yarn install --production --frozen-lockfile || yarn install --production
 
 COPY server.js ./
 
