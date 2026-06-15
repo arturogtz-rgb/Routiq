@@ -49,6 +49,12 @@ services:
       BACKUP_DIR: /backups
       OAUTH_REDIRECT_BASE: ${OAUTH_REDIRECT_BASE}
       APP_SETTINGS_URL: ${APP_SETTINGS_URL}
+      # Muestra/oculta las credenciales demo del /login (leído en runtime por /api/public-config).
+      # Pon SHOW_DEMO_CREDENTIALS=false en deploy/.env para ocultarlas en producción.
+      SHOW_DEMO_CREDENTIALS: ${SHOW_DEMO_CREDENTIALS:-false}
+      # Correo de plataforma (reset de contraseña del Master + aviso de backup). Opcionales.
+      PLATFORM_RESEND_API_KEY: ${PLATFORM_RESEND_API_KEY:-}
+      PLATFORM_FROM_EMAIL: ${PLATFORM_FROM_EMAIL:-no-reply@routiq.com.mx}
     volumes:
       - uploads_data:/app/uploads
       # Backups de MongoDB con LECTURA/ESCRITURA: permite descargarlos desde el Panel
