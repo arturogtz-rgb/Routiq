@@ -41,6 +41,16 @@ Plataforma SaaS PWA multi-tenant para **cotización y seguimiento turístico** p
 - Reporte: `/app/test_reports/iteration_2.json`
 
 ## Backlog priorizado para v1.2 (próxima iteración tras feedback)
+### P1 — backlog priorizado
+- [x] **Backup MongoDB cron + descarga desde Master** ✅ (jun-2026): script `deploy/scripts/06-backup-mongo.sh` (mongodump gzip diario, retención 7 días en volumen `mongo_backups` y en host `/var/backups/routiq`). El volumen se monta **read-only** en el backend (`/backups`) y el Super Admin descarga el último respaldo sin SSH desde `/master/companies` (`GET /api/backups`, `GET /api/backups/latest/download`, con guardas anti path-traversal y rol super_admin). Cron a activar por el usuario: `0 3 * * * /opt/routiq/deploy/scripts/06-backup-mongo.sh >> /var/log/routiq-backup.log 2>&1`.
+- [x] **Deploy de Baileys integrado** ✅ (jun-2026): servicio `baileys` añadido a `deploy/docker-compose.yml` (red `routiq_net`, volumen `baileys_auth`, sin puertos públicos, `WEBHOOK_URL=http://backend:8000`); backend recibe `BAILEYS_URL`, `BAILEYS_SHARED_SECRET`, `TURNSTILE_SECRET_KEY`, `PUBLIC_LOGIN_URL`; `05-update.sh` recrea `backend baileys`; `.env.example` documentado.
+- [ ] **Carga masiva de catálogo vía Excel** (P1 #4): template descargable (paquetes/tours/traslados) + import.
+- [ ] **Limpiar clave secreta de Stripe (centinela)** (P1 #5) desde Ajustes.
+
+### P2 — futuro
+- Gmail OAuth **por empresa** (Client ID/Secret en Ajustes→Correo, flujo OAuth por tenant).
+- Multi-moneda USD completa por empresa.
+
 ### P0 — siguientes
 - [x] **KPI de conversión del funnel (Master)** ✅ (jun-2026, iter_16): tira de 4 tarjetas en `/master/companies` (Solicitudes del mes → Aprobadas → Empresas activas → % Conversión). `GET /api/tenant-requests/metrics`.
 - [x] **WhatsApp real (Baileys)** ✅ (jun-2026, iter_16): microservicio Node.js en `/app/baileys-service` (Docker, multi-sesión por número, QR, persistencia en volumen, envío/recepción) + router `routes/whatsapp.py` en FastAPI que actúa de **proxy seguro** (connect/qr/status/logout/send) y **webhook** entrante protegido por `BAILEYS_SHARED_SECRET`. Inbox `/app/whatsapp` reescrito: barra multi-número con estado, conexión por QR (modal), lista de chats, conversación en tiempo real (polling), envío real y resumen IA. Mensajes en `whatsapp_messages` (idempotentes por message_id, índices + aislamiento por tenant). **El microservicio se despliega en el VPS** (instrucciones en `/app/baileys-service/README.md`); en preview `BAILEYS_URL` está vacío → connect/send devuelven 503/502 (degradación controlada). Falta: el usuario despliega el contenedor en su VPS.

@@ -26,8 +26,9 @@ docker exec routiq-mongo mongodump \
 # Copia el archivo del volumen al filesystem del host
 docker cp "routiq-mongo:$BACKUP_DIR_CONTAINER/routiq-$DATE.gz" "$BACKUP_DIR_LOCAL/"
 
-# Borra backups dentro del contenedor con más de 1 día
-docker exec routiq-mongo find "$BACKUP_DIR_CONTAINER" -name '*.gz' -mtime +1 -delete
+# Mantener últimos 7 días tanto en el contenedor (volumen mongo_backups, que el
+# Panel Master usa para la descarga sin SSH) como en el host.
+docker exec routiq-mongo find "$BACKUP_DIR_CONTAINER" -name 'routiq-*.gz' -mtime +7 -delete
 
 # Mantener últimos 7 días en el host
 find "$BACKUP_DIR_LOCAL" -name 'routiq-*.gz' -mtime +7 -delete

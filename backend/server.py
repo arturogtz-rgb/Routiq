@@ -730,6 +730,7 @@ from routes import (
     integrations as integrations_routes,
     signup as signup_routes,
     whatsapp as whatsapp_routes,
+    backups as backups_routes,
 )
 
 api.include_router(quotations_routes.router)
@@ -738,6 +739,7 @@ api.include_router(audit_routes.router)
 api.include_router(integrations_routes.router)
 api.include_router(signup_routes.router)
 api.include_router(whatsapp_routes.router)
+api.include_router(backups_routes.router)
 
 app.include_router(api)
 

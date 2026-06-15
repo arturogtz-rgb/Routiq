@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import AppShell from '@/components/AppShell';
 import api, { formatApiError } from '@/lib/api';
-import { Building2, Plus, Power, PowerOff, Users as UsersIcon, FileText, TrendingUp, SlidersHorizontal, Bot, CreditCard, Landmark, BadgeCheck, ImageIcon, Crown, X, Inbox, Check, Clock, Copy } from 'lucide-react';
+import { Building2, Plus, Power, PowerOff, Users as UsersIcon, FileText, TrendingUp, SlidersHorizontal, Bot, CreditCard, Landmark, BadgeCheck, ImageIcon, Crown, X, Inbox, Check, Clock, Copy, Database, Download } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
 
 export default function MasterAdmin() {
@@ -91,6 +91,8 @@ export function MasterCompanies() {
   const [history, setHistory] = useState([]);
   const [historyFilter, setHistoryFilter] = useState('all');
   const [funnel, setFunnel] = useState(null);
+  const [backups, setBackups] = useState(null);
+  const [downloading, setDownloading] = useState(false);
 
   const loadHistory = async (filter = historyFilter) => {
     try {
@@ -113,8 +115,25 @@ export function MasterCompanies() {
     setRequests(reqs.data || []);
     loadHistory();
     api.get('/tenant-requests/metrics').then(({ data }) => setFunnel(data)).catch(() => {});
+    api.get('/backups').then(({ data }) => setBackups(data)).catch(() => {});
   };
   useEffect(() => { load(); }, []);
+
+  const downloadBackup = async () => {
+    setDownloading(true);
+    try {
+      const res = await api.get('/backups/latest/download', { responseType: 'blob' });
+      const cd = res.headers['content-disposition'] || '';
+      const m = cd.match(/filename="?([^"]+)"?/);
+      const name = m ? m[1] : 'routiq-backup.gz';
+      const url = window.URL.createObjectURL(new Blob([res.data]));
+      const a = document.createElement('a');
+      a.href = url; a.download = name; document.body.appendChild(a); a.click();
+      a.remove(); window.URL.revokeObjectURL(url);
+    } catch (e) {
+      alert(formatApiError(e));
+    } finally { setDownloading(false); }
+  };
 
   const openApprove = (r) => { setReqError(''); setApproveResult(null); setApproveTarget(r); setApproveSlug(r.slug || ''); };
 
@@ -294,6 +313,25 @@ export function MasterCompanies() {
             </div>
           </div>
         ))}
+      </div>
+
+      <div className="card-surface p-6 mt-6" data-testid="backups-card">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div className="flex items-center gap-3">
+            <div className="w-11 h-11 rounded-xl bg-brand-50 text-brand-500 flex items-center justify-center"><Database className="w-5 h-5" /></div>
+            <div>
+              <h2 className="font-display font-semibold text-ink-900">Respaldo de base de datos</h2>
+              <p className="text-xs text-ink-500">
+                {backups && backups.available > 0
+                  ? `${backups.available} respaldo(s) · último: ${new Date(backups.backups[0].modified_at).toLocaleString('es-MX', { dateStyle: 'medium', timeStyle: 'short' })} (${backups.backups[0].size_mb} MB)`
+                  : 'Aún no hay respaldos. Activa el cron diario en el VPS (06-backup-mongo.sh).'}
+              </p>
+            </div>
+          </div>
+          <button className="btn-primary" onClick={downloadBackup} disabled={downloading || !backups || backups.available === 0} data-testid="download-backup-btn">
+            <Download className="w-4 h-4" /> {downloading ? 'Descargando…' : 'Descargar último respaldo'}
+          </button>
+        </div>
       </div>
 
       {open && (

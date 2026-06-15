@@ -46,8 +46,11 @@ services:
       TURNSTILE_SECRET_KEY: ${TURNSTILE_SECRET_KEY}
       BAILEYS_URL: http://baileys:3001
       BAILEYS_SHARED_SECRET: ${BAILEYS_SHARED_SECRET}
+      BACKUP_DIR: /backups
     volumes:
       - uploads_data:/app/uploads
+      # Backups de MongoDB en SOLO LECTURA, para descargarlos desde el Panel Master
+      - mongo_backups:/backups:ro
     ports:
       # Solo expone a la red local del host. Nginx en el host hace el proxy a este puerto.
       - "127.0.0.1:8001:8000"
