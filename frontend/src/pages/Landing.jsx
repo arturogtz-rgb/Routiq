@@ -201,6 +201,13 @@ function HowItWorks({ c }) {
   );
 }
 
+function planIdFromTier(name) {
+  const n = (name || '').toLowerCase();
+  if (n.includes('starter') || n.includes('básico') || n.includes('basico')) return 'starter';
+  if (n.includes('enterprise') || n.includes('medida') || n.includes('empresa')) return 'enterprise';
+  return 'pro';
+}
+
 function Pricing({ c }) {
   const tiers = (Array.isArray(c.pricing_tiers) && c.pricing_tiers.length) ? c.pricing_tiers : FALLBACK.pricing_tiers;
   return (
@@ -223,7 +230,7 @@ function Pricing({ c }) {
                   <li key={p + pi} className="flex items-start gap-2"><Check className={`w-4 h-4 mt-0.5 ${t.highlight ? 'text-mint-100' : 'text-brand-500'}`} />{p}</li>
                 ))}
               </ul>
-              <Link to="/login" className={`mt-6 w-full justify-center ${t.highlight ? 'btn-secondary' : 'btn-primary'}`} data-testid={`pricing-cta-${ti}`}>{t.cta || 'Comenzar'}</Link>
+              <Link to={`/signup?plan=${planIdFromTier(t.name)}`} className={`mt-6 w-full justify-center ${t.highlight ? 'btn-secondary' : 'btn-primary'}`} data-testid={`pricing-cta-${ti}`}>{t.cta || 'Comenzar'}</Link>
             </div>
           ))}
         </div>

@@ -91,6 +91,24 @@ class CompanyPlanUpdate(BaseModel):
     transfer_allowed: Optional[bool] = None
 
 
+# ---------- Tenant self-service signup (public funnel) ----------
+class SignupRequest(BaseModel):
+    company_name: str = Field(min_length=2)
+    admin_name: str = Field(min_length=2)
+    admin_email: EmailStr
+    admin_phone: str = ""
+    plan: Literal["starter", "pro", "enterprise"] = "pro"
+    admin_password: str = Field(min_length=8)
+
+
+class SignupApprove(BaseModel):
+    slug: Optional[str] = None  # Master can adjust the auto-generated slug before approving
+
+
+class SignupReject(BaseModel):
+    reason: str = ""
+
+
 class CompanyUpdate(BaseModel):
     name: Optional[str] = None
     logo_url: Optional[str] = None

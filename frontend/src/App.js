@@ -8,6 +8,7 @@ import { applyTheme } from '@/lib/theme';
 
 import Landing from '@/pages/Landing';
 import Login from '@/pages/Login';
+import Signup from '@/pages/Signup';
 import Dashboard from '@/pages/Dashboard';
 import Kanban from '@/pages/Kanban';
 import Packages from '@/pages/Packages';
@@ -52,6 +53,7 @@ export default function App() {
         <Routes>
           <Route path="/" element={<HomeRedirect />} />
           <Route path="/login" element={<Login />} />
+          <Route path="/signup" element={<Signup />} />
           <Route path="/q/:token" element={<PublicQuotation />} />
 
           {/* Company app */}

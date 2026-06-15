@@ -1,0 +1,24 @@
+{
+  "summary": "Iteration 14: Validated the self-service tenant signup funnel end-to-end. Backend: 11/11 pytest tests pass for POST /api/signup (success 201, validation 422 for password<8 and name/company<2, duplicate existing user 400, duplicate pending 400), GET /api/tenant-requests (auth required, list+count), POST /api/tenant-requests/{id}/approve (creates company with correct PLAN_DEFAULTS, dedupes slug with -2 suffix, returns credentials+login_url+email_sent, login of new admin works), POST /api/tenant-requests/{id}/reject (status changes, reprocessing returns 400). Frontend: full E2E flow passed — landing pricing-cta-1 navigates to /signup?plan=pro with Pro preselected, submit disabled on short password, duplicate email shows 'Ya existe una cuenta con ese correo' error, signup-success appears, Master sees signup-requests-card with count, approve modal shows editable auto slug, approve-result shows credentials, new admin logs in to /app/dashboard, reject modal accepts reason and request disappears from pending list. Cleanup: all 14 test signup requests, 11 test companies and 7 test users removed from Mongo — Aventúrate por Jalisco and existing master/admin accounts untouched.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {"ui_bugs": [], "integration_issues": [], "design_issues": []},
+  "test_report_links": [
+    "/app/backend/tests/test_iteration14_signup_funnel.py",
+    "/app/test_reports/pytest/iter14.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "routes/signup.py: LOGIN_URL is hard-coded to https://routiq.com.mx/login. If/when the production domain changes this should come from env (e.g. PUBLIC_LOGIN_URL) so the welcome email and approve-result modal point to the right place.",
+    "routes/signup.py submit_signup: password_hash is stored on the tenant_requests document together with admin info. Rejected requests are not purged, so the hash sits indefinitely. Suggest scrubbing password_hash on reject and on a TTL for old approved/rejected requests.",
+    "routes/signup.py: no rate-limiting on POST /api/signup — easy to spam pending requests from a single IP. Consider IP throttle or captcha for the public endpoint.",
+    "Master.jsx: approve-modal slug input strips uppercase/invalid chars on every keystroke which is good UX, but does not show a hint to the Master that the final slug may still get a -2 suffix if it collides — minor UX nit only."
+  ],
+  "updated_files": ["/app/backend/tests/test_iteration14_signup_funnel.py"],
+  "success_rate": {"backend": "100% (11/11)", "frontend": "100% (all flows)"},
+  "test_credentials": "owner@routiq.mx / Routiq2026!  ·  admin@aventurate.mx / Demo2026! (from /app/memory/test_credentials.md)",
+  "seed_data_creation": "All temporary test data deleted (0 remaining TEST_ requests/companies/users). Pytest fixture has scoped teardown plus a manual mongo cleanup was run to remove residue from previous iterations.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Iteration 14 covers the signup funnel. Backend tests live at /app/backend/tests/test_iteration14_signup_funnel.py. The fixture loads MONGO_URL/DB_NAME from /app/backend/.env stripping quotes so cleanup is reliable. There is no GET /api/companies/{id}; use GET /api/companies and filter by id when verifying a tenant. The LOGIN_URL surfaced in the approve-result modal is https://routiq.com.mx/login which differs from the preview host — actual login of new tenants must happen against REACT_APP_BACKEND_URL/login.",
+  "rca of the issue": "N/A — no bugs found. All P0 funnel acceptance criteria from the review request are met."
+}

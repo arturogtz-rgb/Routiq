@@ -224,15 +224,8 @@ async def toggle_company_status(company_id: str, status: str, user: dict = Depen
     return {"ok": True, "status": status}
 
 
-# Plan defaults (applied when a plan is selected; individually overridable)
-PLAN_DEFAULTS = {
-    "starter": {"exec_limit": 3, "ai_enabled": False, "white_label": False,
-                "stripe_allowed": False, "transfer_allowed": True},
-    "pro": {"exec_limit": 15, "ai_enabled": True, "white_label": False,
-            "stripe_allowed": True, "transfer_allowed": True},
-    "enterprise": {"exec_limit": 0, "ai_enabled": True, "white_label": True,
-                   "stripe_allowed": True, "transfer_allowed": True},
-}
+# Plan defaults (applied when a plan is selected; individually overridable) — see deps.PLAN_DEFAULTS
+from deps import PLAN_DEFAULTS
 
 
 @api.patch("/companies/{company_id}/plan", response_model=CompanyPublic)
@@ -735,12 +728,14 @@ from routes import (
     public_payments as public_payments_routes,
     audit as audit_routes,
     integrations as integrations_routes,
+    signup as signup_routes,
 )
 
 api.include_router(quotations_routes.router)
 api.include_router(public_payments_routes.router)
 api.include_router(audit_routes.router)
 api.include_router(integrations_routes.router)
+api.include_router(signup_routes.router)
 
 app.include_router(api)
 

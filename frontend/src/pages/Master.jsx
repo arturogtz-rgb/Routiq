@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import AppShell from '@/components/AppShell';
 import api, { formatApiError } from '@/lib/api';
-import { Building2, Plus, Power, PowerOff, Users as UsersIcon, FileText, TrendingUp, SlidersHorizontal, Bot, CreditCard, Landmark, BadgeCheck, ImageIcon, Crown, X } from 'lucide-react';
+import { Building2, Plus, Power, PowerOff, Users as UsersIcon, FileText, TrendingUp, SlidersHorizontal, Bot, CreditCard, Landmark, BadgeCheck, ImageIcon, Crown, X, Inbox, Check, Clock, Copy } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
 
 export default function MasterAdmin() {
@@ -78,9 +78,47 @@ export function MasterCompanies() {
   const [planForm, setPlanForm] = useState(null);
   const [planSaving, setPlanSaving] = useState(false);
   const [planError, setPlanError] = useState('');
+  // Tenant signup requests
+  const [requests, setRequests] = useState([]);
+  const [approveTarget, setApproveTarget] = useState(null);
+  const [approveSlug, setApproveSlug] = useState('');
+  const [approveResult, setApproveResult] = useState(null);
+  const [rejectTarget, setRejectTarget] = useState(null);
+  const [rejectReason, setRejectReason] = useState('');
+  const [reqBusy, setReqBusy] = useState(false);
+  const [reqError, setReqError] = useState('');
 
-  const load = async () => { const { data } = await api.get('/companies'); setCompanies(data); };
+  const load = async () => {
+    const [comp, reqs] = await Promise.all([
+      api.get('/companies'),
+      api.get('/tenant-requests', { params: { status: 'pending' } }).catch(() => ({ data: [] })),
+    ]);
+    setCompanies(comp.data);
+    setRequests(reqs.data || []);
+  };
   useEffect(() => { load(); }, []);
+
+  const openApprove = (r) => { setReqError(''); setApproveResult(null); setApproveTarget(r); setApproveSlug(r.slug || ''); };
+
+  const confirmApprove = async () => {
+    setReqBusy(true); setReqError('');
+    try {
+      const { data } = await api.post(`/tenant-requests/${approveTarget.id}/approve`, { slug: approveSlug || undefined });
+      setApproveResult(data);
+      load();
+    } catch (e) { setReqError(formatApiError(e)); }
+    finally { setReqBusy(false); }
+  };
+
+  const confirmReject = async () => {
+    setReqBusy(true); setReqError('');
+    try {
+      await api.post(`/tenant-requests/${rejectTarget.id}/reject`, { reason: rejectReason });
+      setRejectTarget(null); setRejectReason('');
+      load();
+    } catch (e) { setReqError(formatApiError(e)); }
+    finally { setReqBusy(false); }
+  };
 
   const toggle = async (c) => {
     const next = c.status === 'active' ? 'suspended' : 'active';
@@ -135,6 +173,34 @@ export function MasterCompanies() {
         </div>
         <button className="btn-primary" onClick={() => setOpen(true)} data-testid="new-company-btn"><Plus className="w-4 h-4" /> Nueva empresa</button>
       </div>
+
+      {requests.length > 0 && (
+        <div className="card-surface overflow-hidden mb-6 border-2 border-peach-100" data-testid="signup-requests-card">
+          <div className="px-6 py-4 bg-peach-100/60 flex items-center gap-2">
+            <Inbox className="w-5 h-5 text-amber-800" />
+            <h2 className="font-display font-semibold text-ink-900">Solicitudes de registro</h2>
+            <span className="pill bg-amber-800 text-white text-xs" data-testid="signup-requests-count">{requests.length} pendiente{requests.length !== 1 ? 's' : ''}</span>
+          </div>
+          {requests.map((r) => (
+            <div key={r.id} className="flex flex-wrap items-center justify-between gap-3 px-6 py-4 border-b border-ink-100 last:border-0" data-testid={`signup-request-${r.id}`}>
+              <div className="flex items-center gap-4">
+                <div className="w-11 h-11 rounded-xl bg-peach-100 text-amber-800 flex items-center justify-center"><Clock className="w-5 h-5" /></div>
+                <div>
+                  <p className="font-semibold text-ink-900 flex items-center gap-2">
+                    {r.company_name}
+                    <span className={`pill text-xs ${PLAN_TONE[r.plan] || 'bg-ink-100 text-ink-700'}`}><Crown className="w-3 h-3" /> {(r.plan || 'pro').toUpperCase()}</span>
+                  </p>
+                  <p className="text-xs text-ink-500">{r.admin_name} · {r.admin_email}{r.admin_phone ? ` · ${r.admin_phone}` : ''}</p>
+                </div>
+              </div>
+              <div className="flex items-center gap-2">
+                <button onClick={() => openApprove(r)} className="btn-primary text-xs" data-testid={`approve-request-${r.id}`}><Check className="w-4 h-4" /> Aprobar</button>
+                <button onClick={() => { setReqError(''); setRejectTarget(r); setRejectReason(''); }} className="btn-ghost text-xs text-red-600" data-testid={`reject-request-${r.id}`}><X className="w-4 h-4" /> Rechazar</button>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
 
       <div className="card-surface overflow-hidden">
         {companies.map((c) => (
@@ -233,6 +299,70 @@ export function MasterCompanies() {
             <div className="flex justify-end gap-2 mt-6">
               <button className="btn-ghost" onClick={() => setPlanTarget(null)} data-testid="plan-cancel">Cancelar</button>
               <button className="btn-primary" onClick={savePlan} disabled={planSaving} data-testid="plan-save">{planSaving ? 'Guardando…' : 'Guardar plan'}</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {approveTarget && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-ink-900/50" onClick={() => !reqBusy && setApproveTarget(null)}>
+          <div className="bg-white rounded-2xl p-6 w-full max-w-md" onClick={(e) => e.stopPropagation()} data-testid="approve-modal">
+            {!approveResult ? (
+              <>
+                <h3 className="font-display text-xl font-semibold text-ink-900 flex items-center gap-2"><Building2 className="w-5 h-5 text-brand-500" /> Aprobar empresa</h3>
+                <p className="text-sm text-ink-500 mt-1">Se creará el tenant <span className="font-semibold">{approveTarget.company_name}</span> con plan <span className="font-semibold capitalize">{approveTarget.plan}</span> y se activará la cuenta de <span className="font-semibold">{approveTarget.admin_email}</span>.</p>
+                {reqError && <div className="rounded-xl border border-red-200 bg-red-50 text-red-700 px-4 py-3 text-sm mt-3">{reqError}</div>}
+                <div className="mt-4">
+                  <label className="label-text">Slug / subdominio</label>
+                  <input className="input-field" value={approveSlug} onChange={(e) => setApproveSlug(e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, ''))} data-testid="approve-slug-input" />
+                  <p className="text-xs text-ink-400 mt-1">Editable. Si ya existe, se añadirá un sufijo automáticamente.</p>
+                </div>
+                <div className="flex justify-end gap-2 mt-6">
+                  <button className="btn-ghost" onClick={() => setApproveTarget(null)} disabled={reqBusy} data-testid="approve-cancel">Cancelar</button>
+                  <button className="btn-primary" onClick={confirmApprove} disabled={reqBusy} data-testid="approve-confirm">{reqBusy ? 'Creando…' : 'Aprobar y crear'}</button>
+                </div>
+              </>
+            ) : (
+              <div data-testid="approve-result">
+                <div className="w-14 h-14 rounded-full bg-mint-100 text-emerald-700 flex items-center justify-center"><Check className="w-7 h-7" /></div>
+                <h3 className="font-display text-xl font-semibold text-ink-900 mt-4">¡Empresa creada!</h3>
+                <p className="text-sm text-ink-500 mt-1">Comparte estos accesos con el administrador. La contraseña es la que el solicitante eligió al registrarse.</p>
+                <div className="rounded-xl bg-cream border border-ink-100 p-4 mt-4 text-sm space-y-1.5">
+                  <div className="flex justify-between"><span className="text-ink-500">Empresa</span><span className="font-semibold text-ink-900">{approveResult.company.name}</span></div>
+                  <div className="flex justify-between"><span className="text-ink-500">Slug</span><span className="font-mono text-ink-900">{approveResult.company.slug}</span></div>
+                  <div className="flex justify-between"><span className="text-ink-500">Plan</span><span className="font-semibold capitalize text-ink-900">{approveResult.company.plan}</span></div>
+                  <div className="flex justify-between items-center"><span className="text-ink-500">Acceso</span>
+                    <span className="font-semibold text-ink-900 flex items-center gap-2">{approveResult.credentials.email}
+                      <button onClick={() => navigator.clipboard?.writeText(approveResult.credentials.email)} className="text-brand-500 hover:text-brand-700" title="Copiar"><Copy className="w-3.5 h-3.5" /></button>
+                    </span>
+                  </div>
+                  <div className="flex justify-between"><span className="text-ink-500">URL</span><span className="font-mono text-xs text-ink-900">{approveResult.credentials.login_url}</span></div>
+                </div>
+                <p className={`text-xs mt-3 ${approveResult.email_sent ? 'text-emerald-700' : 'text-amber-700'}`}>
+                  {approveResult.email_sent ? '✓ Correo de bienvenida enviado al administrador.' : 'ⓘ No hay proveedor de correo de plataforma configurado: comparte los accesos manualmente.'}
+                </p>
+                <div className="flex justify-end mt-6">
+                  <button className="btn-primary" onClick={() => { setApproveTarget(null); setApproveResult(null); }} data-testid="approve-done">Listo</button>
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {rejectTarget && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-ink-900/50" onClick={() => !reqBusy && setRejectTarget(null)}>
+          <div className="bg-white rounded-2xl p-6 w-full max-w-md" onClick={(e) => e.stopPropagation()} data-testid="reject-modal">
+            <h3 className="font-display text-xl font-semibold text-ink-900">Rechazar solicitud</h3>
+            <p className="text-sm text-ink-500 mt-1">Rechazar la solicitud de <span className="font-semibold">{rejectTarget.company_name}</span>. El motivo es interno (no se notifica al solicitante).</p>
+            {reqError && <div className="rounded-xl border border-red-200 bg-red-50 text-red-700 px-4 py-3 text-sm mt-3">{reqError}</div>}
+            <div className="mt-4">
+              <label className="label-text">Motivo (opcional)</label>
+              <textarea className="input-field" rows={3} value={rejectReason} onChange={(e) => setRejectReason(e.target.value)} data-testid="reject-reason-input" />
+            </div>
+            <div className="flex justify-end gap-2 mt-6">
+              <button className="btn-ghost" onClick={() => setRejectTarget(null)} disabled={reqBusy} data-testid="reject-cancel">Cancelar</button>
+              <button className="btn-primary !bg-red-600 hover:!bg-red-700" onClick={confirmReject} disabled={reqBusy} data-testid="reject-confirm">{reqBusy ? 'Rechazando…' : 'Rechazar'}</button>
             </div>
           </div>
         </div>

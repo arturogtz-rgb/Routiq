@@ -11,6 +11,25 @@ import notifications
 
 log = logging.getLogger("routiq")
 
+# Plan defaults applied when a plan is selected (overridable per company by Master)
+PLAN_DEFAULTS = {
+    "starter": {"exec_limit": 3, "ai_enabled": False, "white_label": False,
+                "stripe_allowed": False, "transfer_allowed": True},
+    "pro": {"exec_limit": 15, "ai_enabled": True, "white_label": False,
+            "stripe_allowed": True, "transfer_allowed": True},
+    "enterprise": {"exec_limit": 0, "ai_enabled": True, "white_label": True,
+                   "stripe_allowed": True, "transfer_allowed": True},
+}
+
+
+def slugify(name: str) -> str:
+    """Lowercase, ASCII-ish slug from a company name."""
+    import re as _re
+    import unicodedata as _ud
+    norm = _ud.normalize("NFKD", name or "").encode("ascii", "ignore").decode()
+    slug = _re.sub(r"[^a-z0-9]+", "-", norm.lower()).strip("-")
+    return slug or "empresa"
+
 UPLOAD_DIR = _Path("/app/uploads") if _Path("/app/uploads").exists() or os.environ.get("DOCKER") else _Path(__file__).parent / "uploads"
 LOGO_DIR = UPLOAD_DIR / "logos"
 LOGO_DIR.mkdir(parents=True, exist_ok=True)
