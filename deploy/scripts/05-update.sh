@@ -31,9 +31,9 @@ rm -rf /var/www/routiq/*
 cp -R build/. /var/www/routiq/
 chown -R www-data:www-data /var/www/routiq
 
-echo "▶ Re-buildeando y reiniciando backend…"
+echo "▶ Re-buildeando y reiniciando backend + microservicio WhatsApp (baileys)…"
 cd "$DEPLOY_DIR"
-docker compose --env-file "$ENV_FILE" up -d --build --force-recreate backend
+docker compose --env-file "$ENV_FILE" up -d --build --force-recreate backend baileys
 
 echo "▶ Recargando Nginx…"
 nginx -t && systemctl reload nginx

@@ -42,6 +42,10 @@ services:
       DEMO_EXECUTIVE_EMAIL: ${DEMO_EXECUTIVE_EMAIL}
       DEMO_EXECUTIVE_PASSWORD: ${DEMO_EXECUTIVE_PASSWORD}
       EMERGENT_LLM_KEY: ${EMERGENT_LLM_KEY}
+      PUBLIC_LOGIN_URL: ${PUBLIC_LOGIN_URL}
+      TURNSTILE_SECRET_KEY: ${TURNSTILE_SECRET_KEY}
+      BAILEYS_URL: http://baileys:3001
+      BAILEYS_SHARED_SECRET: ${BAILEYS_SHARED_SECRET}
     volumes:
       - uploads_data:/app/uploads
     ports:
@@ -54,6 +58,28 @@ services:
         limits:
           memory: 768M
 
+  baileys:
+    build:
+      context: ../baileys-service
+      dockerfile: Dockerfile
+    container_name: routiq-baileys
+    restart: unless-stopped
+    environment:
+      PORT: "3001"
+      BAILEYS_SHARED_SECRET: ${BAILEYS_SHARED_SECRET}
+      # El backend escucha en el puerto 8000 DENTRO de la red Docker (el 8001 es el mapeo al host)
+      WEBHOOK_URL: http://backend:8000
+      AUTH_DIR: /data/auth
+    volumes:
+      - baileys_auth:/data/auth
+    networks:
+      - routiq_net
+    # Sin "ports": queda accesible SOLO dentro de la red interna (privado).
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+
 volumes:
   mongo_data:
     name: routiq_mongo_data
@@ -61,6 +87,8 @@ volumes:
     name: routiq_mongo_backups
   uploads_data:
     name: routiq_uploads
+  baileys_auth:
+    name: routiq_baileys_auth
 
 networks:
   routiq_net:

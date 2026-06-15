@@ -24,55 +24,50 @@ El microservicio usa:
 El backend FastAPI necesita (en `deploy/.env`):
 
 ```
-BAILEYS_URL=http://baileys:3001
 BAILEYS_SHARED_SECRET=586784a4d615b6b2df4402ff599e063ef0438f3efc235d5b
 ```
 
+> `BAILEYS_URL` ya está fijado en `deploy/docker-compose.yml` como
+> `http://baileys:3001`; no necesitas declararlo en `.env`.
+>
 > Genera tu propio secreto en producción:
 > `openssl rand -hex 24`
 > y pon el **mismo valor** en `BAILEYS_SHARED_SECRET` del backend y del microservicio.
 
 ---
 
-## 2. Agregar el contenedor al `docker-compose` existente (VPS)
+## 2. El contenedor ya está integrado en `docker-compose.yml`
 
-Edita tu `deploy/docker-compose.yml` (o el que uses) y **agrega** este servicio
-sin tocar `mongo` ni `backend`:
+El servicio `baileys` **ya viene incluido** en `deploy/docker-compose.yml`, en la
+misma red interna (`routiq_net`), con un volumen `baileys_auth` para persistir
+las sesiones y **sin puertos publicados** (privado). El backend recibe
+automáticamente `BAILEYS_URL=http://baileys:3001` y `BAILEYS_SHARED_SECRET`.
+
+Solo debes definir `BAILEYS_SHARED_SECRET` en tu `deploy/.env` (mismo valor que
+usará el backend y el microservicio). El microservicio reenvía los mensajes al
+backend en `http://backend:8000` (puerto interno del backend dentro de la red
+Docker; el `8001` es solo el mapeo hacia el host).
+
+Definición incluida (referencia):
 
 ```yaml
-services:
-  # ... mongo, backend, frontend, nginx existentes (NO los modifiques) ...
-
   baileys:
-    build: ../baileys-service        # ajusta la ruta a /opt/routiq/baileys-service
+    build:
+      context: ../baileys-service
+      dockerfile: Dockerfile
     container_name: routiq-baileys
     restart: unless-stopped
     environment:
-      - PORT=3001
-      - BAILEYS_SHARED_SECRET=${BAILEYS_SHARED_SECRET}
-      - WEBHOOK_URL=http://backend:8001     # nombre del servicio backend en el compose
-      - AUTH_DIR=/data/auth
+      PORT: "3001"
+      BAILEYS_SHARED_SECRET: ${BAILEYS_SHARED_SECRET}
+      WEBHOOK_URL: http://backend:8000
+      AUTH_DIR: /data/auth
     volumes:
-      - baileys_auth:/data/auth        # persiste las sesiones entre reinicios
+      - baileys_auth:/data/auth
     networks:
-      - routiq                          # MISMA red que backend (ajusta el nombre)
-    # NO publiques puertos: queda solo accesible dentro de la red interna
-
-volumes:
-  baileys_auth:
-
-# Asegúrate de que 'baileys' esté en la misma red que 'backend'.
+      - routiq_net
+    # Sin "ports": accesible SOLO dentro de la red interna.
 ```
-
-Y en el servicio `backend`, agrega las dos variables (vía `deploy/.env`):
-
-```
-BAILEYS_URL=http://baileys:3001
-BAILEYS_SHARED_SECRET=<tu-secreto>
-```
-
-> El nombre `backend` y la red `routiq` deben coincidir con los de tu compose
-> actual. Si tu backend se llama distinto, ajusta `WEBHOOK_URL`.
 
 ---
 
