@@ -22,8 +22,12 @@ import PublicQuotation from '@/pages/PublicQuotation';
 function HomeRedirect() {
   const { user, loading } = useAuth();
   if (loading) return null;
-  if (user && user.role === 'super_admin') return <Navigate to="/master" replace />;
-  if (user) return <Navigate to="/app/dashboard" replace />;
+  // Allow the Master "Vista previa" to render the live Landing even when logged in.
+  const preview = new URLSearchParams(window.location.search).get('preview') === '1';
+  if (!preview) {
+    if (user && user.role === 'super_admin') return <Navigate to="/master" replace />;
+    if (user) return <Navigate to="/app/dashboard" replace />;
+  }
   return <Landing />;
 }
 

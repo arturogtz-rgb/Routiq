@@ -5,7 +5,7 @@ Plataforma SaaS PWA multi-tenant para **cotización y seguimiento turístico** p
 - Empresa piloto: **Aventúrate por Jalisco**
 - Marca: **Routiq**
 - **Producción: https://routiq.com.mx** ✅ (VPS Hostinger 177.7.36.75, Docker + Nginx + Let's Encrypt)
-- Iteración actual: **v1.2** (servicios a la carta + Stripe + integraciones por empresa + notificaciones)
+- Iteración actual: **v1.3** (editor del sitio Master + Web Push + WhatsApp send)
 
 ## Arquitectura
 - **Frontend:** React 19 + Tailwind + dnd-kit + PWA
@@ -49,9 +49,10 @@ Plataforma SaaS PWA multi-tenant para **cotización y seguimiento turístico** p
 - [x] **Notificaciones** ✅ (parcial): email automático al ejecutivo/admin al aceptar o pagar (vía Resend, dispara cuando hay API key configurada) + centro de notificaciones in-app (campana con badge en el AppShell, `/api/notifications`). **Falta**: Web Push (VAPID + service worker) — ver P1.
 
 ### P0 — pendientes (solicitados por el usuario, arquitectura "todo desde panel")
-- [ ] **Panel Master — Editor del Index/landing** (https://routiq.com.mx/): textos, imágenes y secciones editables sin código.
-- [ ] **Panel Master — Editor de la página de login**: logo, colores y textos personalizables.
-- [ ] **Web Push (VAPID)**: notificación push al navegador del ejecutivo cuando el cliente acepta/paga.
+- [x] **Panel Master — Editor del Index/landing** ✅ (jun-2026): textos (hero, características, CTA final), imágenes (hero + "cómo funciona") y vista previa antes de publicar. Borrador vs publicado. `/master/site`. Endpoints `/api/site-settings*`. Tests: iteration_6 (15/15 backend).
+- [x] **Panel Master — Editor de la página de login** ✅: logo, color principal, frase, autor, badge y textos de bienvenida; vista previa + publicar.
+- [x] **Web Push (VAPID)** ✅: claves VAPID autogeneradas, suscripción por usuario, envío al aceptar/pagar; toggle en la campana de notificaciones; service worker con handlers push/notificationclick. (En navegadores reales con permiso concedido; el entorno headless bloquea el permiso de notificaciones.)
+- [x] **WhatsApp "Enviar con un clic"** ✅: en el detalle de cotización, botón "Enviar cotización por WhatsApp" y "Enviar enlace de pago por WhatsApp" — mensaje prellenado con folio, nombre del cliente y monto, vía wa.me.
 
 ### P1
 - [ ] **Integración Baileys real** (microservicio Node.js en VPS): conexión QR, persistencia, envío real desde el inbox

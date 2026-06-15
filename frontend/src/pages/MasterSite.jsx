@@ -20,7 +20,7 @@ function Field({ label, value, onChange, type = 'text', rows, placeholder, testi
   );
 }
 
-function ImageField({ label, value, onChange, testid }) {
+function ImageField({ label, value, onChange, onPersist, testid }) {
   const ref = useRef(null);
   const [up, setUp] = useState(false);
   const pick = async (e) => {
@@ -32,6 +32,7 @@ function ImageField({ label, value, onChange, testid }) {
       fd.append('file', file);
       const { data } = await api.post('/site-settings/upload-image', fd, { headers: { 'Content-Type': 'multipart/form-data' } });
       onChange(data.url);
+      if (onPersist) await onPersist(data.url);
     } catch (_e) { /* noop */ }
     finally { setUp(false); }
   };
@@ -71,6 +72,11 @@ export default function MasterSite() {
 
   const setL = (k, v) => setLanding((s) => ({ ...s, [k]: v }));
   const setLg = (k, v) => setLogin((s) => ({ ...s, [k]: v }));
+
+  // Persist a single section immediately to the draft (used after image uploads
+  // so a freshly uploaded image is never lost on navigation).
+  const persistLanding = async (patch) => { await api.patch('/site-settings', { landing: { ...landing, ...patch } }); };
+  const persistLogin = async (patch) => { await api.patch('/site-settings', { login: { ...login, ...patch } }); };
 
   const saveDraft = async () => {
     setSaving(true); setError(''); setOk('');
@@ -143,13 +149,13 @@ export default function MasterSite() {
               <Field label="Botón secundario" value={landing.cta_secondary} onChange={(v) => setL('cta_secondary', v)} testid="ld-cta-secondary" />
             </div>
             <Field label="Texto de prueba social" value={landing.waitlist_text} onChange={(v) => setL('waitlist_text', v)} testid="ld-waitlist" />
-            <ImageField label="Imagen de fondo del Hero" value={landing.hero_image_url} onChange={(v) => setL('hero_image_url', v)} testid="ld-hero-image" />
+            <ImageField label="Imagen de fondo del Hero" value={landing.hero_image_url} onChange={(v) => setL('hero_image_url', v)} onPersist={(url) => persistLanding({ hero_image_url: url })} testid="ld-hero-image" />
           </div>
           <div className="card-surface p-6 space-y-4">
             <h3 className="font-display font-semibold text-ink-900">Secciones</h3>
             <Field label="Título de características" value={landing.features_title} onChange={(v) => setL('features_title', v)} rows={2} testid="ld-features-title" />
             <Field label="Subtítulo de características" value={landing.features_subtitle} onChange={(v) => setL('features_subtitle', v)} rows={2} testid="ld-features-subtitle" />
-            <ImageField label="Imagen 'Cómo funciona'" value={landing.feature_image_url} onChange={(v) => setL('feature_image_url', v)} testid="ld-feature-image" />
+            <ImageField label="Imagen 'Cómo funciona'" value={landing.feature_image_url} onChange={(v) => setL('feature_image_url', v)} onPersist={(url) => persistLanding({ feature_image_url: url })} testid="ld-feature-image" />
             <Field label="Título CTA final" value={landing.final_cta_title} onChange={(v) => setL('final_cta_title', v)} testid="ld-finalcta-title" />
             <Field label="Subtítulo CTA final" value={landing.final_cta_subtitle} onChange={(v) => setL('final_cta_subtitle', v)} rows={2} testid="ld-finalcta-subtitle" />
             <button className="btn-secondary text-sm w-full" onClick={() => preview('/')} data-testid="preview-landing-btn"><Eye className="w-4 h-4" /> Vista previa de la landing</button>
@@ -161,7 +167,7 @@ export default function MasterSite() {
         <div className="grid lg:grid-cols-2 gap-6">
           <div className="card-surface p-6 space-y-4">
             <h3 className="font-display font-semibold text-ink-900">Marca del login</h3>
-            <ImageField label="Logo" value={login.logo_url} onChange={(v) => setLg('logo_url', v)} testid="lg-logo" />
+            <ImageField label="Logo" value={login.logo_url} onChange={(v) => setLg('logo_url', v)} onPersist={(url) => persistLogin({ logo_url: url })} testid="lg-logo" />
             <div>
               <label className="label-text">Color principal</label>
               <div className="flex items-center gap-3">
