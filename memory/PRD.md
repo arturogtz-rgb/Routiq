@@ -7,6 +7,17 @@ Plataforma SaaS PWA multi-tenant para **cotización y seguimiento turístico** p
 - **Producción: https://routiq.com.mx** ✅ (VPS Hostinger 177.7.36.75, Docker + Nginx + Let's Encrypt)
 - Iteración actual: **v2.4** (iter_24: registro de uso/costo de IA en Master + generar respaldo on-demand + revisión de seguridad pre-lanzamiento)
 
+## Iteración 28 — Fase A (jun-2026) — Bugs críticos + presentación IA + fecha/hora por concepto
+- 🐞 **Bug correos (raíz)**: `notifications.send_email` ahora hace **fallback a `PLATFORM_RESEND_API_KEY`/`PLATFORM_FROM_EMAIL`** cuando la empresa no tiene proveedor propio (antes el reset de contraseña fallaba en silencio). Requiere dominio `routiq.com.mx` verificado en Resend (pasos entregados al usuario).
+- 🐞 **Bug captcha**: `_verify_turnstile` ahora loguea `error-codes`/`hostname` de Cloudflare para diagnosticar (`invalid-input-secret` / `hostname-mismatch` / `timeout-or-duplicate`).
+- 🐞 **Bug cursor (Incluye/No incluye)**: `StringList` se movió a nivel de módulo en `CustomQuotationBuilder.jsx` (estaba inline → React lo remontaba en cada tecla y perdía el foco). VERIFICADO (27 chars sin perder foco).
+- ✅ **(10) Fecha/hora por concepto** en cotización a medida: `CustomItem.service_date/start_time/end_time` (opcionales); aparecen en PDF y enlace público.
+- ✅ **(11) Texto de presentación con IA** en el paso Revisión de AMBOS constructores: textarea editable + botón "Generar con IA" (`POST /api/ai/presentation`, BYOK Master vía `ai_service.generate_presentation`; usa nombre cliente, destino/título, fechas). 503 en preview por BYOK no configurado (manejado con error claro en español).
+- ✅ **(12) PDF mejorado**: presentación al inicio, conceptos con descripción+fecha+hora, condiciones con "Todos los precios están sujetos a cambio…", salto de página automático (presentación+itinerario pág.1, precios pág.2) cuando hay presentación+itinerario.
+- ✅ **(13) Enlace público detallado**: presentación al inicio, bloque "Conceptos del programa" con descripción/fecha/hora, itinerario y políticas de cancelación.
+- Tests: `/app/test_reports/iteration_28.json` (backend 6/6, frontend 6/6, bug cursor verificado, 0 incidencias) + `backend/tests/test_iteration28_presentation_custom_dt.py`.
+- ⏳ **Pendiente iteración 28**: Fase B (8 CRUD clientes, 9 eliminar ejecutivos) y Fase C (4 analítica catálogo, 5 multi-hotel al convertir plantilla, 6 revisión UX).
+
 ## Iteración 27 (jun-2026) — Plantillas destacadas + paquete público + mejoras QA
 - ✅ **Plantillas destacadas**: campo `featured` en plantillas; toggle estrella ⭐ **solo admin** (`PATCH /api/templates/{id}`, require company_admin); las destacadas se ordenan primero (badge + ring en la pestaña Plantillas).
 - ✅ **Convertir en paquete público** (solo admin, `POST /api/templates/{id}/publish-as-package`): crea un paquete como **borrador (`status="inactive"`, NO visible en `/c/:slug`)** con contenido descriptivo + hotel prellenado (público=neto/margen), y abre el editor con `?from=template`. El admin ajusta precios por ocupación y cambia Estado→Activo para publicar (decisión del usuario: control antes de publicar). `from_template` registrado.
