@@ -1,11 +1,11 @@
 import { useEffect, useRef, useState } from 'react';
-import { useNavigate, useParams } from 'react-router-dom';
+import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import AppShell from '@/components/AppShell';
 import api, { formatApiError } from '@/lib/api';
 import { formatDateEs } from '@/lib/dates';
 import {
   ArrowLeft, Save, Plus, Trash2, UploadCloud, Image as ImageIcon, Loader2,
-  Hotel, CalendarRange, ListChecks, MapPinned, Sun,
+  Hotel, CalendarRange, ListChecks, MapPinned, Sun, Info,
 } from 'lucide-react';
 
 const backend = process.env.REACT_APP_BACKEND_URL || '';
@@ -48,6 +48,8 @@ function StringList({ items, onChange, placeholder, testid }) {
 export default function PackageEditor() {
   const { id } = useParams();
   const navigate = useNavigate();
+  const [search] = useSearchParams();
+  const fromCustom = search.get('from'); // 'custom' | 'template'
   const editing = !!id;
   const [pkg, setPkg] = useState(EMPTY_PKG);
   const [error, setError] = useState('');
@@ -128,6 +130,16 @@ export default function PackageEditor() {
         </button>
       </div>
       {error && <div className="rounded-xl border border-red-200 bg-red-50 text-red-700 px-4 py-3 text-sm mb-4" data-testid="package-error">{error}</div>}
+
+      {fromCustom && (
+        <div className="rounded-xl border border-amber-200 bg-peach-100/60 text-amber-800 px-4 py-3 text-sm mb-4 flex items-start gap-3" data-testid="prefill-notice">
+          <Info className="w-5 h-5 shrink-0 mt-0.5 text-amber-600" />
+          <div>
+            <p className="font-semibold">Paquete creado desde {fromCustom === 'template' ? 'una plantilla' : 'una cotización a medida'}.</p>
+            <p className="mt-0.5">Revisa y <b>ajusta los precios por ocupación</b> del hotel prellenado (sencilla/doble/triple/cuádruple) antes de publicar.{fromCustom === 'template' ? ' Cambia el Estado a "Activo" y guarda para que aparezca en tu catálogo público.' : ''}</p>
+          </div>
+        </div>
+      )}
 
       <div className="grid lg:grid-cols-2 gap-6">
         {/* General */}

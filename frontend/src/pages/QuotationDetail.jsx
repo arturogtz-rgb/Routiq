@@ -28,6 +28,8 @@ export default function QuotationDetail() {
   const [tplName, setTplName] = useState('');
   const [savingTpl, setSavingTpl] = useState(false);
   const [savingPkg, setSavingPkg] = useState(false);
+  const [pkgModalOpen, setPkgModalOpen] = useState(false);
+  const [pkgCode, setPkgCode] = useState('');
   const [saveAsMsg, setSaveAsMsg] = useState('');
   const [ai, setAi] = useState({ next: '', missing: [], message: '' });
   const [aiLoading, setAiLoading] = useState({ next: false, missing: false, message: false });
@@ -206,12 +208,11 @@ export default function QuotationDetail() {
   };
 
   const saveAsPackage = async () => {
-    if (!window.confirm('¿Crear un paquete en el catálogo a partir de esta cotización a medida? Podrás ajustar los precios por ocupación en el editor.')) return;
     setSaveAsMsg(''); setSavingPkg(true);
     try {
-      const { data } = await api.post(`/quotations/${id}/save-as-package`, {});
-      navigate(`/app/packages/${data.id}/edit`);
-    } catch (e) { setSaveAsMsg(formatApiError(e)); setSavingPkg(false); }
+      const { data } = await api.post(`/quotations/${id}/save-as-package`, { code: pkgCode.trim() || null });
+      navigate(`/app/packages/${data.id}/edit?from=custom`);
+    } catch (e) { setSaveAsMsg(formatApiError(e)); setSavingPkg(false); setPkgModalOpen(false); }
   };
 
   const paxDesc = (() => {
@@ -251,7 +252,7 @@ export default function QuotationDetail() {
             </button>
           )}
           {q.type === 'personalizado' && isAdmin && (
-            <button onClick={saveAsPackage} disabled={savingPkg} className="btn-ghost text-sm border border-brand-200 text-brand-600" data-testid="save-as-package-btn">
+            <button onClick={() => { setPkgCode((q.custom_title || q.package_snapshot?.name || '').toUpperCase().normalize('NFD').replace(/[^A-Z0-9]/g, '').slice(0, 20)); setPkgModalOpen(true); }} disabled={savingPkg} className="btn-ghost text-sm border border-brand-200 text-brand-600" data-testid="save-as-package-btn">
               <PackageIcon className="w-4 h-4" /> {savingPkg ? 'Creando…' : 'Guardar como paquete'}
             </button>
           )}
@@ -562,6 +563,22 @@ export default function QuotationDetail() {
               <button className="btn-ghost" onClick={() => setSaveTplOpen(false)} data-testid="template-cancel">Cancelar</button>
               <button className="btn-primary" disabled={tplName.trim().length < 2 || savingTpl} onClick={saveAsTemplate} data-testid="template-save">
                 <BookmarkPlus className="w-4 h-4" /> {savingTpl ? 'Guardando…' : 'Guardar plantilla'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+      {pkgModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-ink-900/50" onClick={() => !savingPkg && setPkgModalOpen(false)}>
+          <div className="bg-white rounded-2xl p-6 w-full max-w-md" onClick={(e) => e.stopPropagation()} data-testid="save-package-modal">
+            <h3 className="font-display text-xl font-semibold text-ink-900 flex items-center gap-2"><PackageIcon className="w-5 h-5 text-brand-500" /> Guardar como paquete</h3>
+            <p className="text-sm text-ink-500 mt-2">Se creará un paquete en tu catálogo con el itinerario, incluye/no incluye y un hotel prellenado con el precio del hospedaje. Al guardar se abrirá el editor para que <b>ajustes los precios por ocupación</b>.</p>
+            <label className="label-text mt-4">Código del paquete</label>
+            <input className="input-field mt-1 uppercase" value={pkgCode} placeholder="Ej. RIVIERAMAYA5N" onChange={(e) => setPkgCode(e.target.value.toUpperCase())} data-testid="save-package-code-input" />
+            <div className="flex justify-end gap-2 mt-5">
+              <button className="btn-ghost" onClick={() => setPkgModalOpen(false)} data-testid="save-package-cancel">Cancelar</button>
+              <button className="btn-primary" disabled={savingPkg} onClick={saveAsPackage} data-testid="save-package-confirm">
+                <PackageIcon className="w-4 h-4" /> {savingPkg ? 'Creando…' : 'Crear y abrir editor'}
               </button>
             </div>
           </div>

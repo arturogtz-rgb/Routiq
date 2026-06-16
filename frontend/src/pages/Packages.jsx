@@ -3,7 +3,7 @@ import { Link, useNavigate } from 'react-router-dom';
 import AppShell from '@/components/AppShell';
 import api, { formatApiError } from '@/lib/api';
 import { useAuth } from '@/context/AuthContext';
-import { Package as PackageIcon, MapPin, Calendar, Plus, Pencil, Trash2, Sun, FileSpreadsheet, Upload, X, CheckCircle2, AlertTriangle, Download, Share2, QrCode, Wand2, BookmarkPlus } from 'lucide-react';
+import { Package as PackageIcon, MapPin, Calendar, Plus, Pencil, Trash2, Sun, FileSpreadsheet, Upload, X, CheckCircle2, AlertTriangle, Download, Share2, QrCode, Wand2, BookmarkPlus, Star, Globe } from 'lucide-react';
 import { ShareCatalogModal } from '@/components/ShareCatalogModal';
 
 export default function Packages() {
@@ -13,6 +13,9 @@ export default function Packages() {
   const [packages, setPackages] = useState([]);
   const [templates, setTemplates] = useState([]);
   const [tab, setTab] = useState('paquetes');
+  const [publishTpl, setPublishTpl] = useState(null);
+  const [pubCode, setPubCode] = useState('');
+  const [publishing, setPublishing] = useState(false);
   const [error, setError] = useState('');
   const [importing, setImporting] = useState(false);
   const [report, setReport] = useState(null);
@@ -52,6 +55,23 @@ export default function Packages() {
     if (!window.confirm(`¿Eliminar la plantilla "${t.name}"?`)) return;
     try { await api.delete(`/templates/${t.id}`); await loadTemplates(); }
     catch (e) { setError(formatApiError(e)); }
+  };
+
+  const toggleFeatured = async (t) => {
+    try { await api.patch(`/templates/${t.id}`, { featured: !t.featured }); await loadTemplates(); }
+    catch (e) { setError(formatApiError(e)); }
+  };
+
+  const suggestCode = (s) => (s || '').toUpperCase().normalize('NFD').replace(/[^A-Z0-9]/g, '').slice(0, 20);
+
+  const openPublish = (t) => { setPublishTpl(t); setPubCode(suggestCode(t.custom_title || t.name)); };
+
+  const publishAsPackage = async () => {
+    setError(''); setPublishing(true);
+    try {
+      const { data } = await api.post(`/templates/${publishTpl.id}/publish-as-package`, { code: pubCode.trim() || null });
+      navigate(`/app/packages/${data.id}/edit?from=template`);
+    } catch (e) { setError(formatApiError(e)); setPublishing(false); }
   };
 
   const downloadTemplate = async () => {
@@ -196,10 +216,15 @@ export default function Packages() {
           <p className="text-sm text-ink-500 mb-5">Plantillas de programas personalizados guardadas por tu equipo. Úsalas para clonar una cotización a medida en segundos.</p>
           <div className="grid md:grid-cols-2 xl:grid-cols-3 gap-5">
             {templates.map((t) => (
-              <div key={t.id} className="card-surface p-6 flex flex-col" data-testid={`template-card-${t.id}`}>
+              <div key={t.id} className={`card-surface p-6 flex flex-col ${t.featured ? 'ring-2 ring-amber-300' : ''}`} data-testid={`template-card-${t.id}`}>
                 <div className="flex items-start justify-between mb-3">
-                  <span className="pill bg-peach-100 text-amber-700 inline-flex items-center gap-1"><Wand2 className="w-3 h-3" /> Plantilla</span>
-                  <span className="pill bg-brand-50 text-brand-500">{(t.custom_items || []).length} conceptos</span>
+                  <div className="flex items-center gap-2">
+                    <span className="pill bg-peach-100 text-amber-700 inline-flex items-center gap-1"><Wand2 className="w-3 h-3" /> Plantilla</span>
+                    {t.featured && <span className="pill bg-amber-100 text-amber-700 inline-flex items-center gap-1" data-testid={`template-featured-badge-${t.id}`}><Star className="w-3 h-3 fill-amber-500 text-amber-500" /> Destacada</span>}
+                  </div>
+                  <button onClick={() => toggleFeatured(t)} title={t.featured ? 'Quitar de destacadas' : 'Marcar como destacada'} className="p-1.5 rounded-lg hover:bg-amber-50" data-testid={`toggle-featured-${t.id}`}>
+                    <Star className={`w-5 h-5 ${t.featured ? 'fill-amber-400 text-amber-400' : 'text-ink-300'}`} />
+                  </button>
                 </div>
                 <h3 className="font-display font-semibold text-lg text-ink-900 leading-tight">{t.name}</h3>
                 {t.custom_title && t.custom_title !== t.name && <p className="text-sm text-ink-500 mt-1">{t.custom_title}</p>}
@@ -210,9 +235,16 @@ export default function Packages() {
                 </div>
                 <div className="mt-5 pt-4 border-t border-ink-100 flex items-center justify-between gap-2">
                   <button className="p-2 rounded-lg text-ink-400 hover:bg-red-50 hover:text-red-600" onClick={() => removeTemplate(t)} data-testid={`delete-template-${t.id}`}><Trash2 className="w-4 h-4" /></button>
-                  <button className="btn-primary text-sm" onClick={() => navigate(`/app/quotations/new/custom?template=${t.id}`)} data-testid={`use-template-${t.id}`}>
-                    <Plus className="w-4 h-4" /> Usar plantilla
-                  </button>
+                  <div className="flex items-center gap-2">
+                    {isAdmin && (
+                      <button className="btn-ghost text-sm border border-brand-200 text-brand-600" onClick={() => openPublish(t)} data-testid={`publish-template-${t.id}`}>
+                        <Globe className="w-4 h-4" /> Paquete público
+                      </button>
+                    )}
+                    <button className="btn-primary text-sm" onClick={() => navigate(`/app/quotations/new/custom?template=${t.id}`)} data-testid={`use-template-${t.id}`}>
+                      <Plus className="w-4 h-4" /> Usar plantilla
+                    </button>
+                  </div>
                 </div>
               </div>
             ))}
@@ -228,6 +260,24 @@ export default function Packages() {
           </div>
         </div>
       )}
+
+      {publishTpl && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-ink-900/50" onClick={() => !publishing && setPublishTpl(null)}>
+          <div className="bg-white rounded-2xl p-6 w-full max-w-md" onClick={(e) => e.stopPropagation()} data-testid="publish-template-modal">
+            <h3 className="font-display text-xl font-semibold text-ink-900 flex items-center gap-2"><Globe className="w-5 h-5 text-brand-500" /> Convertir en paquete público</h3>
+            <p className="text-sm text-ink-500 mt-2">Se creará un paquete en tu catálogo a partir de <b>{publishTpl.name}</b>. Quedará como <b>borrador (Inactivo)</b> y se abrirá el editor para que ajustes los precios por ocupación. Al cambiar el estado a <b>Activo</b> y guardar, aparecerá en tu catálogo público.</p>
+            <label className="label-text mt-4">Código del paquete (para la URL pública)</label>
+            <input className="input-field mt-1 uppercase" value={pubCode} placeholder="Ej. RIVIERAMAYA5N" onChange={(e) => setPubCode(e.target.value.toUpperCase())} data-testid="publish-code-input" />
+            <div className="flex justify-end gap-2 mt-5">
+              <button className="btn-ghost" onClick={() => setPublishTpl(null)} data-testid="publish-cancel">Cancelar</button>
+              <button className="btn-primary" disabled={publishing} onClick={publishAsPackage} data-testid="publish-confirm">
+                <Globe className="w-4 h-4" /> {publishing ? 'Creando…' : 'Crear y abrir editor'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
 
       {report && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4" role="dialog">

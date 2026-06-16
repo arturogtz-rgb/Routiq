@@ -1,0 +1,39 @@
+{
+  "summary": "Iteration 27 backend + frontend e2e: validated featured templates, publish-template-as-package (draft/inactive), styled save-as-package modal with editable code, and prefill-notice on PackageEditor. Backend: 8/8 pytest PASS (test_iteration27_publish.py) covering PATCH /api/templates/{id} {featured:true/false}, GET /api/templates ordered featured-first (verified A featured < B non-featured), POST /api/templates/{id}/publish-as-package: executive 403, admin 201 with status='inactive', code respected (TESTITER27PUB), hotel prefilled at net/margin (3000/1.25=2400 across all 4 occupancies), itinerary+includes copied, from_template set, inactive NOT in /api/public/company/free-itinerary-mode catalog, appears in admin /api/packages with status=inactive; publish without code auto-generates uppercase code; POST /api/quotations/{id}/save-as-package respects {code} and creates status='active'. Frontend e2e: tab-plantillas shows toggle-featured-{id} (1), publish-template-{id} (1, admin only), template-featured-badge after toggle present in DOM. publish-template-modal opens with publish-code-input editable and publish-confirm; clicking confirm creates package and redirects to /app/packages/{id}/edit?from=template with prefill-notice visible mentioning 'ajustar precios por ocupación' + 'Cambia el Estado a Activo'. QuotationDetail (admin) save-as-package-btn opens save-package-modal with save-package-code-input (editable) + save-package-confirm; redirects to /app/packages/{id}/edit?from=custom with prefill-notice visible. RBAC: executive sees 0 publish-template buttons in templates tab; backend executive publish-as-package returns 403.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "tests_executed": [
+    {"name": "pytest test_iteration27_publish.py", "result": "8/8 PASS"},
+    {"name": "E2E admin: tab-plantillas -> toggle-featured-{id} click", "result": "PASS (1 toggle button found, click succeeded)"},
+    {"name": "E2E admin: publish-template-{id} -> publish-template-modal -> publish-code-input -> publish-confirm -> redirect /app/packages/{id}/edit?from=template", "result": "PASS"},
+    {"name": "E2E PackageEditor with ?from=template: prefill-notice visible mentioning ocupación + cambiar Estado a Activo", "result": "PASS"},
+    {"name": "E2E admin QuotationDetail (personalizado): save-as-package-btn -> save-package-modal -> save-package-code-input -> save-package-confirm -> redirect /app/packages/{id}/edit?from=custom", "result": "PASS"},
+    {"name": "E2E PackageEditor with ?from=custom: prefill-notice visible", "result": "PASS"},
+    {"name": "E2E RBAC executive: 0 publish-template-* buttons on tab-plantillas", "result": "PASS"}
+  ],
+  "test_report_links": [
+    "/app/backend/tests/test_iteration27_publish.py",
+    "/app/test_reports/pytest/iter27_results.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "RBAC observation (informational, NOT a bug per spec): executive can still see and click toggle-featured-{id} stars in templates tab. Spec only restricts 'Paquete público' & 'Guardar como paquete' to company_admin, so this is acceptable, but consider whether marking templates as 'destacada' should be admin-only since featured ordering affects the whole tenant's UX.",
+    "publish-template-as-package uses _unique_package_code which auto-suffixes with '-N' on collisions (e.g. TESTITER27PUB, TESTITER27PUB-2). UI does not surface this to the user before redirect — they see the final code only in the editor. Minor UX nit.",
+    "templates.py _build_package_from_custom: hotel prefilled only from FIRST 'hospedaje' item; subsequent hospedaje concepts in custom_items are dropped silently. Documented behavior, but worth a UI note if templates with multi-hotel structures become common.",
+    "DRY good: publish_template_as_package and save_quotation_as_package share _build_package_from_custom helper — clean refactor.",
+    "PackageEditor prefill-notice text differs between ?from=template (mentions 'Cambia el Estado a Activo') and ?from=custom — verified both render correctly."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_iteration27_publish.py (new)"
+  ],
+  "success_rate": {"backend": "100% (8/8)", "frontend": "100% (7/7 flows)"},
+  "test_credentials": "admin@aventurate.mx / Demo2026! (company_admin); ejecutivo@aventurate.mx / Demo2026! (executive) — RBAC negative verified both backend (403) and UI (button hidden).",
+  "seed_data_creation": "Tests created templates TEST_iter27 Plantilla A/B, custom quotation TEST_iter27, packages TESTITER27PUB(+suffix), TESTITER27CUSTOM, and ~2 packages from UI flow (TESTITER27UI, TESTITER27UICUSTOM). pytest cleanup fixture removed TEST_iter27 templates + matching packages. UI-created packages (TESTITER27UI* and the one from the existing custom quotation cfd2c05d) may persist — admin can delete manually if needed.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Iter 27 fully green. Key endpoints: PATCH /api/templates/{id} (featured toggle, require_tenant), POST /api/templates/{id}/publish-as-package (company_admin only, status='inactive', from_template field), POST /api/quotations/{id}/save-as-package now respects payload.code and creates status='active'. Public catalog endpoint used was GET /api/public/company/free-itinerary-mode?slug={slug} (returns 200 with packages list filtered to active). Demo company margin_divisor=1.25 => public=net*0.8 (net 3000 -> 2400). Frontend testids confirmed: toggle-featured-{id}, template-featured-badge-{id}, publish-template-{id}, publish-template-modal, publish-code-input, publish-confirm, save-as-package-btn, save-package-modal, save-package-code-input, save-package-confirm, prefill-notice. Redirect URLs use query params ?from=template and ?from=custom respectively."
+}

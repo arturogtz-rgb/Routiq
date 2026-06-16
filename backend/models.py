@@ -436,6 +436,12 @@ class TemplateCreate(BaseModel):
     custom_nights: int = Field(default=0, ge=0)
     custom_rooms: int = Field(default=0, ge=0)
     pax_default: Dict[str, int] = {}
+    featured: bool = False
+
+
+class TemplateUpdate(BaseModel):
+    name: Optional[str] = None
+    featured: Optional[bool] = None
 
 
 class SaveAsTemplateInput(BaseModel):

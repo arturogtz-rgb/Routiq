@@ -7,7 +7,7 @@ from fastapi import APIRouter, Depends, HTTPException
 
 from database import get_db, new_id, now_iso, DEFAULT_PRICING_CONFIG
 from auth import require_tenant, require_roles
-from models import TemplateCreate, SaveAsTemplateInput, SaveAsPackageInput
+from models import TemplateCreate, TemplateUpdate, SaveAsTemplateInput, SaveAsPackageInput
 from deps import slugify
 
 log = logging.getLogger("routiq")
@@ -28,6 +28,7 @@ def _template_doc_from_fields(tenant_id: str, user: dict, name: str, src: dict) 
             "adultos": int((src.get("pax") or {}).get("adultos", 0) or 0),
             "menores": int((src.get("pax") or {}).get("menores", 0) or 0),
         },
+        "featured": bool(src.get("featured", False)),
         "created_by": user["id"], "created_by_name": user.get("name", ""),
         "created_at": now_iso(), "updated_at": now_iso(),
     }
@@ -37,7 +38,8 @@ def _template_doc_from_fields(tenant_id: str, user: dict, name: str, src: dict) 
 async def list_templates(user: dict = Depends(require_tenant)):
     db = get_db()
     return await db.quotation_templates.find(
-        {"tenant_id": user["tenant_id"]}, {"_id": 0}).sort("created_at", -1).to_list(500)
+        {"tenant_id": user["tenant_id"]}, {"_id": 0}
+    ).sort([("featured", -1), ("created_at", -1)]).to_list(500)
 
 
 @router.get("/templates/{template_id}")
@@ -59,6 +61,21 @@ async def create_template(payload: TemplateCreate, user: dict = Depends(require_
     doc = _template_doc_from_fields(user["tenant_id"], user, payload.name, src)
     await db.quotation_templates.insert_one(dict(doc))
     return doc
+
+
+@router.patch("/templates/{template_id}")
+async def update_template(template_id: str, payload: TemplateUpdate, user: dict = Depends(require_tenant)):
+    db = get_db()
+    updates = {k: v for k, v in payload.model_dump(exclude_unset=True).items() if v is not None}
+    if not updates:
+        raise HTTPException(status_code=400, detail="Nada que actualizar")
+    updates["updated_at"] = now_iso()
+    res = await db.quotation_templates.update_one(
+        {"id": template_id, "tenant_id": user["tenant_id"]}, {"$set": updates})
+    if res.matched_count == 0:
+        raise HTTPException(status_code=404, detail="Plantilla no encontrada")
+    return await db.quotation_templates.find_one(
+        {"id": template_id, "tenant_id": user["tenant_id"]}, {"_id": 0})
 
 
 @router.delete("/templates/{template_id}")
@@ -95,26 +112,12 @@ async def _unique_package_code(db, tenant_id: str, base: str) -> str:
     return code
 
 
-@router.post("/quotations/{quotation_id}/save-as-package", status_code=201)
-async def save_quotation_as_package(quotation_id: str, payload: SaveAsPackageInput,
-                                    user: dict = Depends(require_roles("company_admin"))):
-    """Create a catalog package from a successful custom quotation. Descriptive
-    content (name, nights, itinerary, includes/excludes) is copied verbatim; a
-    single hotel is pre-filled from the hospedaje concept's public price so the
-    admin only needs to fine-tune occupancy prices in the editor."""
-    db = get_db()
-    q = await db.quotations.find_one({"id": quotation_id, "tenant_id": user["tenant_id"]}, {"_id": 0})
-    if not q:
-        raise HTTPException(status_code=404, detail="Cotización no encontrada")
-    if q.get("type") != "personalizado":
-        raise HTTPException(status_code=400, detail="Solo las cotizaciones a medida pueden guardarse como paquete")
-
-    company = await db.companies.find_one({"id": user["tenant_id"]}, {"_id": 0})
-    pricing_config = (company or {}).get("pricing_config") or DEFAULT_PRICING_CONFIG
-    margin = float(pricing_config.get("margin_divisor", 0.76) or 0.76)
-
-    # Pre-fill a single hotel from the first 'hospedaje' concept (public price).
-    hosp = next((it for it in (q.get("custom_items") or []) if it.get("category") == "hospedaje"), None)
+async def _build_package_from_custom(db, tenant_id: str, src: dict, margin: float,
+                                     nights: int, code_in: str | None, status: str) -> dict:
+    """Build a catalog package doc from custom_* fields (quotation or template).
+    Descriptive content is copied verbatim; one hotel is pre-filled from the first
+    'hospedaje' concept's public price (net / margin_divisor)."""
+    hosp = next((it for it in (src.get("custom_items") or []) if it.get("category") == "hospedaje"), None)
     if hosp:
         net = float(hosp.get("net_price", 0) or 0)
         public = round(net / margin, 2) if margin > 0 else round(net, 2)
@@ -127,22 +130,57 @@ async def save_quotation_as_package(quotation_id: str, payload: SaveAsPackageInp
         "prices_by_occupancy": {"sencilla": public, "doble": public, "triple": public, "cuadruple": public},
         "minor_price": 0.0, "season_prices": {},
     }
-
-    title = q.get("custom_title") or "Programa personalizado"
-    base_code = (payload.code or slugify(title).replace("-", "").upper()) or "PROG"
-    code = await _unique_package_code(db, user["tenant_id"], base_code)
-
-    doc = {
-        "id": new_id(), "tenant_id": user["tenant_id"], "created_at": now_iso(),
-        "code": code, "name": title, "nights": int(q.get("nights_total") or q.get("custom_nights") or 0),
+    title = src.get("custom_title") or src.get("name") or "Programa personalizado"
+    base_code = (code_in or slugify(title).replace("-", "").upper()) or "PROG"
+    code = await _unique_package_code(db, tenant_id, base_code)
+    return {
+        "id": new_id(), "tenant_id": tenant_id, "created_at": now_iso(),
+        "code": code, "name": title, "nights": int(nights or 0),
         "description": "", "image_url": "",
-        "itinerary": q.get("custom_itinerary", []) or [],
+        "itinerary": src.get("custom_itinerary", []) or [],
         "hotels": [hotel],
-        "seasons": [], "includes": q.get("custom_includes", []) or [],
-        "excludes": q.get("custom_excludes", []) or [],
+        "seasons": [], "includes": src.get("custom_includes", []) or [],
+        "excludes": src.get("custom_excludes", []) or [],
         "season_start": None, "season_end": None,
-        "allowed_start_days": [], "special_departure_dates": [], "status": "active",
-        "from_custom_quotation": quotation_id,
+        "allowed_start_days": [], "special_departure_dates": [], "status": status,
     }
+
+
+@router.post("/quotations/{quotation_id}/save-as-package", status_code=201)
+async def save_quotation_as_package(quotation_id: str, payload: SaveAsPackageInput,
+                                    user: dict = Depends(require_roles("company_admin"))):
+    db = get_db()
+    q = await db.quotations.find_one({"id": quotation_id, "tenant_id": user["tenant_id"]}, {"_id": 0})
+    if not q:
+        raise HTTPException(status_code=404, detail="Cotización no encontrada")
+    if q.get("type") != "personalizado":
+        raise HTTPException(status_code=400, detail="Solo las cotizaciones a medida pueden guardarse como paquete")
+    company = await db.companies.find_one({"id": user["tenant_id"]}, {"_id": 0})
+    pricing_config = (company or {}).get("pricing_config") or DEFAULT_PRICING_CONFIG
+    margin = float(pricing_config.get("margin_divisor", 0.76) or 0.76)
+    nights = q.get("nights_total") or q.get("custom_nights") or 0
+    doc = await _build_package_from_custom(db, user["tenant_id"], q, margin, nights, payload.code, "active")
+    doc["from_custom_quotation"] = quotation_id
+    await db.packages.insert_one(dict(doc))
+    return doc
+
+
+@router.post("/templates/{template_id}/publish-as-package", status_code=201)
+async def publish_template_as_package(template_id: str, payload: SaveAsPackageInput,
+                                      user: dict = Depends(require_roles("company_admin"))):
+    """Create a package from a featured template. Created as 'inactive' (NOT yet
+    public) so the admin reviews/adjusts occupancy prices in the editor before
+    publishing (setting status 'active' makes it appear in /c/:slug)."""
+    db = get_db()
+    tpl = await db.quotation_templates.find_one(
+        {"id": template_id, "tenant_id": user["tenant_id"]}, {"_id": 0})
+    if not tpl:
+        raise HTTPException(status_code=404, detail="Plantilla no encontrada")
+    company = await db.companies.find_one({"id": user["tenant_id"]}, {"_id": 0})
+    pricing_config = (company or {}).get("pricing_config") or DEFAULT_PRICING_CONFIG
+    margin = float(pricing_config.get("margin_divisor", 0.76) or 0.76)
+    doc = await _build_package_from_custom(
+        db, user["tenant_id"], tpl, margin, tpl.get("custom_nights", 0), payload.code, "inactive")
+    doc["from_template"] = template_id
     await db.packages.insert_one(dict(doc))
     return doc
