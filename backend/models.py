@@ -305,6 +305,14 @@ class ClientCreate(BaseModel):
     notes: str = ""
 
 
+class ClientUpdate(BaseModel):
+    name: Optional[str] = None
+    phone: Optional[str] = None
+    email: Optional[str] = None
+    channel: Optional[Literal["directo", "agencia", "mayorista", "operador"]] = None
+    notes: Optional[str] = None
+
+
 # ---------- Quotation contacts (agency + final traveler) ----------
 class AgencyContact(BaseModel):
     name: str = ""
@@ -464,3 +472,4 @@ class PresentationInput(BaseModel):
     date_end: str = ""
     adultos: int = 0
     menores: int = 0
+    tone: Literal["formal", "cercano", "premium"] = "formal"

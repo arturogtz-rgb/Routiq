@@ -24,7 +24,7 @@ from auth import (
 )
 from models import (
     LoginInput, UserPublic, CompanyCreate, CompanyPublic, CompanyUpdate, PricingConfig,
-    InviteExecutive, PackageCreate, PackageUpdate, ClientCreate,
+    InviteExecutive, PackageCreate, PackageUpdate, ClientCreate, ClientUpdate,
     QuotationCreate, QuotationStateUpdate, QuotationUpdate, WhatsAppNumber,
     ServiceCreate, ServiceUpdate, CompanyIntegrationsUpdate, QuotationPricingAdjust,
     PublicCheckoutRequest, QuotationArchive, ManualPaymentInput, SendPaymentInput,
@@ -50,6 +50,9 @@ log = logging.getLogger("routiq")
 
 app = FastAPI(title="Routiq API", version="1.0.0")
 api = APIRouter(prefix="/api")
+
+# Estados de cotización considerados "activos" (en curso)
+ACTIVE_QUOTATION_STATES = ["nueva_consulta", "cotizando", "enviada", "negociacion"]
 
 # ---------------------------------------------------------------------------
 # Lifecycle
@@ -346,6 +349,37 @@ async def toggle_user_status(user_id: str, status: str, user: dict = Depends(req
     return {"ok": True}
 
 
+@api.get("/users/{user_id}/workload")
+async def user_workload(user_id: str, user: dict = Depends(require_roles("company_admin"))):
+    db = get_db()
+    target = await db.users.find_one({"id": user_id, "tenant_id": user["tenant_id"]}, {"_id": 0})
+    if not target:
+        raise HTTPException(status_code=404, detail="Usuario no encontrado")
+    total = await db.quotations.count_documents({"tenant_id": user["tenant_id"], "assigned_to": user_id})
+    active = await db.quotations.count_documents({
+        "tenant_id": user["tenant_id"], "assigned_to": user_id, "state": {"$in": ACTIVE_QUOTATION_STATES}})
+    return {"total": total, "active": active}
+
+
+@api.delete("/users/{user_id}")
+async def delete_tenant_user(user_id: str, user: dict = Depends(require_roles("company_admin"))):
+    db = get_db()
+    target = await db.users.find_one({"id": user_id, "tenant_id": user["tenant_id"]}, {"_id": 0})
+    if not target:
+        raise HTTPException(status_code=404, detail="Usuario no encontrado")
+    if target.get("role") == "company_admin":
+        raise HTTPException(status_code=403, detail="No puedes eliminar a un administrador")
+    if target["id"] == user["id"]:
+        raise HTTPException(status_code=400, detail="No puedes eliminarte a ti mismo")
+    # Reassign the executive's assigned quotations to the admin so nothing gets orphaned.
+    res = await db.quotations.update_many(
+        {"tenant_id": user["tenant_id"], "assigned_to": user_id},
+        {"$set": {"assigned_to": user["id"]}},
+    )
+    await db.users.delete_one({"id": user_id, "tenant_id": user["tenant_id"]})
+    return {"ok": True, "reassigned": res.modified_count}
+
+
 @api.post("/companies/me/email/test")
 async def test_company_email(payload: SMTPTestInput, user: dict = Depends(require_roles("company_admin"))):
     """Verify SMTP credentials by sending a test email before saving."""
@@ -499,7 +533,27 @@ async def delete_service(service_id: str, user: dict = Depends(require_roles("co
 @api.get("/clients")
 async def list_clients(user: dict = Depends(require_tenant)):
     db = get_db()
-    return await db.clients.find({"tenant_id": user["tenant_id"]}, {"_id": 0}).to_list(500)
+    t = user["tenant_id"]
+    clients = await db.clients.find({"tenant_id": t}, {"_id": 0}).to_list(2000)
+    # Aggregate per-client activity (count, active count, won sales, last activity)
+    pipeline = [
+        {"$match": {"tenant_id": t, "deleted": {"$ne": True}}},
+        {"$group": {
+            "_id": "$client_id",
+            "count": {"$sum": 1},
+            "active": {"$sum": {"$cond": [{"$in": ["$state", ACTIVE_QUOTATION_STATES]}, 1, 0]}},
+            "sales": {"$sum": {"$cond": [{"$eq": ["$state", "ganada"]}, {"$ifNull": ["$total", 0]}, 0]}},
+            "last": {"$max": "$last_activity_at"},
+        }},
+    ]
+    stats = {row["_id"]: row async for row in db.quotations.aggregate(pipeline)}
+    for c in clients:
+        s = stats.get(c["id"], {})
+        c["quotations_count"] = s.get("count", 0)
+        c["active_count"] = s.get("active", 0)
+        c["sales_total"] = round(s.get("sales", 0) or 0, 2)
+        c["last_activity_at"] = s.get("last") or c.get("created_at")
+    return clients
 
 
 @api.post("/clients", status_code=201)
@@ -508,6 +562,27 @@ async def create_client(payload: ClientCreate, user: dict = Depends(require_tena
     doc = {"id": new_id(), "tenant_id": user["tenant_id"], "created_at": now_iso(), **payload.model_dump()}
     await db.clients.insert_one(dict(doc))
     return doc
+
+
+@api.patch("/clients/{client_id}")
+async def update_client(client_id: str, payload: ClientUpdate, user: dict = Depends(require_tenant)):
+    db = get_db()
+    updates = {k: v for k, v in payload.model_dump(exclude_unset=True).items() if v is not None}
+    if not updates:
+        raise HTTPException(status_code=400, detail="Nada que actualizar")
+    res = await db.clients.update_one({"id": client_id, "tenant_id": user["tenant_id"]}, {"$set": updates})
+    if res.matched_count == 0:
+        raise HTTPException(status_code=404, detail="Cliente no encontrado")
+    return await db.clients.find_one({"id": client_id, "tenant_id": user["tenant_id"]}, {"_id": 0})
+
+
+@api.delete("/clients/{client_id}")
+async def delete_client(client_id: str, user: dict = Depends(require_tenant)):
+    db = get_db()
+    res = await db.clients.delete_one({"id": client_id, "tenant_id": user["tenant_id"]})
+    if res.deleted_count == 0:
+        raise HTTPException(status_code=404, detail="Cliente no encontrado")
+    return {"ok": True}
 
 
 

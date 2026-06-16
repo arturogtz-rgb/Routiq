@@ -26,6 +26,7 @@ export default function QuotationBuilder() {
   const [showClient, setShowClient] = useState(false);
   const [newClient, setNewClient] = useState({ name: '', phone: '', email: '', channel: 'directo' });
   const [aiPresLoading, setAiPresLoading] = useState(false);
+  const [presTone, setPresTone] = useState('formal');
 
   const [form, setForm] = useState({
     type: 'paquete',
@@ -236,7 +237,7 @@ export default function QuotationBuilder() {
       const { data } = await api.post('/ai/presentation', {
         client_name: client?.name || '', title,
         date_start: form.dates.start || '', date_end: form.dates.end || '',
-        adultos: totalAdults || 0, menores: form.pax.menores || 0,
+        adultos: totalAdults || 0, menores: form.pax.menores || 0, tone: presTone,
       });
       if (data.text) setForm((f) => ({ ...f, presentation_text: data.text }));
     } catch (e) { setError(formatApiError(e)); }
@@ -664,9 +665,16 @@ export default function QuotationBuilder() {
             <div className="rounded-xl border border-brand-100 bg-brand-50/40 p-4" data-testid="presentation-block">
               <div className="flex items-center justify-between mb-2">
                 <label className="label-text mb-0">Texto de presentación (aparece al inicio del PDF y del enlace)</label>
-                <button type="button" className="btn-ghost text-xs border border-brand-200 text-brand-600" onClick={genPresentation} disabled={aiPresLoading} data-testid="ai-presentation-btn">
-                  <Sparkles className="w-3.5 h-3.5" /> {aiPresLoading ? 'Generando…' : 'Generar con IA'}
-                </button>
+                <div className="flex items-center gap-2">
+                  <select className="input-field h-8 py-0 text-xs w-auto" value={presTone} onChange={(e) => setPresTone(e.target.value)} data-testid="tone-select">
+                    <option value="formal">Tono: Formal</option>
+                    <option value="cercano">Tono: Cercano</option>
+                    <option value="premium">Tono: Premium</option>
+                  </select>
+                  <button type="button" className="btn-ghost text-xs border border-brand-200 text-brand-600" onClick={genPresentation} disabled={aiPresLoading} data-testid="ai-presentation-btn">
+                    <Sparkles className="w-3.5 h-3.5" /> {aiPresLoading ? 'Generando…' : 'Generar con IA'}
+                  </button>
+                </div>
               </div>
               <textarea rows="4" className="input-field" value={form.presentation_text} placeholder="Estimada/o [nombre], a continuación le presento la cotización para su viaje…"
                 onChange={(e) => setForm((f) => ({ ...f, presentation_text: e.target.value }))} data-testid="presentation-input" />

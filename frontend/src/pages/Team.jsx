@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import AppShell from '@/components/AppShell';
 import api, { formatApiError } from '@/lib/api';
 import { useAuth } from '@/context/AuthContext';
-import { UserPlus, ShieldCheck, User as UserIcon, ShieldOff, Crown, Pencil, KeyRound, Copy, Check } from 'lucide-react';
+import { UserPlus, ShieldCheck, User as UserIcon, ShieldOff, Crown, Pencil, KeyRound, Copy, Check, Trash2, AlertTriangle } from 'lucide-react';
 
 export default function Team() {
   const { user } = useAuth();
@@ -16,6 +16,9 @@ export default function Team() {
   const [editForm, setEditForm] = useState({ name: '', email: '' });
   const [resetInfo, setResetInfo] = useState(null); // {email, link}
   const [copied, setCopied] = useState(false);
+  const [deleteUser, setDeleteUser] = useState(null);
+  const [deleteWorkload, setDeleteWorkload] = useState(null); // {total, active}
+  const [deleting, setDeleting] = useState(false);
 
   const load = async () => {
     const [usersRes, companyRes] = await Promise.all([
@@ -67,6 +70,21 @@ export default function Team() {
   const copyLink = async () => {
     try { await navigator.clipboard.writeText(resetInfo.link); setCopied(true); setTimeout(() => setCopied(false), 2000); }
     catch { window.prompt('Copia el enlace de recuperación:', resetInfo.link); }
+  };
+
+  const openDelete = async (u) => {
+    setError(''); setDeleteUser(u); setDeleteWorkload(null);
+    try { const { data } = await api.get(`/users/${u.id}/workload`); setDeleteWorkload(data); }
+    catch { setDeleteWorkload({ total: 0, active: 0 }); }
+  };
+
+  const confirmDelete = async () => {
+    setError(''); setDeleting(true);
+    try {
+      await api.delete(`/users/${deleteUser.id}`);
+      setDeleteUser(null); setDeleteWorkload(null); load();
+    } catch (e) { setError(formatApiError(e)); }
+    finally { setDeleting(false); }
   };
 
   return (
@@ -130,6 +148,7 @@ export default function Team() {
                     <button className="btn-ghost text-xs" onClick={() => toggle(u)} data-testid={`toggle-user-${u.id}`}>
                       {u.status === 'active' ? <><ShieldOff className="w-3.5 h-3.5" /> Suspender</> : 'Reactivar'}
                     </button>
+                    <button className="btn-ghost text-xs text-red-600 hover:bg-red-50" onClick={() => openDelete(u)} data-testid={`delete-user-${u.id}`}><Trash2 className="w-3.5 h-3.5" /> Eliminar</button>
                   </>
                 )}
               </div>
@@ -187,6 +206,32 @@ export default function Team() {
             </div>
             <div className="flex justify-end mt-5">
               <button className="btn-primary" onClick={() => setResetInfo(null)} data-testid="reset-link-close">Listo</button>
+            </div>
+          </div>
+        </div>
+      )}
+      {/* Delete user modal */}
+      {deleteUser && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-ink-900/50" onClick={() => !deleting && setDeleteUser(null)}>
+          <div className="bg-white rounded-2xl p-6 w-full max-w-md" onClick={(e) => e.stopPropagation()} data-testid="delete-user-modal">
+            <h3 className="font-display text-xl font-semibold text-ink-900 mb-1 flex items-center gap-2"><Trash2 className="w-5 h-5 text-red-600" /> Eliminar ejecutivo</h3>
+            <p className="text-sm text-ink-600 mt-2">Vas a eliminar a <b>{deleteUser.name}</b> ({deleteUser.email}). Esta acción no se puede deshacer.</p>
+            {deleteWorkload === null ? (
+              <p className="text-sm text-ink-400 mt-3">Revisando cotizaciones asignadas…</p>
+            ) : deleteWorkload.active > 0 ? (
+              <div className="rounded-xl border border-amber-200 bg-peach-100/60 text-amber-800 px-4 py-3 text-sm mt-3 flex items-start gap-2" data-testid="delete-user-warning">
+                <AlertTriangle className="w-5 h-5 shrink-0 mt-0.5 text-amber-600" />
+                <span>Tiene <b>{deleteWorkload.active}</b> cotización(es) activa(s) (de {deleteWorkload.total} en total). Al eliminarlo, sus cotizaciones se <b>reasignarán a ti</b> automáticamente.</span>
+              </div>
+            ) : (
+              <p className="text-sm text-ink-500 mt-3">{deleteWorkload.total > 0 ? `Sus ${deleteWorkload.total} cotización(es) se reasignarán a ti.` : 'No tiene cotizaciones asignadas.'}</p>
+            )}
+            {error && <div className="rounded-xl border border-red-200 bg-red-50 text-red-700 px-4 py-3 text-sm mt-3" data-testid="delete-user-error">{error}</div>}
+            <div className="flex justify-end gap-2 mt-5">
+              <button className="btn-ghost" onClick={() => setDeleteUser(null)} data-testid="delete-user-cancel">Cancelar</button>
+              <button className="btn-primary bg-red-600 hover:bg-red-700" onClick={confirmDelete} disabled={deleting || deleteWorkload === null} data-testid="delete-user-confirm">
+                <Trash2 className="w-4 h-4" /> {deleting ? 'Eliminando…' : 'Eliminar ejecutivo'}
+              </button>
             </div>
           </div>
         </div>

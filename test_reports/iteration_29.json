@@ -1,0 +1,39 @@
+{
+  "summary": "Iteración 29 Fase B (CRUD Clientes + eliminar ejecutivos + selector de tono): backend 10/12 passed (1 skip por single-admin, 1 falla menor de orden de checks en self-delete del admin). Frontend Clientes verificado end-to-end (crear/buscar/filtrar/ordenar/editar/eliminar). Team: invitar+eliminar ejecutivo OK con confirmación; el admin NO expone botón Eliminar en su propia fila. Tone selectors confirmados por código (testids tone-select/custom-tone-select en paso Revisión, envío de tone a /ai/presentation, fallback 503 cubierto por backend).",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {
+        "endpoint": "DELETE /api/users/{id}",
+        "issue": "Cuando el propio admin intenta eliminarse a sí mismo, el endpoint devuelve 403 ('No puedes eliminar a un administrador') en lugar de 400 ('No puedes eliminarte a ti mismo') porque la verificación de rol va antes que la verificación de identidad. La protección funciona (no se permite el borrado), solo difiere del status documentado en el spec. Sugerencia: intercambiar el orden de los if en delete_tenant_user para devolver 400 cuando target.id == user.id antes de checar role==company_admin."
+      }
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_iteration29_fase_b.py",
+    "/app/test_reports/pytest/iter29_results.xml"
+  ],
+  "action_items": [
+    "Backend menor: invertir orden de checks en delete_tenant_user para que self-delete del admin devuelva 400 antes que el check de role==company_admin (alinea con el spec de Fase B). No bloquea la entrega; la protección es efectiva."
+  ],
+  "critical_code_review_comments": [
+    "delete_tenant_user: el orden actual hace inalcanzable el 400 cuando un admin intenta eliminarse a sí mismo (siempre se gana el 403 por role). Cambio trivial pero conviene corregir.",
+    "Clients.jsx (207 líneas) y Team.jsx (242 líneas) están dentro de un rango aceptable; sin embargo, la lógica de modales (Crear/Editar/Eliminar) se podría extraer a componentes reusables a futuro para evitar repetición de patrones de modal en otras páginas (Quotations/Services).",
+    "Server.py 867 líneas: continúa por encima del umbral de 700; varios bloques (clients, users, dashboard, notifications) podrían vivir en routers separados como ya se hizo con quotations.py."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_iteration29_fase_b.py (nuevo)"
+  ],
+  "success_rate": {"backend": "92% (11/12 pass+skip, 1 minor)", "frontend": "100% (flujos críticos OK)"},
+  "test_credentials": "admin@aventurate.mx / Demo2026! ; ejecutivo@aventurate.mx / Demo2026!",
+  "seed_data_creation": "Se crearon y eliminaron clientes y ejecutivos con prefijo TEST_ durante las pruebas. Se hizo limpieza vía API de leftovers TEST_ previos. Verificado: no quedaron datos TEST_ en la lista final.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Endpoints nuevos en server.py: list_clients con stats (quotations_count/active_count/sales_total/last_activity_at), update_client, delete_client, user_workload, delete_tenant_user (reasigna a admin). En frontend, /app/clients es la nueva página CRUD con testids documentados. Tone selectors viven en QuotationBuilder.jsx (testid tone-select) y CustomQuotationBuilder.jsx (testid custom-tone-select) en el paso 'review/Revisión'; la IA devuelve 503 sin BYOK configurado y es comportamiento esperado.",
+  "rca of the issue": "Single backend mismatch: en delete_tenant_user (server.py L370-373) el check `target.role == 'company_admin' -> 403` se evalúa antes que `target.id == user.id -> 400`. Cuando un admin intenta auto-eliminarse, su rol es company_admin, por lo que siempre se gana la rama 403. Reproducción: login admin -> DELETE /api/users/{admin_id} con cookies del propio admin. Resultado esperado por el spec: 400. Resultado actual: 403. Mitigación: swap del orden de los `if` o combinar mensaje. No hay regresión de seguridad."
+}

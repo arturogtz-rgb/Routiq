@@ -15,6 +15,7 @@ import Packages from '@/pages/Packages';
 import PackageEditor from '@/pages/PackageEditor';
 import Services from '@/pages/Services';
 import QuotationBuilder from '@/pages/QuotationBuilder';
+import Clients from '@/pages/Clients';
 import CustomQuotationBuilder from '@/pages/CustomQuotationBuilder';
 import QuotationsList from '@/pages/QuotationsList';
 import QuotationDetail from '@/pages/QuotationDetail';
@@ -78,6 +79,7 @@ export default function App() {
           <Route path="/app/quotations" element={<ProtectedRoute roles={['company_admin', 'executive']}><QuotationsList /></ProtectedRoute>} />
           <Route path="/app/leads" element={<ProtectedRoute roles={['company_admin', 'executive']}><Leads /></ProtectedRoute>} />
           <Route path="/app/quotations/new" element={<ProtectedRoute roles={['company_admin', 'executive']}><QuotationBuilder /></ProtectedRoute>} />
+          <Route path="/app/clients" element={<ProtectedRoute roles={['company_admin', 'executive']}><Clients /></ProtectedRoute>} />
           <Route path="/app/quotations/new/custom" element={<ProtectedRoute roles={['company_admin', 'executive']}><CustomQuotationBuilder /></ProtectedRoute>} />
           <Route path="/app/quotations/custom/:id/edit" element={<ProtectedRoute roles={['company_admin', 'executive']}><CustomQuotationBuilder /></ProtectedRoute>} />
           <Route path="/app/quotations/:id/edit" element={<ProtectedRoute roles={['company_admin', 'executive']}><QuotationBuilder /></ProtectedRoute>} />

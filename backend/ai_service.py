@@ -228,11 +228,17 @@ async def detect_missing_fields(q: dict, pack: dict | None = None, client: dict 
 
 async def generate_presentation(client_name: str, title: str, date_start: str = "",
                                 date_end: str = "", adultos: int = 0, menores: int = 0,
-                                tenant_id: str | None = None) -> str:
+                                tone: str = "formal", tenant_id: str | None = None) -> str:
     """Redacta el texto de presentación que abre la cotización (carta al cliente)."""
+    tone_map = {
+        "formal": "tono formal y profesional, trato de usted",
+        "cercano": "tono cálido y cercano, amigable pero respetuoso, trato de usted",
+        "premium": "tono premium, sofisticado y evocador que transmite exclusividad, trato de usted",
+    }
+    tone_desc = tone_map.get(tone, tone_map["formal"])
     system = (
         "Eres ejecutivo de ventas de un tour operador en México. Redacta un PÁRRAFO de presentación "
-        "para encabezar una cotización formal, en español de México, tono cálido y profesional (trato de usted). "
+        f"para encabezar una cotización formal, en español de México, con {tone_desc}. "
         "Entre 40 y 70 palabras. Inicia saludando al cliente por su nombre. Menciona el viaje/destino y, si hay fechas, "
         "alúdelas con naturalidad. Cierra invitando a revisar la propuesta. Sin emojis, sin despedida con firma, "
         "sin placeholders entre corchetes."

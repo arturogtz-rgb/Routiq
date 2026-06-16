@@ -381,7 +381,7 @@ async def ai_presentation(payload: PresentationInput, user: dict = Depends(requi
     try:
         text = await ai_service.generate_presentation(
             payload.client_name, payload.title, payload.date_start, payload.date_end,
-            payload.adultos, payload.menores, tenant_id=user["tenant_id"])
+            payload.adultos, payload.menores, tone=payload.tone, tenant_id=user["tenant_id"])
         return {"text": text}
     except Exception as e:
         log.exception("AI presentation failed")
