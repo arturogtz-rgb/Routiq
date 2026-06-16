@@ -7,6 +7,13 @@ Plataforma SaaS PWA multi-tenant para **cotización y seguimiento turístico** p
 - **Producción: https://routiq.com.mx** ✅ (VPS Hostinger 177.7.36.75, Docker + Nginx + Let's Encrypt)
 - Iteración actual: **v2.4** (iter_24: registro de uso/costo de IA en Master + generar respaldo on-demand + revisión de seguridad pre-lanzamiento)
 
+## Iteración 28 — Fase B (jun-2026) — CRUD clientes + eliminar ejecutivos + tono IA
+- ✅ **(8) CRUD completo de clientes** — nueva página `/app/clients` (nav "Clientes"): editar (nombre/correo/teléfono/tipo/notas), eliminar con confirmación (advierte si tiene cotizaciones activas), filtro por tipo, buscador (nombre/correo/notas), paginador (10/pág), orden por actividad/ventas/nombre/reciente. `GET /api/clients` enriquecido con `quotations_count`, `active_count`, `sales_total`, `last_activity_at` (agregación). Nuevos: `PATCH/DELETE /api/clients/{id}`, `ClientUpdate`.
+- ✅ **(9) Eliminar ejecutivos** en `/app/team` (además de suspender): `DELETE /api/users/{id}` (admin) reasigna las cotizaciones del ejecutivo al admin; `GET /api/users/{id}/workload` para la advertencia. Guardas: 400 self-delete, 403 admin/executive. Modal con advertencia de cotizaciones activas.
+- ✅ **(10) Selector de tono IA** (Formal/Cercano/Premium) junto a "Generar con IA" en el paso Revisión de ambos constructores; `PresentationInput.tone` + `generate_presentation(tone)`.
+- Tests: `/app/test_reports/iteration_29.json` (frontend 100%, backend 12/12 tras corregir orden de checks self-delete→400) + `backend/tests/test_iteration29_fase_b.py`.
+- ⏳ **Pendiente iteración 28**: Fase C (4 analítica catálogo público, 5 multi-hotel al convertir plantilla, 6 revisión general UX).
+
 ## Iteración 28 — Fase A (jun-2026) — Bugs críticos + presentación IA + fecha/hora por concepto
 - 🐞 **Bug correos (raíz)**: `notifications.send_email` ahora hace **fallback a `PLATFORM_RESEND_API_KEY`/`PLATFORM_FROM_EMAIL`** cuando la empresa no tiene proveedor propio (antes el reset de contraseña fallaba en silencio). Requiere dominio `routiq.com.mx` verificado en Resend (pasos entregados al usuario).
 - 🐞 **Bug captcha**: `_verify_turnstile` ahora loguea `error-codes`/`hostname` de Cloudflare para diagnosticar (`invalid-input-secret` / `hostname-mismatch` / `timeout-or-duplicate`).

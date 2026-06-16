@@ -367,10 +367,10 @@ async def delete_tenant_user(user_id: str, user: dict = Depends(require_roles("c
     target = await db.users.find_one({"id": user_id, "tenant_id": user["tenant_id"]}, {"_id": 0})
     if not target:
         raise HTTPException(status_code=404, detail="Usuario no encontrado")
-    if target.get("role") == "company_admin":
-        raise HTTPException(status_code=403, detail="No puedes eliminar a un administrador")
     if target["id"] == user["id"]:
         raise HTTPException(status_code=400, detail="No puedes eliminarte a ti mismo")
+    if target.get("role") == "company_admin":
+        raise HTTPException(status_code=403, detail="No puedes eliminar a un administrador")
     # Reassign the executive's assigned quotations to the admin so nothing gets orphaned.
     res = await db.quotations.update_many(
         {"tenant_id": user["tenant_id"], "assigned_to": user_id},
