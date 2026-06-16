@@ -26,6 +26,23 @@ const EMPTY_CONTACTS = { agency: { name: '', contact: '', email: '' }, traveler:
 
 function money(v, c = 'MXN') { return `$${Number(v || 0).toLocaleString('es-MX', { maximumFractionDigits: 2 })} ${c}`; }
 
+// Editable string list — defined at module scope so it is NOT remounted on every
+// parent render (that bug caused the input to lose focus after each keystroke).
+function StringList({ list, onChange, placeholder, testid }) {
+  return (
+    <div className="space-y-2" data-testid={testid}>
+      {list.map((x, i) => (
+        <div key={i} className="flex gap-2">
+          <input className="input-field" value={x} placeholder={placeholder}
+            onChange={(e) => onChange(list.map((v, j) => j === i ? e.target.value : v))} data-testid={`${testid}-input-${i}`} />
+          <button type="button" className="text-red-600 hover:text-red-800 px-2" onClick={() => onChange(list.filter((_, j) => j !== i))} data-testid={`${testid}-remove-${i}`}><Trash2 className="w-4 h-4" /></button>
+        </div>
+      ))}
+      <button type="button" className="btn-ghost text-xs" onClick={() => onChange([...list, ''])} data-testid={`${testid}-add`}><Plus className="w-4 h-4" /> Agregar</button>
+    </div>
+  );
+}
+
 export default function CustomQuotationBuilder() {
   const navigate = useNavigate();
   const { id } = useParams();
@@ -234,18 +251,6 @@ export default function CustomQuotationBuilder() {
   };
 
   // --- editable string-list helper ---
-  const StringList = ({ list, onChange, placeholder, testid }) => (
-    <div className="space-y-2" data-testid={testid}>
-      {list.map((x, i) => (
-        <div key={i} className="flex gap-2">
-          <input className="input-field" value={x} placeholder={placeholder}
-            onChange={(e) => onChange(list.map((v, j) => j === i ? e.target.value : v))} data-testid={`${testid}-input-${i}`} />
-          <button type="button" className="text-red-600 hover:text-red-800 px-2" onClick={() => onChange(list.filter((_, j) => j !== i))} data-testid={`${testid}-remove-${i}`}><Trash2 className="w-4 h-4" /></button>
-        </div>
-      ))}
-      <button type="button" className="btn-ghost text-xs" onClick={() => onChange([...list, ''])} data-testid={`${testid}-add`}><Plus className="w-4 h-4" /> Agregar</button>
-    </div>
-  );
 
   return (
     <AppShell>

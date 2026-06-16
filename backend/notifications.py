@@ -131,6 +131,26 @@ async def send_email(company: dict, to_email: str, subject: str, html: str) -> b
     resend = (company or {}).get("resend") or {}
     api_key = resend.get("api_key") or os.environ.get("RESEND_API_KEY")
     if not api_key:
+        # Platform fallback: lets tenants without their own email provider still
+        # deliver transactional mail (e.g. password reset) via Routiq's verified domain.
+        plat_key = os.environ.get("PLATFORM_RESEND_API_KEY")
+        if plat_key:
+            plat_from = os.environ.get("PLATFORM_FROM_EMAIL", "no-reply@routiq.com.mx")
+            from_name = (company or {}).get("name") or "Routiq"
+            try:
+                async with httpx.AsyncClient(timeout=12) as client:
+                    r = await client.post(
+                        "https://api.resend.com/emails",
+                        headers={"Authorization": f"Bearer {plat_key}", "Content-Type": "application/json"},
+                        json={"from": f"{from_name} <{plat_from}>", "to": [to_email], "subject": subject, "html": html},
+                    )
+                    ok = r.status_code in (200, 201)
+                    if not ok:
+                        log.warning("platform-fallback Resend rejected (%s): %s", r.status_code, r.text[:300])
+                    return ok
+            except Exception as e:
+                log.warning("platform-fallback Resend failed: %s", e)
+                return False
         log.info("send_email skipped (no provider configured) -> %s | %s", to_email, subject)
         return False
     from_email = resend.get("from_email") or "onboarding@resend.dev"

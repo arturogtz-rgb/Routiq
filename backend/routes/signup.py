@@ -45,6 +45,7 @@ async def _verify_turnstile(token: str | None, ip: str) -> bool:
     if not TURNSTILE_SECRET_KEY:
         return True
     if not token:
+        log.warning("Turnstile: token vacío recibido del frontend")
         return False
     try:
         async with httpx.AsyncClient(timeout=10) as client:
@@ -52,7 +53,15 @@ async def _verify_turnstile(token: str | None, ip: str) -> bool:
                 "https://challenges.cloudflare.com/turnstile/v0/siteverify",
                 data={"secret": TURNSTILE_SECRET_KEY, "response": token, "remoteip": ip},
             )
-            return bool(resp.json().get("success", False))
+            data = resp.json()
+            ok = bool(data.get("success", False))
+            if not ok:
+                # error-codes diagnose el problema exacto: invalid-input-secret (secret
+                # equivocado), invalid-input-response (token vencido/reusado),
+                # hostname-mismatch (dominio no permitido en el widget), etc.
+                log.warning("Turnstile rechazó (success=false): error-codes=%s hostname=%s",
+                            data.get("error-codes"), data.get("hostname"))
+            return ok
     except Exception:
         log.exception("Turnstile verify failed")
         return False
