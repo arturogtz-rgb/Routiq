@@ -181,12 +181,12 @@ def test_send_payment_link(admin, seed):
     try:
         r1 = admin.post(f"{API}/quotations/{qid}/send-payment",
                         json={"channel": "email", "to_email": "cliente.test@example.com",
-                              "public_url": "https://free-itinerary-mode.preview.emergentagent.com"},
+                              "public_url": "https://master-panel-6.preview.emergentagent.com"},
                         timeout=15)
         assert r1.status_code == 200, r1.text
         body = r1.json()
         assert body["ok"] is True
-        assert body["link"].startswith("https://free-itinerary-mode.preview.emergentagent.com/q/")
+        assert body["link"].startswith("https://master-panel-6.preview.emergentagent.com/q/")
         # email_sent may be False (Resend not configured) — link must still be returned
         assert "email_sent" in body
     finally:

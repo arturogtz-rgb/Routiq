@@ -5,7 +5,7 @@ import time
 import pytest
 import requests
 
-BASE_URL = os.environ.get("REACT_APP_BACKEND_URL", "https://free-itinerary-mode.preview.emergentagent.com").rstrip("/")
+BASE_URL = os.environ.get("REACT_APP_BACKEND_URL", "https://master-panel-6.preview.emergentagent.com").rstrip("/")
 # Backend URL must be derived from frontend/.env when running locally
 if not BASE_URL.endswith("preview.emergentagent.com") and "REACT_APP_BACKEND_URL" not in os.environ:
     # fallback: read frontend .env

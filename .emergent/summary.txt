@@ -1,17 +1,13 @@
-<analysis>/c/:slug/p/:slug/:codeview_bulkview_filepricing.pyquotations.pypdf_generator.pytesting_agentdeployment_agentmodels.pyquotations.pypricing.pypdf_generator.pyQuotationBuilder.jsxcompaniesfrontend/src/components/settings/pdf_generator.pyPublicQuotation.jsxPackageEditor.jsx/p/:slug/:code/c/:slugSettings.jsxEMERGENT_LLM_KEYdocker-compose.ymlSHOW_DEMO_CREDENTIALSPLATFORM_RESEND_API_KEY
+<analysis>/app/clientsroutes/integrations.pyEmailSettings.jsxMaster.jsxPOST /api/companies/me/test-resendroutes/integrations.py/app/frontend/src/components/settings/EmailSettings.jsxDELETE /api/master/companies/{id}/app/frontend/src/pages/Master.jsx/c/:slugwindow.confirmog:titleog:descriptionog:image/q/:tokenCustomQuotationBuilderTeam.jsx/q/:token
 /app
-├── baileys-service/ (Microservicio de WhatsApp Node.js, v6.7.22 fijada)
+├── baileys-service/ (Microservicio WhatsApp)
 ├── backend/
-│   ├── server.py (FastAPI main)
-│   ├── routes/ (quotations.py, public_package.py, ai_settings.py, account.py, backups.py, etc.)
-│   ├── models.py, deps.py, database.py
-│   ├── ai_service.py (Maneja BYOK Anthropic/OpenAI/Gemini)
-│   ├── pricing.py (Motor de precios dinámico)
-│   ├── pdf_generator.py (Generación de ReportLab)
-│   └── tests/ 
+│   ├── server.py (FastAPI, Master endpoints)
+│   ├── routes/ (account.py, integrations.py, public_payments.py, quotations.py, etc.)
+│   ├── models.py, deps.py, database.py, ai_service.py
+│   ├── notifications.py (Envío de correos y fallback)
+│   └── tests/
 ├── frontend/
-│   ├── src/pages/ (Master, Settings, PackageEditor, QuotationBuilder, PublicCatalog, etc.)
-│   └── src/components/settings/ (Settings divididos)
-└── deploy/
-    └── docker-compose.yml (Actualizado con env vars)
-@whiskeysockets/baileysanthropicopenaigoogle-genaiqrcode.reactquotationscompaniesai_settingsai_usageanthropic==0.109.2openai==1.99.9google-genai==1.71.0qrcode.react/app/backend/routes/quotations.py/app/backend/models.py/app/frontend/src/pages/QuotationBuilder.jsx/app/backend/pricing.py/app/backend/pdf_generator.py/app/frontend/src/pages/QuotationBuilder.jsxCustomQuotationBuilder.jsxPOST /api/quotationsGET /api/public-configshow_demo_credentials/api/master/ai6.7.22pricing.pypdf_generator.pyai_service.pyai_settings/app/test_reports/iteration_19.json/app/test_reports/iteration_24.json/app/memory/V1_LAUNCH_CHECKLIST.mdmongodumpdocker-compose.ymlrorwSHOW_DEMO_CREDENTIALS=false.envdocker-compose.ymlpricing.pyquotations.pypdf_generator.py/app/memory/test_credentials.mdadmin@aventurate.mxDemo2026!ejecutivo@aventurate.mxDemo2026!owner@routiq.mxRoutiq2026!/app/frontend/src/pages/QuotationBuilder.jsx/app/frontend/src/components/settings//app/backend/models.py/app/backend/pricing.py/app/backend/pdf_generator.py/app/backend/routes/quotations.py</analysis>
+│   ├── src/pages/ (Master, Clients, Team, CustomQuotationBuilder, etc.)
+│   └── src/components/settings/ (EmailSettings, etc.)
+userscompaniesclientsquotation_templatescompanies.resendquotationspersonalizadopresentation_textitemsservice_datestart_timeend_timeclientsquotation_templates/app/backend/routes/integrations.pytest-resend/app/frontend/src/components/settings/EmailSettings.jsx/app/frontend/src/pages/Master.jsx/app/backend/server.pyMaster.jsxQuotationBuilder.jsxPOST /api/companies/me/test-smtpDELETE /api/master/companies/{id}require_roles(super_admin)DELETEtenant_id/app/test_reports/iteration_25.json/app/test_reports/iteration_29.json/app/backend/tests/test_email_fallback.py/app/memory/PRD.md/app/backend/tests/test_email_fallback.py/app/memory/test_credentials.mdadmin@aventurate.mxDemo2026!ejecutivo@aventurate.mxDemo2026!owner@routiq.mxRoutiq2026!/app/frontend/src/components/settings/EmailSettings.jsx/app/frontend/src/pages/Master.jsx/app/backend/routes/integrations.py@router.post(/companies/me/test-resend)/app/backend/server.py</analysis>
