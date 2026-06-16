@@ -2,8 +2,9 @@ import { useEffect, useState } from 'react';
 import { Link, useParams, useNavigate } from 'react-router-dom';
 import AppShell from '@/components/AppShell';
 import api, { formatApiError } from '@/lib/api';
-import { ArrowLeft, Download, MessageCircle, Mail, FileText, Sparkles, Link2, Copy, CheckCircle2, X, Tag, CreditCard, Pencil, Archive, Trash2, History, Briefcase, Users, Smartphone } from 'lucide-react';
+import { ArrowLeft, Download, MessageCircle, Mail, FileText, Sparkles, Link2, Copy, CheckCircle2, X, Tag, CreditCard, Pencil, Archive, Trash2, History, Briefcase, Users, Smartphone, BookmarkPlus, Package as PackageIcon } from 'lucide-react';
 import { formatDateEs } from '@/lib/dates';
+import { useAuth } from '@/context/AuthContext';
 
 const STATES = [
   { id: 'nueva_consulta', label: 'Nueva' },
@@ -19,8 +20,15 @@ function money(v, c = 'MXN') { return `$${Number(v || 0).toLocaleString('es-MX')
 export default function QuotationDetail() {
   const { id } = useParams();
   const navigate = useNavigate();
+  const { user } = useAuth();
+  const isAdmin = user?.role === 'company_admin';
   const [q, setQ] = useState(null);
   const [pack, setPack] = useState(null);
+  const [saveTplOpen, setSaveTplOpen] = useState(false);
+  const [tplName, setTplName] = useState('');
+  const [savingTpl, setSavingTpl] = useState(false);
+  const [savingPkg, setSavingPkg] = useState(false);
+  const [saveAsMsg, setSaveAsMsg] = useState('');
   const [ai, setAi] = useState({ next: '', missing: [], message: '' });
   const [aiLoading, setAiLoading] = useState({ next: false, missing: false, message: false });
   const [aiError, setAiError] = useState('');
@@ -186,6 +194,26 @@ export default function QuotationDetail() {
 
   if (!q) return <AppShell><div className="p-8 text-ink-400">Cargando…</div></AppShell>;
 
+  const saveAsTemplate = async () => {
+    setSaveAsMsg(''); setSavingTpl(true);
+    try {
+      await api.post(`/quotations/${id}/save-as-template`, { name: tplName.trim() });
+      setSaveTplOpen(false); setTplName('');
+      setSaveAsMsg('✓ Plantilla guardada. Reutilízala desde Catálogo → Plantillas.');
+      setTimeout(() => setSaveAsMsg(''), 5000);
+    } catch (e) { setSaveAsMsg(formatApiError(e)); }
+    finally { setSavingTpl(false); }
+  };
+
+  const saveAsPackage = async () => {
+    if (!window.confirm('¿Crear un paquete en el catálogo a partir de esta cotización a medida? Podrás ajustar los precios por ocupación en el editor.')) return;
+    setSaveAsMsg(''); setSavingPkg(true);
+    try {
+      const { data } = await api.post(`/quotations/${id}/save-as-package`, {});
+      navigate(`/app/packages/${data.id}/edit`);
+    } catch (e) { setSaveAsMsg(formatApiError(e)); setSavingPkg(false); }
+  };
+
   const paxDesc = (() => {
     const p = q.pax || {};
     if (q.type === 'servicios') return `${p.adultos || 0} persona(s)`;
@@ -217,6 +245,16 @@ export default function QuotationDetail() {
           <button onClick={() => navigate(q.type === 'personalizado' ? `/app/quotations/custom/${id}/edit` : `/app/quotations/${id}/edit`)} className="btn-secondary text-sm" data-testid="edit-quotation-btn">
             <Pencil className="w-4 h-4" /> Editar
           </button>
+          {q.type === 'personalizado' && (
+            <button onClick={() => { setTplName(q.custom_title || q.package_snapshot?.name || ''); setSaveTplOpen(true); }} className="btn-ghost text-sm border border-amber-200 text-amber-700" data-testid="save-as-template-btn">
+              <BookmarkPlus className="w-4 h-4" /> Guardar como plantilla
+            </button>
+          )}
+          {q.type === 'personalizado' && isAdmin && (
+            <button onClick={saveAsPackage} disabled={savingPkg} className="btn-ghost text-sm border border-brand-200 text-brand-600" data-testid="save-as-package-btn">
+              <PackageIcon className="w-4 h-4" /> {savingPkg ? 'Creando…' : 'Guardar como paquete'}
+            </button>
+          )}
           <button onClick={downloadPdf} className="btn-primary text-sm" data-testid="download-pdf-btn">
             <Download className="w-4 h-4" /> Descargar PDF
           </button>
@@ -228,6 +266,8 @@ export default function QuotationDetail() {
           </button>
         </div>
       </div>
+
+      {saveAsMsg && <div className="rounded-xl border border-emerald-200 bg-mint-100 text-emerald-800 px-4 py-3 text-sm mb-6" data-testid="save-as-msg">{saveAsMsg}</div>}
 
       {/* State selector */}
       <div className="flex flex-wrap gap-2 mb-8" data-testid="state-selector">
@@ -508,6 +548,22 @@ export default function QuotationDetail() {
                 </div>
               </>
             )}
+          </div>
+        </div>
+      )}
+      {saveTplOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-ink-900/50" onClick={() => !savingTpl && setSaveTplOpen(false)}>
+          <div className="bg-white rounded-2xl p-6 w-full max-w-md" onClick={(e) => e.stopPropagation()} data-testid="save-template-modal">
+            <h3 className="font-display text-xl font-semibold text-ink-900 flex items-center gap-2"><BookmarkPlus className="w-5 h-5 text-amber-600" /> Guardar como plantilla</h3>
+            <p className="text-sm text-ink-500 mt-2">Reutiliza este programa para futuras cotizaciones. Se guardan conceptos, itinerario e incluye/no incluye (sin el cliente).</p>
+            <label className="label-text mt-4">Nombre de la plantilla</label>
+            <input className="input-field mt-1" value={tplName} placeholder="Ej. Riviera Maya 5 días" onChange={(e) => setTplName(e.target.value)} data-testid="template-name-input" />
+            <div className="flex justify-end gap-2 mt-5">
+              <button className="btn-ghost" onClick={() => setSaveTplOpen(false)} data-testid="template-cancel">Cancelar</button>
+              <button className="btn-primary" disabled={tplName.trim().length < 2 || savingTpl} onClick={saveAsTemplate} data-testid="template-save">
+                <BookmarkPlus className="w-4 h-4" /> {savingTpl ? 'Guardando…' : 'Guardar plantilla'}
+              </button>
+            </div>
           </div>
         </div>
       )}

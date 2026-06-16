@@ -1,8 +1,8 @@
 import { useEffect, useState } from 'react';
-import { Link, useNavigate, useParams } from 'react-router-dom';
+import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import AppShell from '@/components/AppShell';
 import api, { formatApiError } from '@/lib/api';
-import { ArrowLeft, ArrowRight, Check, User, Wand2, ListChecks, CalendarRange, Calculator, Plus, Trash2, Briefcase, Users, FileText, Bed, Car, Compass, Sparkles } from 'lucide-react';
+import { ArrowLeft, ArrowRight, Check, User, Wand2, ListChecks, CalendarRange, Calculator, Plus, Trash2, Briefcase, Users, FileText, Bed, Car, Compass, Sparkles, Save, BookmarkPlus } from 'lucide-react';
 import { formatDateEs, nightsBetween } from '@/lib/dates';
 
 const UNITS = [
@@ -30,13 +30,19 @@ export default function CustomQuotationBuilder() {
   const navigate = useNavigate();
   const { id } = useParams();
   const editing = !!id;
+  const [search] = useSearchParams();
   const [step, setStep] = useState(0);
   const [clients, setClients] = useState([]);
   const [company, setCompany] = useState(null);
+  const [templates, setTemplates] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [showClient, setShowClient] = useState(false);
   const [newClient, setNewClient] = useState({ name: '', phone: '', email: '', channel: 'directo' });
+  const [saveTplOpen, setSaveTplOpen] = useState(false);
+  const [tplName, setTplName] = useState('');
+  const [savingTpl, setSavingTpl] = useState(false);
+  const [tplMsg, setTplMsg] = useState('');
 
   const [form, setForm] = useState({
     client_id: '',
@@ -55,8 +61,8 @@ export default function CustomQuotationBuilder() {
 
   useEffect(() => {
     (async () => {
-      const [c, comp] = await Promise.all([api.get('/clients'), api.get('/companies/me')]);
-      setClients(c.data); setCompany(comp.data);
+      const [c, comp, t] = await Promise.all([api.get('/clients'), api.get('/companies/me'), api.get('/templates')]);
+      setClients(c.data); setCompany(comp.data); setTemplates(t.data || []);
       if (editing) {
         try {
           const { data: q } = await api.get(`/quotations/${id}`);
@@ -75,9 +81,49 @@ export default function CustomQuotationBuilder() {
             notes: q.notes || '',
           });
         } catch (e) { setError(formatApiError(e)); }
+        return;
+      }
+      const tplId = search.get('template');
+      if (tplId) {
+        const tpl = (t.data || []).find((x) => x.id === tplId);
+        if (tpl) applyTemplate(tpl);
       }
     })();
   }, []); // eslint-disable-line
+
+  const applyTemplate = (tpl) => setForm((f) => ({
+    ...f,
+    custom_title: tpl.custom_title || tpl.name || f.custom_title,
+    pax: { adultos: tpl.pax_default?.adultos || f.pax.adultos, menores: tpl.pax_default?.menores || 0 },
+    custom_nights: tpl.custom_nights || 0,
+    custom_rooms: tpl.custom_rooms || 1,
+    custom_items: (tpl.custom_items || []).map((it) => ({ ...it })),
+    custom_itinerary: (tpl.custom_itinerary || []).map((d) => ({ ...d })),
+    custom_includes: tpl.custom_includes || [],
+    custom_excludes: tpl.custom_excludes || [],
+  }));
+
+  const saveAsTemplate = async () => {
+    setError(''); setTplMsg(''); setSavingTpl(true);
+    try {
+      await api.post('/templates', {
+        name: tplName.trim(),
+        custom_title: form.custom_title.trim(),
+        custom_items: form.custom_items.map((it) => ({ category: it.category, name: it.name, description: it.description || '', net_price: Number(it.net_price) || 0, unit: it.unit, qty: Number(it.qty) || 0 })),
+        custom_itinerary: form.custom_itinerary.map((d, i) => ({ day: i + 1, title: d.title || '', description: d.description || '' })),
+        custom_includes: form.custom_includes.filter((x) => (x || '').trim()),
+        custom_excludes: form.custom_excludes.filter((x) => (x || '').trim()),
+        custom_nights: Number(form.custom_nights) || 0,
+        custom_rooms: Number(form.custom_rooms) || 0,
+        pax_default: { adultos: Number(form.pax.adultos) || 0, menores: Number(form.pax.menores) || 0 },
+      });
+      const t = await api.get('/templates'); setTemplates(t.data || []);
+      setSaveTplOpen(false); setTplName('');
+      setTplMsg('✓ Plantilla guardada. Podrás reutilizarla desde el catálogo.');
+      setTimeout(() => setTplMsg(''), 4000);
+    } catch (e) { setError(formatApiError(e)); }
+    finally { setSavingTpl(false); }
+  };
 
   const client = clients.find((c) => c.id === form.client_id);
   const isB2B = !!client && client.channel !== 'directo';
@@ -225,6 +271,7 @@ export default function CustomQuotationBuilder() {
       </div>
 
       {error && <div className="mb-4 rounded-xl border border-red-200 bg-red-50 text-red-700 px-4 py-3 text-sm" data-testid="custom-error">{error}</div>}
+      {tplMsg && <div className="mb-4 rounded-xl border border-emerald-200 bg-mint-100 text-emerald-800 px-4 py-3 text-sm" data-testid="custom-tpl-msg">{tplMsg}</div>}
 
       <div className="card-surface p-6 md:p-8">
         {/* Step: Client */}
@@ -283,6 +330,16 @@ export default function CustomQuotationBuilder() {
         {cur === 'program' && (
           <div className="space-y-5" data-testid="custom-step-program-panel">
             <h2 className="font-display text-xl font-semibold text-ink-900">Datos del programa</h2>
+            {!editing && templates.length > 0 && (
+              <div className="rounded-xl border border-amber-200 bg-peach-100/50 p-4" data-testid="custom-template-loader">
+                <label className="label-text flex items-center gap-2"><BookmarkPlus className="w-4 h-4 text-amber-600" /> Cargar desde una plantilla guardada</label>
+                <select className="input-field mt-1" defaultValue="" onChange={(e) => { const t = templates.find((x) => x.id === e.target.value); if (t) applyTemplate(t); }} data-testid="custom-template-select">
+                  <option value="">— Elegir plantilla —</option>
+                  {templates.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
+                </select>
+                <p className="text-xs text-ink-500 mt-1">Carga conceptos, itinerario e incluye/no incluye. Luego ajusta fechas, grupo y precios.</p>
+              </div>
+            )}
             <div>
               <label className="label-text">Nombre del programa / título de la cotización</label>
               <input className="input-field" value={form.custom_title} placeholder="Ej. Aventura personalizada en la Riviera Maya, 5 días"
@@ -432,6 +489,11 @@ export default function CustomQuotationBuilder() {
                 <span className="font-display font-bold text-3xl" data-testid="custom-total-amount">{money(total, currency)}</span>
               </div>
             </div>
+            <div className="flex justify-end">
+              <button type="button" className="btn-ghost text-sm border border-amber-200 text-amber-700" onClick={() => { setTplName(form.custom_title || ''); setSaveTplOpen(true); }} disabled={form.custom_items.length === 0} data-testid="custom-save-template-btn">
+                <BookmarkPlus className="w-4 h-4" /> Guardar como plantilla
+              </button>
+            </div>
           </div>
         )}
 
@@ -445,6 +507,23 @@ export default function CustomQuotationBuilder() {
           )}
         </div>
       </div>
+
+      {saveTplOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-ink-900/50" onClick={() => !savingTpl && setSaveTplOpen(false)}>
+          <div className="bg-white rounded-2xl p-6 w-full max-w-md" onClick={(e) => e.stopPropagation()} data-testid="custom-save-template-modal">
+            <h3 className="font-display text-xl font-semibold text-ink-900 flex items-center gap-2"><BookmarkPlus className="w-5 h-5 text-amber-600" /> Guardar como plantilla</h3>
+            <p className="text-sm text-ink-500 mt-2">Reutiliza este programa en segundos para futuras cotizaciones. Se guardan los conceptos, itinerario e incluye/no incluye (sin el cliente).</p>
+            <label className="label-text mt-4">Nombre de la plantilla</label>
+            <input className="input-field mt-1" value={tplName} placeholder="Ej. Riviera Maya 5 días" onChange={(e) => setTplName(e.target.value)} data-testid="custom-template-name-input" />
+            <div className="flex justify-end gap-2 mt-5">
+              <button className="btn-ghost" onClick={() => setSaveTplOpen(false)} data-testid="custom-template-cancel">Cancelar</button>
+              <button className="btn-primary" disabled={tplName.trim().length < 2 || savingTpl} onClick={saveAsTemplate} data-testid="custom-template-save">
+                <Save className="w-4 h-4" /> {savingTpl ? 'Guardando…' : 'Guardar plantilla'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </AppShell>
   );
 }

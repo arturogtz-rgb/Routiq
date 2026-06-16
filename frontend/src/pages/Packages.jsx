@@ -3,7 +3,7 @@ import { Link, useNavigate } from 'react-router-dom';
 import AppShell from '@/components/AppShell';
 import api, { formatApiError } from '@/lib/api';
 import { useAuth } from '@/context/AuthContext';
-import { Package as PackageIcon, MapPin, Calendar, Plus, Pencil, Trash2, Sun, FileSpreadsheet, Upload, X, CheckCircle2, AlertTriangle, Download, Share2, QrCode } from 'lucide-react';
+import { Package as PackageIcon, MapPin, Calendar, Plus, Pencil, Trash2, Sun, FileSpreadsheet, Upload, X, CheckCircle2, AlertTriangle, Download, Share2, QrCode, Wand2, BookmarkPlus } from 'lucide-react';
 import { ShareCatalogModal } from '@/components/ShareCatalogModal';
 
 export default function Packages() {
@@ -11,6 +11,8 @@ export default function Packages() {
   const navigate = useNavigate();
   const isAdmin = user?.role === 'company_admin';
   const [packages, setPackages] = useState([]);
+  const [templates, setTemplates] = useState([]);
+  const [tab, setTab] = useState('paquetes');
   const [error, setError] = useState('');
   const [importing, setImporting] = useState(false);
   const [report, setReport] = useState(null);
@@ -23,7 +25,11 @@ export default function Packages() {
     try { const { data } = await api.get('/packages'); setPackages(data); }
     catch (_e) { /* noop */ }
   };
-  useEffect(() => { load(); }, []);
+  const loadTemplates = async () => {
+    try { const { data } = await api.get('/templates'); setTemplates(data); }
+    catch (_e) { /* noop */ }
+  };
+  useEffect(() => { load(); loadTemplates(); }, []);
   useEffect(() => { api.get('/companies/me').then(({ data }) => setSlug(data.slug)).catch(() => {}); }, []);
 
   const sharePackage = async (p) => {
@@ -39,6 +45,12 @@ export default function Packages() {
   const remove = async (p) => {
     if (!window.confirm(`¿Eliminar el paquete "${p.name}"?`)) return;
     try { await api.delete(`/packages/${p.id}`); await load(); }
+    catch (e) { setError(formatApiError(e)); }
+  };
+
+  const removeTemplate = async (t) => {
+    if (!window.confirm(`¿Eliminar la plantilla "${t.name}"?`)) return;
+    try { await api.delete(`/templates/${t.id}`); await loadTemplates(); }
     catch (e) { setError(formatApiError(e)); }
   };
 
@@ -117,6 +129,16 @@ export default function Packages() {
 
       {error && <div className="rounded-xl border border-red-200 bg-red-50 text-red-700 px-4 py-3 text-sm mb-4">{error}</div>}
 
+      <div className="flex items-center gap-2 mb-6 border-b border-ink-100">
+        <button onClick={() => setTab('paquetes')} className={`px-4 py-2.5 text-sm font-semibold border-b-2 -mb-px transition-colors ${tab === 'paquetes' ? 'border-brand-500 text-brand-600' : 'border-transparent text-ink-400 hover:text-ink-700'}`} data-testid="tab-paquetes">
+          <PackageIcon className="w-4 h-4 inline mr-1.5" /> Paquetes armados ({packages.length})
+        </button>
+        <button onClick={() => setTab('plantillas')} className={`px-4 py-2.5 text-sm font-semibold border-b-2 -mb-px transition-colors ${tab === 'plantillas' ? 'border-amber-500 text-amber-600' : 'border-transparent text-ink-400 hover:text-ink-700'}`} data-testid="tab-plantillas">
+          <Wand2 className="w-4 h-4 inline mr-1.5" /> Plantillas de programa ({templates.length})
+        </button>
+      </div>
+
+      {tab === 'paquetes' && (
       <div className="grid md:grid-cols-2 xl:grid-cols-3 gap-5">
         {packages.map((p) => (
           <div key={p.id} className="card-surface p-6 flex flex-col" data-testid={`package-card-${p.code}`}>
@@ -167,6 +189,45 @@ export default function Packages() {
           </div>
         )}
       </div>
+      )}
+
+      {tab === 'plantillas' && (
+        <div data-testid="templates-panel">
+          <p className="text-sm text-ink-500 mb-5">Plantillas de programas personalizados guardadas por tu equipo. Úsalas para clonar una cotización a medida en segundos.</p>
+          <div className="grid md:grid-cols-2 xl:grid-cols-3 gap-5">
+            {templates.map((t) => (
+              <div key={t.id} className="card-surface p-6 flex flex-col" data-testid={`template-card-${t.id}`}>
+                <div className="flex items-start justify-between mb-3">
+                  <span className="pill bg-peach-100 text-amber-700 inline-flex items-center gap-1"><Wand2 className="w-3 h-3" /> Plantilla</span>
+                  <span className="pill bg-brand-50 text-brand-500">{(t.custom_items || []).length} conceptos</span>
+                </div>
+                <h3 className="font-display font-semibold text-lg text-ink-900 leading-tight">{t.name}</h3>
+                {t.custom_title && t.custom_title !== t.name && <p className="text-sm text-ink-500 mt-1">{t.custom_title}</p>}
+                <div className="mt-3 text-sm text-ink-600 space-y-1 flex-1">
+                  {t.custom_nights > 0 && <div className="flex items-center gap-2"><Calendar className="w-4 h-4 text-amber-500" /> {t.custom_nights} noche(s)</div>}
+                  {(t.custom_itinerary || []).length > 0 && <div className="flex items-center gap-2"><BookmarkPlus className="w-4 h-4 text-amber-500" /> {t.custom_itinerary.length} día(s) de itinerario</div>}
+                  {t.created_by_name && <p className="text-xs text-ink-400 mt-1">Creada por {t.created_by_name}</p>}
+                </div>
+                <div className="mt-5 pt-4 border-t border-ink-100 flex items-center justify-between gap-2">
+                  <button className="p-2 rounded-lg text-ink-400 hover:bg-red-50 hover:text-red-600" onClick={() => removeTemplate(t)} data-testid={`delete-template-${t.id}`}><Trash2 className="w-4 h-4" /></button>
+                  <button className="btn-primary text-sm" onClick={() => navigate(`/app/quotations/new/custom?template=${t.id}`)} data-testid={`use-template-${t.id}`}>
+                    <Plus className="w-4 h-4" /> Usar plantilla
+                  </button>
+                </div>
+              </div>
+            ))}
+            {templates.length === 0 && (
+              <div className="col-span-full text-center py-16 text-ink-400" data-testid="empty-templates">
+                <Wand2 className="w-12 h-12 mx-auto mb-3 opacity-50" />
+                <p>Aún no tienes plantillas. Crea una cotización a medida y guárdala como plantilla.</p>
+                <button className="btn-secondary text-sm mt-4" onClick={() => navigate('/app/quotations/new/custom')} data-testid="new-custom-from-templates">
+                  <Wand2 className="w-4 h-4" /> Crear cotización a medida
+                </button>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
 
       {report && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4" role="dialog">

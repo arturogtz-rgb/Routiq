@@ -422,3 +422,25 @@ class QuotationUpdate(BaseModel):
     custom_excludes: Optional[List[str]] = None
     custom_nights: Optional[int] = None
     custom_rooms: Optional[int] = None
+
+
+
+# ---------- Quotation templates (reusable custom programs) ----------
+class TemplateCreate(BaseModel):
+    name: str = Field(min_length=2)
+    custom_title: str = ""
+    custom_items: List[CustomItem] = []
+    custom_itinerary: List[CustomDay] = []
+    custom_includes: List[str] = []
+    custom_excludes: List[str] = []
+    custom_nights: int = Field(default=0, ge=0)
+    custom_rooms: int = Field(default=0, ge=0)
+    pax_default: Dict[str, int] = {}
+
+
+class SaveAsTemplateInput(BaseModel):
+    name: str = Field(min_length=2)
+
+
+class SaveAsPackageInput(BaseModel):
+    code: Optional[str] = None

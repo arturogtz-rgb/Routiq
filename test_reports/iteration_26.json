@@ -1,0 +1,38 @@
+{
+  "summary": "Iteration 26 backend + frontend e2e: validated reusable custom-program templates and save-as-package flow. Backend: 9/9 pytest PASS in test_iteration26_templates.py covering POST /api/templates (400 sin custom_items, 201 con payload válido, GET/list/delete), POST /api/quotations/{id}/save-as-template (201 desde 'personalizado', 400 desde 'paquete'), POST /api/quotations/{id}/save-as-package (403 ejecutivo, 201 admin con hotel prellenado a precio público neto/margin=4000/1.25=3200 en sencilla/doble/triple/cuadruple, code único auto-generado al colisionar, itinerario+includes copiados, from_custom_quotation set, queda en GET /api/packages). Frontend e2e: tab-paquetes y tab-plantillas presentes en /app/packages; templates-panel lista templates con use-template-{id} y delete-template-{id}; use-template navega a /app/quotations/new/custom?template={id} y precarga conceptos+pax (cliente vacío como esperado); custom-template-select aparece en step Programa; en Revisión custom-save-template-btn abre custom-save-template-modal, input + custom-template-save muestra custom-tpl-msg ('Plantilla guardada'); en QuotationDetail (cotización personalizada) save-as-template-btn abre save-template-modal -> template-name-input -> template-save -> save-as-msg; save-as-package-btn (admin) crea paquete y redirige a /app/packages/{id}/edit. RBAC verificado: executive ve save-as-template-btn pero NO ve save-as-package-btn. Regresión paquetes: catálogo paquetes intacto con sus acciones (7 botones edit/quote/share detectados).",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "tests_executed": [
+    {"name": "pytest test_iteration26_templates.py", "result": "9/9 PASS"},
+    {"name": "E2E: Packages -> tab-plantillas -> use-template -> builder prefill -> save-as-template (Revisión) -> custom-tpl-msg", "result": "PASS"},
+    {"name": "E2E QuotationDetail (admin): save-as-template-btn -> modal -> template-save -> save-as-msg", "result": "PASS"},
+    {"name": "E2E QuotationDetail (admin): save-as-package-btn -> redirect /app/packages/{id}/edit", "result": "PASS"},
+    {"name": "E2E RBAC: executive NO ve save-as-package-btn (sí ve save-as-template-btn)", "result": "PASS"},
+    {"name": "Regresión: /app/packages tab-paquetes muestra paquetes con acciones (7 testids visibles)", "result": "PASS"}
+  ],
+  "test_report_links": [
+    "/app/backend/tests/test_iteration26_templates.py",
+    "/app/test_reports/pytest/iter26_results.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "templates.py _unique_package_code: el slug del título se trunca a 20 chars en mayúsculas y al colisionar se concatena '-N'. Funciona, pero si el usuario sube muchas variantes con el mismo título, el listado de paquetes se llena de 'NOMBRE', 'NOMBRE-2', 'NOMBRE-3'… Considerar permitir que el modal del frontend acepte un code editable (payload.code ya está en SaveAsPackageInput pero la UI no lo expone).",
+    "QuotationDetail.jsx save-as-package: usa window.confirm() para confirmar. Aceptable, pero un modal estilizado (similar a save-template-modal) sería más consistente con la UX del resto de la app.",
+    "templates.py save_quotation_as_package: hotel name por defecto 'Hotel' o 'Por definir' cuando no hay concepto 'hospedaje'. En catálogo público con precios 0 podría confundir al admin; sería útil un toast/aviso en UI explicando que el admin debe ajustar precios por ocupación.",
+    "Backend models.py SaveAsTemplateInput.name: Field(min_length=2). El frontend deshabilita el botón si trim().length < 2 — consistente. Bien.",
+    "templates.py list_templates: orden por created_at desc OK; no expone paginación, suficiente para el alcance MVP (limit 500)."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_iteration26_templates.py (new)"
+  ],
+  "success_rate": {"backend": "100% (9/9)", "frontend": "100% (6/6 flows)"},
+  "test_credentials": "admin@aventurate.mx / Demo2026! (company_admin); ejecutivo@aventurate.mx / Demo2026! (executive) — RBAC negativo OK.",
+  "seed_data_creation": "Tests crearon plantillas TEST_iter26, paquetes TESTITER26RIVIERAMAY[-N], 1 cliente TEST_iter26 Cliente. Cleanup ejecutado al final (4 paquetes, todas las plantillas TEST_iter26 y el cliente eliminados). Puede quedar 1 paquete generado vía UI 'Save as package' (id 78f738e7) que no se eliminó automáticamente — revisar /app/packages si se requiere demo limpia.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Iter 26 fully green. Endpoints clave: GET/POST/DELETE /api/templates, POST /api/quotations/{id}/save-as-template (require_tenant), POST /api/quotations/{id}/save-as-package (company_admin only, 403 executive). Demo company margin_divisor=1.25 => public=net*0.8 (net 4000 -> 3200). save-as-package response incluye from_custom_quotation, code único, hotels[0].prices_by_occupancy con los 4 ocupaciones a public. La UI confirm() de save-as-package usa window.confirm — Playwright debe registrar 'page.on(\"dialog\", lambda d: d.accept())' antes de hacer click. Builder /app/quotations/new/custom?template={id} precarga TODO menos cliente: se debe seleccionar cliente manualmente; custom-template-select sólo aparece en step Programa (no en step Cliente)."
+}
