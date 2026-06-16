@@ -179,6 +179,13 @@ export default function PublicQuotation() {
       </section>
 
       <main className="max-w-3xl mx-auto px-4 pb-20 space-y-6">
+        {/* Presentation (carta al cliente) */}
+        {q.presentation_text && (
+          <div className="card-surface p-6" data-testid="public-presentation">
+            <p className="text-ink-700 leading-relaxed whitespace-pre-line">{q.presentation_text}</p>
+          </div>
+        )}
+
         {/* Summary */}
         <div className="card-surface p-6 grid sm:grid-cols-2 gap-4">
           {q.hotel_selected && (
@@ -262,6 +269,32 @@ export default function PublicQuotation() {
                   <p className="font-semibold text-ink-900">{money(it.subtotal, q.currency)}</p>
                 </div>
               ))}
+            </div>
+          </div>
+        )}
+
+        {/* Conceptos del programa (cotización a medida) */}
+        {(q.items || []).some((it) => it.kind === 'custom') && (
+          <div className="card-surface p-6" data-testid="public-custom-items">
+            <h2 className="font-display text-xl font-semibold text-ink-900 mb-4">Conceptos del programa</h2>
+            <div className="space-y-2">
+              {(q.items || []).filter((it) => it.kind === 'custom').map((it, i) => {
+                const dt = [it.service_date ? formatDateEs(it.service_date) : '', (it.start_time && it.end_time) ? `${it.start_time}–${it.end_time}` : (it.start_time || '')].filter(Boolean).join(' · ');
+                return (
+                  <div key={i} className="flex items-start justify-between py-2 border-b border-ink-100 last:border-0" data-testid={`public-custom-item-${i}`}>
+                    <div className="flex items-start gap-3">
+                      <Sparkles className="w-4 h-4 mt-1" style={{ color: primary }} />
+                      <div>
+                        <p className="font-medium text-ink-900">{it.label}</p>
+                        {it.description && <p className="text-xs text-ink-500 mt-0.5">{it.description}</p>}
+                        {dt && <p className="text-xs text-ink-400 mt-0.5">{dt}</p>}
+                        <p className="text-xs text-ink-400 mt-0.5">{money(it.unit_price, q.currency)} × {it.qty}</p>
+                      </div>
+                    </div>
+                    <p className="font-semibold text-ink-900 whitespace-nowrap pl-3">{money(it.subtotal, q.currency)}</p>
+                  </div>
+                );
+              })}
             </div>
           </div>
         )}

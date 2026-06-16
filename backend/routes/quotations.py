@@ -11,7 +11,7 @@ from database import get_db, new_id, now_iso, DEFAULT_PRICING_CONFIG
 from auth import require_tenant
 from models import (
     QuotationCreate, QuotationStateUpdate, QuotationUpdate,
-    QuotationPricingAdjust, QuotationArchive,
+    QuotationPricingAdjust, QuotationArchive, PresentationInput,
 )
 from pricing import compute_quotation, compute_custom_quotation
 from pdf_generator import generate_quotation_pdf
@@ -150,6 +150,7 @@ async def create_quotation(payload: QuotationCreate, user: dict = Depends(requir
         "assigned_to": payload.assigned_to or user["id"],
         "created_by": user["id"],
         "notes": payload.notes,
+        "presentation_text": payload.presentation_text or "",
         "history": [{
             "at": now_iso(), "user_id": user["id"], "user_name": user.get("name", ""),
             "action": "created", "detail": f"Cotización creada ({type_label})",
@@ -374,6 +375,20 @@ async def revoke_public_link(quotation_id: str, user: dict = Depends(require_ten
 # ---------------------------------------------------------------------------
 # IA operativa (Claude Sonnet 4.5)
 # ---------------------------------------------------------------------------
+@router.post("/ai/presentation")
+async def ai_presentation(payload: PresentationInput, user: dict = Depends(require_tenant)):
+    await _check_ai_enabled(user["tenant_id"])
+    try:
+        text = await ai_service.generate_presentation(
+            payload.client_name, payload.title, payload.date_start, payload.date_end,
+            payload.adultos, payload.menores, tenant_id=user["tenant_id"])
+        return {"text": text}
+    except Exception as e:
+        log.exception("AI presentation failed")
+        raise HTTPException(status_code=503, detail=f"IA no disponible: {e}")
+
+
+
 @router.post("/ai/chat-summary")
 async def ai_chat_summary(payload: dict, user: dict = Depends(require_tenant)):
     await _check_ai_enabled(user["tenant_id"])

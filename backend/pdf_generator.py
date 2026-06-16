@@ -142,6 +142,19 @@ def _fmt_date(iso: str) -> str:
         return iso or ""
 
 
+def _fmt_service_datetime(it: dict) -> str:
+    """'12 AGO 2026 · 09:00–13:00' a partir de service_date/start_time/end_time."""
+    parts = []
+    if it.get("service_date"):
+        parts.append(_fmt_date(it["service_date"]))
+    st, et = (it.get("start_time") or "").strip(), (it.get("end_time") or "").strip()
+    if st and et:
+        parts.append(f"{st}–{et}")
+    elif st:
+        parts.append(st)
+    return " · ".join(parts)
+
+
 def generate_quotation_pdf(company: dict, quotation: dict, package: dict, client: dict) -> bytes:
     buf = io.BytesIO()
     doc = SimpleDocTemplate(buf, pagesize=letter,
@@ -192,6 +205,15 @@ def generate_quotation_pdf(company: dict, quotation: dict, package: dict, client
     ]))
     story.append(header)
     story.append(Spacer(1, 12))
+
+    # Presentation text (carta al cliente) — opens the document before any content
+    presentation = (quotation.get("presentation_text") or "").strip()
+    if presentation:
+        for para in presentation.split("\n"):
+            para = para.strip()
+            if para:
+                story.append(Paragraph(_xml_escape(para), s["body"]))
+        story.append(Spacer(1, 10))
 
     # Client block
     story.append(Paragraph("Cliente", s["h2"]))
@@ -294,11 +316,28 @@ def generate_quotation_pdf(company: dict, quotation: dict, package: dict, client
                 story.append(Paragraph(day["description"], s["body"]))
 
     # Price items
+    # Salto de página automático cuando el contenido es extenso (presentación + itinerario
+    # en la 1ª hoja, desglose de precios en la 2ª).
+    if presentation and package.get("itinerary"):
+        story.append(PageBreak())
     story.append(Paragraph("Desglose de precios", s["h2"]))
     currency = quotation.get("currency", "MXN")
+    concept_style = ParagraphStyle("concept", parent=s["soft"], textColor=TEXT, fontSize=8.5, leading=11)
     rows = [["Concepto", "P. unitario", "Cant.", "Subtotal"]]
     for it in quotation.get("items", []):
-        rows.append([it["label"], _money(it["unit_price"], currency), str(it["qty"]), _money(it["subtotal"], currency)])
+        concept_html = f"<b>{_xml_escape(it.get('label',''))}</b>"
+        sub = []
+        if it.get("description"):
+            sub.append(_xml_escape(it["description"]))
+        dt = _fmt_service_datetime(it)
+        if dt:
+            sub.append(dt)
+        if sub:
+            concept_html += f"<br/><font size=7 color='#475569'>{' · '.join(sub)}</font>"
+        rows.append([
+            Paragraph(concept_html, concept_style),
+            _money(it["unit_price"], currency), str(it["qty"]), _money(it["subtotal"], currency),
+        ])
     price_table = Table(rows, colWidths=[9 * cm, 3 * cm, 1.5 * cm, 3 * cm])
     price_table.setStyle(TableStyle([
         ("BACKGROUND", (0, 0), (-1, 0), PRIMARY),
@@ -360,8 +399,9 @@ def generate_quotation_pdf(company: dict, quotation: dict, package: dict, client
 
     story.append(Spacer(1, 10))
     story.append(Paragraph(
-        "<b>Condiciones generales:</b> Cotización válida por 7 días. Precios sujetos a disponibilidad al momento de la reservación. "
-        "Precios por persona en MXN.",
+        "<b>Condiciones generales:</b> Todos los precios están sujetos a cambio y disponibilidad sin previo aviso. "
+        "Cotización válida por 7 días. Precios sujetos a disponibilidad al momento de la reservación. "
+        "Precios en MXN salvo que se indique lo contrario.",
         s["soft"],
     ))
 

@@ -237,6 +237,9 @@ def compute_custom_quotation(custom_items: list, pax: dict, custom_nights: int,
             "category": ci.get("category", "extra"), "unit": unit,
             "name": name, "description": ci.get("description", "") or "",
             "net_price": net, "subtotal": round(public * qty, 2),
+            "service_date": ci.get("service_date", "") or "",
+            "start_time": ci.get("start_time", "") or "",
+            "end_time": ci.get("end_time", "") or "",
         })
 
     subtotal = sum(it["subtotal"] for it in items)

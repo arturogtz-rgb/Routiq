@@ -25,6 +25,7 @@ export default function QuotationBuilder() {
   const [error, setError] = useState('');
   const [showClient, setShowClient] = useState(false);
   const [newClient, setNewClient] = useState({ name: '', phone: '', email: '', channel: 'directo' });
+  const [aiPresLoading, setAiPresLoading] = useState(false);
 
   const [form, setForm] = useState({
     type: 'paquete',
@@ -37,6 +38,7 @@ export default function QuotationBuilder() {
     extra_nights: { cost_per_night: 0, unit: 'per_reservation' },
     contacts: JSON.parse(JSON.stringify(EMPTY_CONTACTS)),
     notes: '',
+    presentation_text: '',
   });
 
   useEffect(() => {
@@ -57,6 +59,7 @@ export default function QuotationBuilder() {
             extra_nights: q.extra_nights_cfg || { cost_per_night: 0, unit: 'per_reservation' },
             contacts: { ...JSON.parse(JSON.stringify(EMPTY_CONTACTS)), ...(q.contacts || {}) },
             notes: q.notes || '',
+            presentation_text: q.presentation_text || '',
           });
         } catch (e) { setError(formatApiError(e)); }
         return;
@@ -225,6 +228,21 @@ export default function QuotationBuilder() {
     } catch (e) { setError(formatApiError(e)); }
   };
 
+  const genPresentation = async () => {
+    setError(''); setAiPresLoading(true);
+    try {
+      const pkg = packages.find((p) => p.id === form.package_id);
+      const title = isServices ? 'Servicios a la carta' : (pkg?.name || '');
+      const { data } = await api.post('/ai/presentation', {
+        client_name: client?.name || '', title,
+        date_start: form.dates.start || '', date_end: form.dates.end || '',
+        adultos: totalAdults || 0, menores: form.pax.menores || 0,
+      });
+      if (data.text) setForm((f) => ({ ...f, presentation_text: data.text }));
+    } catch (e) { setError(formatApiError(e)); }
+    finally { setAiPresLoading(false); }
+  };
+
   const submit = async () => {
     setError(''); setLoading(true);
     try {
@@ -237,6 +255,7 @@ export default function QuotationBuilder() {
           extra_nights: form.extra_nights,
           contacts,
           notes: form.notes,
+          presentation_text: form.presentation_text || '',
         };
         if (!isServices) patch.hotel_name = form.hotel_name;
         await api.patch(`/quotations/${id}`, patch);
@@ -249,6 +268,7 @@ export default function QuotationBuilder() {
         services: form.services,
         notes: form.notes,
         contacts,
+        presentation_text: form.presentation_text || '',
       };
       if (isServices) {
         payload.pax = { adultos: totalAdults, menores: form.pax.menores || 0, rooms: [] };
@@ -641,6 +661,16 @@ export default function QuotationBuilder() {
         {cur === 'review' && (
           <div className="space-y-4" data-testid="step-review-panel">
             <h2 className="font-display text-xl font-semibold text-ink-900">Revisión</h2>
+            <div className="rounded-xl border border-brand-100 bg-brand-50/40 p-4" data-testid="presentation-block">
+              <div className="flex items-center justify-between mb-2">
+                <label className="label-text mb-0">Texto de presentación (aparece al inicio del PDF y del enlace)</label>
+                <button type="button" className="btn-ghost text-xs border border-brand-200 text-brand-600" onClick={genPresentation} disabled={aiPresLoading} data-testid="ai-presentation-btn">
+                  <Sparkles className="w-3.5 h-3.5" /> {aiPresLoading ? 'Generando…' : 'Generar con IA'}
+                </button>
+              </div>
+              <textarea rows="4" className="input-field" value={form.presentation_text} placeholder="Estimada/o [nombre], a continuación le presento la cotización para su viaje…"
+                onChange={(e) => setForm((f) => ({ ...f, presentation_text: e.target.value }))} data-testid="presentation-input" />
+            </div>
             <div className="grid md:grid-cols-2 gap-4 text-sm">
               <div className="rounded-xl border border-ink-100 p-4">
                 <p className="text-xs uppercase tracking-widest font-bold text-ink-400 mb-1">Cliente</p>

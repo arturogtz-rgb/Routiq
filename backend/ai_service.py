@@ -226,6 +226,29 @@ async def detect_missing_fields(q: dict, pack: dict | None = None, client: dict 
     return [raw[:200]] if raw else []
 
 
+async def generate_presentation(client_name: str, title: str, date_start: str = "",
+                                date_end: str = "", adultos: int = 0, menores: int = 0,
+                                tenant_id: str | None = None) -> str:
+    """Redacta el texto de presentación que abre la cotización (carta al cliente)."""
+    system = (
+        "Eres ejecutivo de ventas de un tour operador en México. Redacta un PÁRRAFO de presentación "
+        "para encabezar una cotización formal, en español de México, tono cálido y profesional (trato de usted). "
+        "Entre 40 y 70 palabras. Inicia saludando al cliente por su nombre. Menciona el viaje/destino y, si hay fechas, "
+        "alúdelas con naturalidad. Cierra invitando a revisar la propuesta. Sin emojis, sin despedida con firma, "
+        "sin placeholders entre corchetes."
+    )
+    pax_txt = f"{adultos} adultos" + (f" y {menores} menores" if menores else "")
+    fechas = f"del {date_start} al {date_end}" if date_start and date_end else ""
+    prompt = (
+        f"Cliente: {client_name or 'el cliente'}\n"
+        f"Viaje/Programa: {title or 'programa turístico'}\n"
+        f"Fechas: {fechas or 'por definir'}\n"
+        f"Pasajeros: {pax_txt}\n\n"
+        "Redacta el párrafo de presentación:"
+    )
+    return await _ask(system, prompt, max_tokens=320, tenant_id=tenant_id, feature="presentation")
+
+
 async def generate_client_message(q: dict, pack: dict | None = None, client: dict | None = None, tenant_id: str | None = None) -> str:
     system = (
         "Eres ejecutivo de ventas amable y profesional de un tour operador en México. "

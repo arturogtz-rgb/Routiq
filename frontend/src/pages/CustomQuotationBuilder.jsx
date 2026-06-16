@@ -60,6 +60,7 @@ export default function CustomQuotationBuilder() {
   const [tplName, setTplName] = useState('');
   const [savingTpl, setSavingTpl] = useState(false);
   const [tplMsg, setTplMsg] = useState('');
+  const [aiPresLoading, setAiPresLoading] = useState(false);
 
   const [form, setForm] = useState({
     client_id: '',
@@ -72,6 +73,7 @@ export default function CustomQuotationBuilder() {
     custom_itinerary: [],
     custom_includes: [],
     custom_excludes: [],
+    presentation_text: '',
     contacts: JSON.parse(JSON.stringify(EMPTY_CONTACTS)),
     notes: '',
   });
@@ -94,6 +96,7 @@ export default function CustomQuotationBuilder() {
             custom_itinerary: (q.custom_itinerary || []).map((d) => ({ ...d })),
             custom_includes: q.custom_includes || [],
             custom_excludes: q.custom_excludes || [],
+            presentation_text: q.presentation_text || '',
             contacts: { ...JSON.parse(JSON.stringify(EMPTY_CONTACTS)), ...(q.contacts || {}) },
             notes: q.notes || '',
           });
@@ -194,7 +197,7 @@ export default function CustomQuotationBuilder() {
   };
 
   const addItem = (category) => setForm((f) => ({
-    ...f, custom_items: [...f.custom_items, { category, name: '', description: '', net_price: 0, unit: 'per_person', qty: defaultQty('per_person') }],
+    ...f, custom_items: [...f.custom_items, { category, name: '', description: '', net_price: 0, unit: 'per_person', qty: defaultQty('per_person'), service_date: '', start_time: '', end_time: '' }],
   }));
   const updateItem = (idx, patch) => setForm((f) => ({
     ...f, custom_items: f.custom_items.map((it, i) => {
@@ -211,6 +214,19 @@ export default function CustomQuotationBuilder() {
   const removeDay = (idx) => setForm((f) => ({ ...f, custom_itinerary: f.custom_itinerary.filter((_, i) => i !== idx).map((d, i) => ({ ...d, day: i + 1 })) }));
 
   const setList = (key, arr) => setForm((f) => ({ ...f, [key]: arr }));
+
+  const genPresentation = async () => {
+    setError(''); setAiPresLoading(true);
+    try {
+      const { data } = await api.post('/ai/presentation', {
+        client_name: client?.name || '', title: form.custom_title || '',
+        date_start: form.dates.start || '', date_end: form.dates.end || '',
+        adultos: Number(form.pax.adultos) || 0, menores: Number(form.pax.menores) || 0,
+      });
+      if (data.text) setForm((f) => ({ ...f, presentation_text: data.text }));
+    } catch (e) { setError(formatApiError(e)); }
+    finally { setAiPresLoading(false); }
+  };
 
   const canNext = () => {
     if (cur === 'client') return !!form.client_id;
@@ -233,12 +249,14 @@ export default function CustomQuotationBuilder() {
         custom_items: form.custom_items.map((it) => ({
           category: it.category, name: it.name, description: it.description || '',
           net_price: Number(it.net_price) || 0, unit: it.unit, qty: Number(it.qty) || 0,
+          service_date: it.service_date || '', start_time: it.start_time || '', end_time: it.end_time || '',
         })),
         custom_itinerary: form.custom_itinerary.map((d, i) => ({ day: i + 1, title: d.title || '', description: d.description || '' })),
         custom_includes: form.custom_includes.filter((x) => (x || '').trim()),
         custom_excludes: form.custom_excludes.filter((x) => (x || '').trim()),
         contacts: isB2B ? form.contacts : null,
         notes: form.notes,
+        presentation_text: form.presentation_text || '',
       };
       if (editing) {
         await api.patch(`/quotations/${id}`, payload);
@@ -406,6 +424,11 @@ export default function CustomQuotationBuilder() {
                       </div>
                       <div><label className="label-text">Cantidad</label><input type="number" min="1" className="input-field" value={it.qty} onChange={(e) => updateItem(idx, { qty: Math.max(1, +e.target.value || 1) })} data-testid={`custom-item-qty-${idx}`} /></div>
                     </div>
+                    <div className="grid md:grid-cols-3 gap-3 mt-3">
+                      <div><label className="label-text">Fecha del servicio (opc.)</label><input type="date" className="input-field" value={it.service_date || ''} onChange={(e) => updateItem(idx, { service_date: e.target.value })} data-testid={`custom-item-date-${idx}`} /></div>
+                      <div><label className="label-text">Hora inicio (opc.)</label><input type="time" className="input-field" value={it.start_time || ''} onChange={(e) => updateItem(idx, { start_time: e.target.value })} data-testid={`custom-item-start-${idx}`} /></div>
+                      <div><label className="label-text">Hora fin (opc.)</label><input type="time" className="input-field" value={it.end_time || ''} onChange={(e) => updateItem(idx, { end_time: e.target.value })} data-testid={`custom-item-end-${idx}`} /></div>
+                    </div>
                     <div className="flex flex-wrap items-center justify-end gap-x-4 gap-y-1 mt-3 text-sm">
                       <span className="text-ink-400">Público: <b className="text-ink-700">{money(publicPrice(it.net_price), currency)}</b> / {UNIT_ES[it.unit]}</span>
                       <span className="font-semibold text-brand-600" data-testid={`custom-item-subtotal-${idx}`}>Subtotal: {money(itemSubtotal(it), currency)}</span>
@@ -460,6 +483,16 @@ export default function CustomQuotationBuilder() {
         {cur === 'review' && (
           <div className="space-y-4" data-testid="custom-step-review-panel">
             <h2 className="font-display text-xl font-semibold text-ink-900">Revisión</h2>
+            <div className="rounded-xl border border-brand-100 bg-brand-50/40 p-4" data-testid="custom-presentation-block">
+              <div className="flex items-center justify-between mb-2">
+                <label className="label-text mb-0">Texto de presentación (aparece al inicio del PDF y del enlace)</label>
+                <button type="button" className="btn-ghost text-xs border border-brand-200 text-brand-600" onClick={genPresentation} disabled={aiPresLoading} data-testid="custom-ai-presentation-btn">
+                  <Sparkles className="w-3.5 h-3.5" /> {aiPresLoading ? 'Generando…' : 'Generar con IA'}
+                </button>
+              </div>
+              <textarea rows="4" className="input-field" value={form.presentation_text} placeholder="Estimada/o [nombre], a continuación le presento la cotización para su viaje…"
+                onChange={(e) => setForm((f) => ({ ...f, presentation_text: e.target.value }))} data-testid="custom-presentation-input" />
+            </div>
             <div className="grid md:grid-cols-2 gap-4 text-sm">
               <div className="rounded-xl border border-ink-100 p-4">
                 <p className="text-xs uppercase tracking-widest font-bold text-ink-400 mb-1">Cliente</p>

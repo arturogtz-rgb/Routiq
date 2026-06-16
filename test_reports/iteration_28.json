@@ -1,0 +1,35 @@
+{
+  "summary": "Iteration 28 (FASE A + 3 bug fixes) e2e validated. Backend: 6/6 pytest PASS (test_iteration28_presentation_custom_dt.py) — custom quotation persists presentation_text + custom_items with service_date/start_time/end_time/description; paquete quotation accepts presentation_text; GET /api/quotations/{id}/pdf returns valid %PDF (>1KB); GET /api/public/quotations/{token} exposes presentation_text and items with description+service_date+start_time; POST /api/ai/presentation returns 503 'IA no disponible' (expected in preview, no BYOK). Frontend e2e (admin): BUG3 cursor FIX VERIFIED — typed 'Desayunos diarios incluidos' (27 chars) and 'Vuelos internacionales' (22 chars) into custom-includes-input-0 and custom-excludes-input-0; full text captured intact and document.activeElement remained on the input after every keystroke. Per-item DT fields custom-item-date-0/custom-item-start-0/custom-item-end-0 present on Conceptos step. Revisión step has custom-presentation-block + custom-presentation-input + custom-ai-presentation-btn; clicking 'Generar con IA' surfaced 503 error in Spanish via custom-error: 'IA no disponible: La IA no está configurada. Pide al administrador de Routiq…' (no UI break). Public /q/{token}: public-presentation shows the saved text; public-custom-items renders 'Conceptos del programa' with name, description, '02 JUN 2026 · 09:00–13:00', subtotal; public-policy section present. QuotationBuilder.jsx (paquete) has presentation-block/presentation-input/ai-presentation-btn at line 664–672 (verified via grep, render only at Revisión step).",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {"ui_bugs": [], "integration_issues": [], "design_issues": []},
+  "tests_executed": [
+    {"name": "pytest test_iteration28_presentation_custom_dt.py", "result": "6/6 PASS"},
+    {"name": "E2E BUG3: type word in custom-includes-input-0 letter-by-letter (40ms delay)", "result": "PASS — value matches, input retains focus"},
+    {"name": "E2E BUG3: type word in custom-excludes-input-0 letter-by-letter", "result": "PASS — value matches, input retains focus"},
+    {"name": "E2E custom-item-date-0/start-0/end-0 fields exist and fillable", "result": "PASS"},
+    {"name": "E2E custom-presentation-block + custom-ai-presentation-btn → 503 surfaced via custom-error in Spanish", "result": "PASS"},
+    {"name": "E2E public /q/{token}: public-presentation + public-custom-items (desc+date+time) + public-policy", "result": "PASS"},
+    {"name": "QuotationBuilder (paquete) presentation-block/presentation-input/ai-presentation-btn (source verified, line 664+)", "result": "PASS (code-level)"}
+  ],
+  "test_report_links": [
+    "/app/backend/tests/test_iteration28_presentation_custom_dt.py",
+    "/app/test_reports/pytest/iter28_results.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "BUG3 fix is correct and minimal: moving StringList from inline function to module scope (line 31 of CustomQuotationBuilder.jsx) prevents React from remounting it on every parent render — verified empirically by typing 27 characters with focus held.",
+    "AI 503 error UX is excellent: Spanish, actionable ('Pide al administrador…Panel Master → Inteligencia Artificial'). No console exception, no UI break, surfaced via shared custom-error band.",
+    "Public link payload now includes presentation_text + items[].description/service_date/start_time/end_time — PublicQuotation renders date+time as '02 JUN 2026 · 09:00–13:00' (es-MX format). Clean implementation.",
+    "Backend send_email fallback to PLATFORM_RESEND_API_KEY (notifications.py) and turnstile error-code logging (signup.py) are noted from request but were not exercised in this run; no regression expected since current preview env keeps RESEND empty (forgot-password still returns 200 — verified architecturally, not tested live as no SMTP capture available).",
+    "Minor: in CustomQuotationBuilder submit, when only paquete-flow custom_items lack qty (qty=0), backend pricing computes default qty by unit — confirmed but UI still shows qty input with min=1 (line 425), so users always set explicit qty. Consistent."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_iteration28_presentation_custom_dt.py (new)"
+  ],
+  "success_rate": {"backend": "100% (6/6)", "frontend": "100% (6/6 flows + 1 code-level)"},
+  "test_credentials": "admin@aventurate.mx / Demo2026! (company_admin)",
+  "seed_data_creation": "Tests created TEST_iter28 client (test_iter28@example.com), 1 custom quotation TEST_iter28 Programa (deleted by module teardown), 1 paquete quotation (left in DB), and 1 UI-created UI28 Programa custom quotation (deleted via API at end of UI run).",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Iter 28 fully green. Key testids: custom-client-option-{id}, custom-title, custom-adultos, custom-add-{category}, custom-item-name-{idx}, custom-item-net-{idx}, custom-item-date-{idx}, custom-item-start-{idx}, custom-item-end-{idx}, custom-includes/custom-excludes (StringList wrapper) with -add and -input-{idx} sub-testids, custom-presentation-block, custom-presentation-input, custom-ai-presentation-btn, custom-submit, custom-error. For paquete (QuotationBuilder.jsx): presentation-block, presentation-input, ai-presentation-btn — rendered at Revisión step only. Public page: public-presentation, public-custom-items, public-policy. POST /api/quotations/{id}/public-link returns {token, expires_at}. Tested via REACT_APP_BACKEND_URL=https://free-itinerary-mode.preview.emergentagent.com. AI BYOK NOT configured in preview → /api/ai/presentation returns 503 with Spanish detail (this is expected, not a bug)."
+}

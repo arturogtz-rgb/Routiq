@@ -71,6 +71,7 @@ async def get_public_quotation(token: str):
             "payment_status": q.get("payment_status", "unpaid"),
             "client_name": q.get("client_snapshot", {}).get("name", ""),
             "accepted_at": q.get("public_link", {}).get("accepted_at"),
+            "presentation_text": q.get("presentation_text", ""),
         },
         "company": {
             "name": company.get("name", ""), "logo_url": company.get("logo_url", ""),

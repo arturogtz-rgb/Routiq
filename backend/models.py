@@ -367,6 +367,9 @@ class CustomItem(BaseModel):
     net_price: float = Field(default=0.0, ge=0)
     unit: CustomUnit = "per_group"
     qty: int = Field(default=0, ge=0)  # 0 => server computes default by unit
+    service_date: str = ""   # fecha del servicio (opcional, ISO YYYY-MM-DD)
+    start_time: str = ""     # hora de inicio (opcional, HH:MM)
+    end_time: str = ""       # hora de fin (opcional, HH:MM)
 
 
 class CustomDay(BaseModel):
@@ -387,6 +390,7 @@ class QuotationCreate(BaseModel):
     contacts: Optional[QuotationContacts] = None
     notes: str = ""
     assigned_to: Optional[str] = None
+    presentation_text: str = ""
     # Custom / programa personalizado
     custom_title: str = ""
     custom_items: List[CustomItem] = []
@@ -414,6 +418,7 @@ class QuotationUpdate(BaseModel):
     contacts: Optional[QuotationContacts] = None
     notes: Optional[str] = None
     assigned_to: Optional[str] = None
+    presentation_text: Optional[str] = None
     # Custom / programa personalizado
     custom_title: Optional[str] = None
     custom_items: Optional[List[CustomItem]] = None
@@ -450,3 +455,12 @@ class SaveAsTemplateInput(BaseModel):
 
 class SaveAsPackageInput(BaseModel):
     code: Optional[str] = None
+
+
+class PresentationInput(BaseModel):
+    client_name: str = ""
+    title: str = ""
+    date_start: str = ""
+    date_end: str = ""
+    adultos: int = 0
+    menores: int = 0
