@@ -115,60 +115,76 @@ async def send_test_smtp(host: str, port: int, username: str, password: str,
 
 
 
+async def _resend_post(api_key: str, from_str: str, to_email: str, subject: str, html: str):
+    """POST to Resend. Returns (ok, status_code, text)."""
+    async with httpx.AsyncClient(timeout=12) as client:
+        r = await client.post(
+            "https://api.resend.com/emails",
+            headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
+            json={"from": from_str, "to": [to_email], "subject": subject, "html": html},
+        )
+    return r.status_code in (200, 201), r.status_code, r.text
+
+
+async def _platform_fallback(company: dict, to_email: str, subject: str, html: str) -> bool:
+    """Always-on fallback: deliver via PLATFORM_RESEND_API_KEY + PLATFORM_FROM_EMAIL
+    (Routiq's verified domain) when the company's own provider is missing OR fails
+    (e.g. the company configured a Resend sender on an unverified domain)."""
+    plat_key = os.environ.get("PLATFORM_RESEND_API_KEY")
+    if not plat_key:
+        log.info("send_email: sin fallback de plataforma (PLATFORM_RESEND_API_KEY vacío) -> %s | %s", to_email, subject)
+        return False
+    plat_from = os.environ.get("PLATFORM_FROM_EMAIL", "no-reply@routiq.com.mx")
+    from_name = (company or {}).get("name") or "Routiq"
+    try:
+        ok, status, text = await _resend_post(plat_key, f"{from_name} <{plat_from}>", to_email, subject, html)
+        if not ok:
+            log.warning("platform-fallback Resend rechazado (%s): %s", status, text[:300])
+        return ok
+    except Exception as e:
+        log.warning("platform-fallback Resend falló: %s", e)
+        return False
+
+
 async def send_email(company: dict, to_email: str, subject: str, html: str) -> bool:
-    """Send an email using the company's configured provider (SMTP or Resend).
+    """Send an email using the company's configured provider, with an automatic
+    fallback to the platform Resend sender whenever the company provider is not
+    configured OR the send fails (unverified domain, bad key, SMTP error, etc.).
     Best-effort: returns True if accepted, False otherwise (never raises)."""
     if not to_email:
         log.info("send_email skipped (no recipient) -> %s", subject)
         return False
     html = _with_footer(company, html)
     provider = (company or {}).get("email_provider")
+
+    # 1) Company provider (Gmail / SMTP) -> on failure, fall back to platform.
     if provider == "gmail" and ((company or {}).get("gmail") or {}).get("refresh_token"):
-        return await _send_gmail(company, to_email, subject, html)
+        if await _send_gmail(company, to_email, subject, html):
+            return True
+        log.info("Gmail falló -> fallback a plataforma (%s)", to_email)
+        return await _platform_fallback(company, to_email, subject, html)
     if provider == "smtp" and ((company or {}).get("smtp") or {}).get("host"):
-        return await _send_smtp(company, to_email, subject, html)
-    # default: Resend
+        if await _send_smtp(company, to_email, subject, html):
+            return True
+        log.info("SMTP falló -> fallback a plataforma (%s)", to_email)
+        return await _platform_fallback(company, to_email, subject, html)
+
+    # 2) Company Resend key (if any) -> on failure, fall back to platform.
     resend = (company or {}).get("resend") or {}
     api_key = resend.get("api_key") or os.environ.get("RESEND_API_KEY")
-    if not api_key:
-        # Platform fallback: lets tenants without their own email provider still
-        # deliver transactional mail (e.g. password reset) via Routiq's verified domain.
-        plat_key = os.environ.get("PLATFORM_RESEND_API_KEY")
-        if plat_key:
-            plat_from = os.environ.get("PLATFORM_FROM_EMAIL", "no-reply@routiq.com.mx")
-            from_name = (company or {}).get("name") or "Routiq"
-            try:
-                async with httpx.AsyncClient(timeout=12) as client:
-                    r = await client.post(
-                        "https://api.resend.com/emails",
-                        headers={"Authorization": f"Bearer {plat_key}", "Content-Type": "application/json"},
-                        json={"from": f"{from_name} <{plat_from}>", "to": [to_email], "subject": subject, "html": html},
-                    )
-                    ok = r.status_code in (200, 201)
-                    if not ok:
-                        log.warning("platform-fallback Resend rejected (%s): %s", r.status_code, r.text[:300])
-                    return ok
-            except Exception as e:
-                log.warning("platform-fallback Resend failed: %s", e)
-                return False
-        log.info("send_email skipped (no provider configured) -> %s | %s", to_email, subject)
-        return False
-    from_email = resend.get("from_email") or "onboarding@resend.dev"
-    from_name = resend.get("from_name") or company.get("name") or "Routiq"
-    try:
-        async with httpx.AsyncClient(timeout=12) as client:
-            r = await client.post(
-                "https://api.resend.com/emails",
-                headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
-                json={"from": f"{from_name} <{from_email}>", "to": [to_email], "subject": subject, "html": html},
-            )
-            ok = r.status_code in (200, 201)
-            if not ok:
-                log.warning("Resend rejected email (%s): %s", r.status_code, r.text[:300])
-            return ok
-    except Exception as e:
-        log.warning("Resend send failed: %s", e)
-        return False
+    if api_key:
+        from_email = resend.get("from_email") or "onboarding@resend.dev"
+        from_name = resend.get("from_name") or (company or {}).get("name") or "Routiq"
+        try:
+            ok, status, text = await _resend_post(api_key, f"{from_name} <{from_email}>", to_email, subject, html)
+            if ok:
+                return True
+            log.warning("Resend de empresa rechazado (%s): %s -> fallback a plataforma", status, text[:300])
+        except Exception as e:
+            log.warning("Resend de empresa falló: %s -> fallback a plataforma", e)
+
+    # 3) No company provider, or it failed -> platform fallback (verified domain).
+    return await _platform_fallback(company, to_email, subject, html)
 
 
 async def _send_gmail(company: dict, to_email: str, subject: str, html: str) -> bool:
