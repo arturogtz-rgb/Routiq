@@ -13,7 +13,7 @@ from models import (
     QuotationCreate, QuotationStateUpdate, QuotationUpdate,
     QuotationPricingAdjust, QuotationArchive,
 )
-from pricing import compute_quotation
+from pricing import compute_quotation, compute_custom_quotation
 from pdf_generator import generate_quotation_pdf
 import ai_service
 from deps import (
@@ -74,32 +74,58 @@ async def create_quotation(payload: QuotationCreate, user: dict = Depends(requir
     services_sel = [s.model_dump() for s in payload.services]
     services_catalog = await _load_services_catalog(db, user["tenant_id"], services_sel)
 
-    is_services = payload.type == "servicios" or not payload.package_id
+    is_services = payload.type == "servicios"
+    is_custom = payload.type == "personalizado"
+    if not is_custom and not is_services and not payload.package_id:
+        is_services = True
     pack = None
     package_snapshot = None
-    if not is_services:
-        pack = await db.packages.find_one({"id": payload.package_id, "tenant_id": user["tenant_id"]}, {"_id": 0})
-        if not pack:
-            raise HTTPException(status_code=404, detail="Paquete no encontrado")
-        package_snapshot = {"name": pack["name"], "code": pack["code"], "nights": pack["nights"]}
-    elif not services_sel:
-        raise HTTPException(status_code=400, detail="Agrega al menos un servicio para una cotización a la carta")
+    custom_payload = {}
 
     d_start = payload.dates.start
     d_end = payload.dates.end
     if d_start and d_end and d_start > d_end:
         d_start, d_end = d_end, d_start
-    extra_cfg = payload.extra_nights.model_dump() if payload.extra_nights else None
-    pack_nights = pack["nights"] if pack else 0
-    calc = compute_quotation(pack, payload.hotel_name, payload.pax.model_dump(),
-                             pack_nights, client["channel"], pricing_config,
-                             services_catalog, services_sel,
-                             dates={"start": d_start, "end": d_end}, extra_nights_cfg=extra_cfg)
+
+    if is_custom:
+        if not payload.custom_items:
+            raise HTTPException(status_code=400, detail="Agrega al menos un concepto al programa personalizado")
+        calc = compute_custom_quotation(
+            [c.model_dump() for c in payload.custom_items], payload.pax.model_dump(),
+            payload.custom_nights, payload.custom_rooms, client["channel"], pricing_config,
+            dates={"start": d_start, "end": d_end})
+        title = (payload.custom_title or "").strip() or "Programa personalizado"
+        package_snapshot = {"name": title, "code": "", "nights": calc["nights_total"]}
+        custom_payload = {
+            "custom_title": title,
+            "custom_items": [c.model_dump() for c in payload.custom_items],
+            "custom_itinerary": [d.model_dump() for d in payload.custom_itinerary],
+            "custom_includes": payload.custom_includes,
+            "custom_excludes": payload.custom_excludes,
+            "custom_nights": payload.custom_nights,
+            "custom_rooms": payload.custom_rooms,
+        }
+        extra_cfg = None
+    else:
+        if not is_services:
+            pack = await db.packages.find_one({"id": payload.package_id, "tenant_id": user["tenant_id"]}, {"_id": 0})
+            if not pack:
+                raise HTTPException(status_code=404, detail="Paquete no encontrado")
+            package_snapshot = {"name": pack["name"], "code": pack["code"], "nights": pack["nights"]}
+        elif not services_sel:
+            raise HTTPException(status_code=400, detail="Agrega al menos un servicio para una cotización a la carta")
+        extra_cfg = payload.extra_nights.model_dump() if payload.extra_nights else None
+        pack_nights = pack["nights"] if pack else 0
+        calc = compute_quotation(pack, payload.hotel_name, payload.pax.model_dump(),
+                                 pack_nights, client["channel"], pricing_config,
+                                 services_catalog, services_sel,
+                                 dates={"start": d_start, "end": d_end}, extra_nights_cfg=extra_cfg)
+    type_label = {"personalizado": "programa personalizado", "servicios": "servicios a la carta"}.get(payload.type, "paquete")
     code = await _next_quotation_code(db, user["tenant_id"])
     doc = {
         "id": new_id(), "tenant_id": user["tenant_id"], "code": code,
         "client_id": client["id"], "client_snapshot": {"name": client["name"], "channel": client["channel"]},
-        "type": "servicios" if is_services else "paquete",
+        "type": "personalizado" if is_custom else ("servicios" if is_services else "paquete"),
         "package_id": pack["id"] if pack else None,
         "package_snapshot": package_snapshot,
         "hotel_selected": payload.hotel_name if pack else "",
@@ -108,6 +134,7 @@ async def create_quotation(payload: QuotationCreate, user: dict = Depends(requir
         "services": services_sel,
         "contacts": payload.contacts.model_dump() if payload.contacts else None,
         "extra_nights_cfg": extra_cfg,
+        **custom_payload,
         "nights_total": calc["nights_total"],
         "extra_nights": calc["extra_nights"],
         "season_applied": calc.get("season_applied"),
@@ -125,7 +152,7 @@ async def create_quotation(payload: QuotationCreate, user: dict = Depends(requir
         "notes": payload.notes,
         "history": [{
             "at": now_iso(), "user_id": user["id"], "user_name": user.get("name", ""),
-            "action": "created", "detail": f"Cotización creada ({'servicios a la carta' if is_services else 'paquete'})",
+            "action": "created", "detail": f"Cotización creada ({type_label})",
         }],
         "last_activity_at": now_iso(),
         "created_at": now_iso(),
@@ -183,7 +210,37 @@ async def update_quotation(quotation_id: str, payload: QuotationUpdate, user: di
     if not q:
         raise HTTPException(status_code=404, detail="Cotización no encontrada")
     changed_fields = [k for k in updates.keys()]
-    if any(k in updates for k in ("pax", "hotel_name", "services", "dates", "extra_nights")):
+    if q.get("type") == "personalizado":
+        if any(k in updates for k in ("pax", "dates", "custom_items", "custom_nights", "custom_rooms")):
+            client = await db.clients.find_one({"id": q["client_id"], "tenant_id": user["tenant_id"]}, {"_id": 0})
+            company = await db.companies.find_one({"id": user["tenant_id"]}, {"_id": 0})
+            pricing_config = company.get("pricing_config") or DEFAULT_PRICING_CONFIG
+            pax = updates.get("pax", q["pax"])
+            new_dates = updates.get("dates", q.get("dates"))
+            if new_dates and new_dates.get("start") and new_dates.get("end") and new_dates["start"] > new_dates["end"]:
+                new_dates = {"start": new_dates["end"], "end": new_dates["start"]}
+            citems = updates.get("custom_items", q.get("custom_items", []))
+            cnights = updates.get("custom_nights", q.get("custom_nights", 0))
+            crooms = updates.get("custom_rooms", q.get("custom_rooms", 0))
+            calc = compute_custom_quotation(citems, pax, cnights, crooms, client["channel"], pricing_config, dates=new_dates)
+            updates.update({
+                "dates": new_dates,
+                "nights_total": calc["nights_total"], "extra_nights": 0,
+                "items": calc["items"], "subtotal": calc["subtotal"],
+                "commission": calc["commission"], "commission_rate": calc["commission_rate"],
+                "total": calc["total"],
+            })
+            if q.get("discount") and q["discount"].get("type") != "none":
+                final_total, amount = _apply_discount(calc["total"], q["discount"])
+                disc = dict(q["discount"]); disc["amount"] = amount
+                updates["discount"] = disc
+                updates["final_total"] = final_total
+        if "custom_title" in updates:
+            title = (updates["custom_title"] or "").strip() or "Programa personalizado"
+            updates["custom_title"] = title
+            snap = dict(q.get("package_snapshot") or {}); snap["name"] = title
+            updates["package_snapshot"] = snap
+    elif any(k in updates for k in ("pax", "hotel_name", "services", "dates", "extra_nights")):
         pack = None
         if q.get("package_id"):
             pack = await db.packages.find_one({"id": q["package_id"], "tenant_id": user["tenant_id"]}, {"_id": 0})
@@ -272,6 +329,15 @@ async def download_quotation_pdf(quotation_id: str, user: dict = Depends(require
     pack = None
     if q.get("package_id"):
         pack = await db.packages.find_one({"id": q["package_id"], "tenant_id": user["tenant_id"]}, {"_id": 0})
+    if q.get("type") == "personalizado":
+        pack = {
+            "name": q.get("custom_title") or "Programa personalizado",
+            "description": "",
+            "nights": q.get("nights_total"),
+            "itinerary": q.get("custom_itinerary", []),
+            "includes": q.get("custom_includes", []),
+            "excludes": q.get("custom_excludes", []),
+        }
     client = await db.clients.find_one({"id": q["client_id"], "tenant_id": user["tenant_id"]}, {"_id": 0})
     pdf = generate_quotation_pdf(company, q, pack or {}, client or {"name": q.get("client_snapshot", {}).get("name", "")})
     return StreamingResponse(

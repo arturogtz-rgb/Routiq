@@ -1,12 +1,13 @@
 import { useEffect, useState, useRef } from 'react';
 import AppShell from '@/components/AppShell';
 import api, { formatApiError } from '@/lib/api';
-import { CreditCard, Save, AlertTriangle, Trash2 } from 'lucide-react';
+import { CreditCard, Save, AlertTriangle, Trash2, FileText } from 'lucide-react';
 import { LogoSettings } from '@/components/settings/LogoSettings';
 import { PricingSettings, PricingExample } from '@/components/settings/PricingSettings';
 import { PaymentSettings } from '@/components/settings/PaymentSettings';
 import { EmailSettings } from '@/components/settings/EmailSettings';
 import { BankingSettings } from '@/components/settings/BankingSettings';
+import { RichTextEditor } from '@/components/RichTextEditor';
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
@@ -22,6 +23,8 @@ export default function Settings() {
   const [showClear, setShowClear] = useState(false);
   const [clearText, setClearText] = useState('');
   const [clearing, setClearing] = useState(false);
+  const [policy, setPolicy] = useState('');
+  const [savingPolicy, setSavingPolicy] = useState(false);
   const fileInputRef = useRef(null);
   const backend = process.env.REACT_APP_BACKEND_URL || '';
 
@@ -29,6 +32,7 @@ export default function Settings() {
     const [{ data }, ig] = await Promise.all([api.get('/companies/me'), api.get('/companies/me/integrations')]);
     setCompany(data);
     setPricing(data.pricing_config);
+    setPolicy(data.cancellation_policy || '');
     setInteg({ ...ig.data, stripe_secret_key: '', resend_api_key: '', smtp_password: '', gmail_client_secret: '' });
   };
 
@@ -144,9 +148,19 @@ export default function Settings() {
     } catch (e) { setError(formatApiError(e)); }
   };
 
-  const clearData = async () => {
-    setError(''); setOk(''); setClearing(true);
+  const savePolicy = async () => {
+    setError(''); setOk(''); setSavingPolicy(true);
     try {
+      const { data } = await api.patch('/companies/me/policy', { cancellation_policy: policy });
+      setPolicy(data.cancellation_policy || '');
+      setOk('Políticas de cancelación guardadas');
+      setTimeout(() => setOk(''), 2500);
+    } catch (e) { setError(formatApiError(e)); }
+    finally { setSavingPolicy(false); }
+  };
+
+  const clearData = async () => {
+    setError(''); setOk(''); setClearing(true);    try {
       const { data } = await api.post('/companies/me/clear-data');
       const total = Object.values(data.deleted || {}).reduce((a, b) => a + b, 0);
       setShowClear(false); setClearText('');
@@ -199,6 +213,20 @@ export default function Settings() {
           </div>
         </div>
       )}
+
+      <div className="card-surface p-6 mt-6" data-testid="policy-card">
+        <h2 className="font-display font-semibold text-lg text-ink-900 flex items-center gap-2"><FileText className="w-5 h-5 text-brand-500" /> Políticas de cancelación y cambios</h2>
+        <p className="text-sm text-ink-500 mt-1">Este texto se agrega automáticamente al PDF de cada cotización y a su enlace público para el cliente. Usa negritas y listas para estructurar plazos y porcentajes.</p>
+        <div className="mt-4">
+          <RichTextEditor value={policy} onChange={setPolicy} testid="policy-editor"
+            placeholder="Ej. Cancelaciones con más de 30 días: reembolso del 90%. Entre 15 y 30 días: 50%. Menos de 15 días: sin reembolso…" />
+        </div>
+        <div className="pt-4 mt-2 border-t border-ink-100 flex justify-end">
+          <button className="btn-primary" onClick={savePolicy} disabled={savingPolicy} data-testid="save-policy-btn">
+            <Save className="w-4 h-4" /> {savingPolicy ? 'Guardando…' : 'Guardar políticas'}
+          </button>
+        </div>
+      </div>
 
       <div className="card-surface p-6 mt-6 border border-red-200" data-testid="danger-zone">
         <h2 className="font-display font-semibold text-lg text-red-700 flex items-center gap-2"><AlertTriangle className="w-5 h-5" /> Zona de peligro</h2>

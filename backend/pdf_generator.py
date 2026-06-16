@@ -34,6 +34,102 @@ def _money(v: float, currency: str = "MXN") -> str:
     return f"${v:,.2f} {currency}"
 
 
+# ---------------------------------------------------------------------------
+# Rich-text (cancellation policy) → ReportLab flowables
+# ReportLab Paragraph only understands a tiny inline subset (<b>,<i>,<u>,<br/>),
+# so we translate block tags (<p>,<ul>,<ol>,<li>,<h*>) into separate paragraphs.
+# ---------------------------------------------------------------------------
+from html.parser import HTMLParser
+
+
+def _xml_escape(t: str) -> str:
+    return t.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+
+
+class _PolicyHTMLParser(HTMLParser):
+    def __init__(self):
+        super().__init__(convert_charrefs=True)
+        self.blocks = []      # list of (kind, inline_html)
+        self._buf = []
+        self._list_stack = []
+        self._ol_counters = []
+
+    def _flush(self, kind="p"):
+        text = "".join(self._buf).strip()
+        if text:
+            self.blocks.append((kind, text))
+        self._buf = []
+
+    def handle_starttag(self, tag, attrs):
+        tag = tag.lower()
+        if tag in ("p", "div", "h1", "h2", "h3", "h4"):
+            self._flush()
+        elif tag == "br":
+            self._buf.append("<br/>")
+        elif tag in ("ul", "ol"):
+            self._flush()
+            self._list_stack.append(tag)
+            self._ol_counters.append(0)
+        elif tag == "li":
+            self._flush()
+        elif tag in ("b", "strong"):
+            self._buf.append("<b>")
+        elif tag in ("i", "em"):
+            self._buf.append("<i>")
+        elif tag == "u":
+            self._buf.append("<u>")
+
+    def handle_endtag(self, tag):
+        tag = tag.lower()
+        if tag in ("p", "div"):
+            self._flush()
+        elif tag in ("h1", "h2", "h3", "h4"):
+            self._flush("h")
+        elif tag == "li":
+            prefix = "•  "
+            if self._list_stack and self._list_stack[-1] == "ol":
+                self._ol_counters[-1] += 1
+                prefix = f"{self._ol_counters[-1]}.  "
+            text = "".join(self._buf).strip()
+            self._buf = []
+            if text:
+                self.blocks.append(("li", prefix + text))
+        elif tag in ("ul", "ol"):
+            if self._list_stack:
+                self._list_stack.pop()
+            if self._ol_counters:
+                self._ol_counters.pop()
+        elif tag in ("b", "strong"):
+            self._buf.append("</b>")
+        elif tag in ("i", "em"):
+            self._buf.append("</i>")
+        elif tag == "u":
+            self._buf.append("</u>")
+
+    def handle_data(self, data):
+        self._buf.append(_xml_escape(data))
+
+
+def _richtext_flowables(html: str, styles) -> list:
+    parser = _PolicyHTMLParser()
+    try:
+        parser.feed(html or "")
+        parser.close()
+        parser._flush()
+    except Exception:
+        return [Paragraph(_xml_escape(html or ""), styles["soft"])]
+    flows = []
+    li_style = ParagraphStyle("policy_li", parent=styles["soft"], leftIndent=12, spaceAfter=2)
+    for kind, text in parser.blocks:
+        if kind == "li":
+            flows.append(Paragraph(text, li_style))
+        elif kind == "h":
+            flows.append(Paragraph(f"<b>{text}</b>", styles["h3"]))
+        else:
+            flows.append(Paragraph(text, styles["soft"]))
+    return flows
+
+
 _MESES_ABBR = ["ENE", "FEB", "MAR", "ABR", "MAY", "JUN", "JUL", "AGO", "SEP", "OCT", "NOV", "DIC"]
 
 
@@ -133,6 +229,7 @@ def generate_quotation_pdf(company: dict, quotation: dict, package: dict, client
 
     # Package / type block
     is_services = quotation.get("type") == "servicios" or not package.get("name")
+    is_custom = quotation.get("type") == "personalizado"
     title_txt = "Servicios a la carta" if is_services else package.get("name", "")
     story.append(Paragraph(title_txt, s["h2"]))
     if not is_services and package.get("description"):
@@ -153,6 +250,10 @@ def generate_quotation_pdf(company: dict, quotation: dict, package: dict, client
         pax_desc = f"{rooms_desc} ({total_pax} adultos)"
         if pax.get("menores", 0) > 0:
             pax_desc += f" + {pax['menores']} menores"
+    elif is_services or is_custom:
+        pax_desc = f"{pax.get('adultos', 0)} persona(s)"
+        if pax.get("menores", 0) > 0:
+            pax_desc += f" + {pax['menores']} menores"
     else:
         pax_desc = f"{pax.get('ocupacion','')} · {pax.get('adultos',0)} adultos, {pax.get('menores',0)} menores"
 
@@ -168,7 +269,7 @@ def generate_quotation_pdf(company: dict, quotation: dict, package: dict, client
         meta_rows.append(["Fechas", f"{_fmt_date(d_start)}  →  {_fmt_date(d_end)}"])
     if not is_services and nights_total:
         meta_rows.append(["Noches", nights_label])
-    meta_rows.append(["Pax" if is_services else "Habitaciones / Pax", pax_desc])
+    meta_rows.append(["Pax" if (is_services or is_custom) else "Habitaciones / Pax", pax_desc])
     meta = Table(meta_rows, colWidths=[3.5 * cm, 12 * cm])
     meta.setStyle(TableStyle([
         ("BACKGROUND", (0, 0), (0, -1), PASTEL),
@@ -260,9 +361,17 @@ def generate_quotation_pdf(company: dict, quotation: dict, package: dict, client
     story.append(Spacer(1, 10))
     story.append(Paragraph(
         "<b>Condiciones generales:</b> Cotización válida por 7 días. Precios sujetos a disponibilidad al momento de la reservación. "
-        "Política de cancelación según contrato. Precios por persona en MXN.",
+        "Precios por persona en MXN.",
         s["soft"],
     ))
+
+    # Cancellation & change policy (rich text authored per company in Ajustes)
+    policy_html = (company.get("cancellation_policy") or "").strip()
+    if policy_html:
+        story.append(Spacer(1, 10))
+        story.append(Paragraph("Políticas de cancelación y cambios", s["h2"]))
+        for fl in _richtext_flowables(policy_html, s):
+            story.append(fl)
 
     if not company.get("white_label"):
         story.append(Spacer(1, 16))

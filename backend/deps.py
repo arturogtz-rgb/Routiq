@@ -46,6 +46,34 @@ def _mask_secret(value: str) -> str:
     return "••••" + value[-4:] if len(value) > 4 else "••••"
 
 
+# ---------------------------------------------------------------------------
+# Rich-text sanitizer (cancellation policy authored by company admins)
+# ---------------------------------------------------------------------------
+import re as _re_html
+
+_ALLOWED_TAGS = {"p", "br", "b", "strong", "i", "em", "u", "ul", "ol", "li",
+                 "span", "div", "h1", "h2", "h3", "h4", "a"}
+_TAG_RE = _re_html.compile(r"</?\s*([a-zA-Z0-9]+)([^>]*)>")
+
+
+def sanitize_richtext(html: str) -> str:
+    """Lenient whitelist sanitizer for admin-authored rich text. Removes script/
+    style blocks, inline event handlers and javascript: URLs, and strips any tag
+    not in the allowlist (keeping its inner text)."""
+    if not html:
+        return ""
+    html = html[:20000]
+    html = _re_html.sub(r"(?is)<(script|style)[^>]*>.*?</\1>", "", html)
+    html = _re_html.sub(r"(?i)\son\w+\s*=\s*\"[^\"]*\"", "", html)
+    html = _re_html.sub(r"(?i)\son\w+\s*=\s*'[^']*'", "", html)
+    html = _re_html.sub(r"(?i)javascript:", "", html)
+
+    def _keep(m):
+        return m.group(0) if m.group(1).lower() in _ALLOWED_TAGS else ""
+
+    return _TAG_RE.sub(_keep, html).strip()
+
+
 def _integrations_view(company: dict) -> dict:
     stripe = company.get("stripe") or {}
     resend = company.get("resend") or {}

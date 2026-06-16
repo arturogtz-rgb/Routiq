@@ -157,3 +157,24 @@ h1, h2, h3, h4, h5, h6, .font-display {
   background-size: 200% 100%;
   animation: shimmer 1.6s infinite linear;
 }
+
+/* Rich-text editor (cancellation policy) */
+.rte-area[contenteditable]:empty:before {
+  content: attr(data-placeholder);
+  color: #94a3b8;
+  pointer-events: none;
+}
+.rte-area ul { list-style: disc; padding-left: 1.4rem; margin: 0.25rem 0; }
+.rte-area ol { list-style: decimal; padding-left: 1.4rem; margin: 0.25rem 0; }
+.rte-area li { margin: 0.1rem 0; }
+.rte-area p { margin: 0.35rem 0; }
+.rte-area b, .rte-area strong { font-weight: 700; }
+
+/* Rendered policy (public quotation) */
+.policy-render ul { list-style: disc; padding-left: 1.4rem; margin: 0.4rem 0; }
+.policy-render ol { list-style: decimal; padding-left: 1.4rem; margin: 0.4rem 0; }
+.policy-render li { margin: 0.15rem 0; }
+.policy-render p { margin: 0.5rem 0; }
+.policy-render b, .policy-render strong { font-weight: 700; }
+.policy-render h1, .policy-render h2, .policy-render h3, .policy-render h4 { font-weight: 700; margin: 0.5rem 0 0.25rem; }
+

@@ -1,0 +1,37 @@
+{
+  "summary": "Iteration 25 backend + frontend e2e: validated (a) 3rd quotation type 'personalizado' (type-personalizado card, /quotations/new/custom wizard 5 steps, create/get/patch with recalculation including pax/title -> snapshot, PDF 200 valid, public link includes itinerary+items+policy); (b) cancellation policy GET/PATCH with HTML sanitization (script/style/onclick/javascript: removed; b/li preserved); (c) /api/public-config returns show_demo_credentials=false; (d) policy editor in /app/settings (policy-card, policy-editor, bold + list + save -> settings-ok); (e) public quotation /q/{token} renders public-policy with formatted bold/lists; (f) regression: paquete & servicios quotation flows still produce valid PDF. 13/13 backend tests PASS. Frontend e2e PASS end-to-end including live math (net=1000 hosp + per_night qty=3 -> public=$800 -> subtotal $2,400 ✅; total $3,600 with 2 items matches backend).",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "tests_executed": [
+    {"name": "Backend pytest test_iteration25_custom_policy.py", "result": "13/13 PASS"},
+    {"name": "Frontend e2e: 3 type cards visible + click personalizado -> /quotations/new/custom", "result": "PASS"},
+    {"name": "Frontend e2e: wizard 5 steps + live math (1000/1.25 = $800 unit_price; 2 items total $3,600)", "result": "PASS"},
+    {"name": "Frontend e2e: custom-submit -> redirect to /app/quotations/{id}; pill 'Programa personalizado' visible; edit-quotation-btn present", "result": "PASS"},
+    {"name": "Frontend e2e: /app/settings policy-card + policy-editor + bold + insertUnorderedList + save-policy-btn -> settings-ok", "result": "PASS"},
+    {"name": "Frontend e2e: /q/{token} shows title + itinerary + policy formatted (bold/lists) + total", "result": "PASS"}
+  ],
+  "test_report_links": [
+    "/app/backend/tests/test_iteration25_custom_policy.py",
+    "/app/test_reports/pytest/iter25_results.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "QuotationDetail.jsx: no dedicated data-testid='public-link-btn'/'share-link-btn' found in code. The public link is created via API POST /api/quotations/{id}/public-link but the corresponding UI button in the detail page lacks a stable testid for automated coverage. Consider adding data-testid to the 'Generar enlace público' button so future agents can test the full UI flow without falling back to fetch().",
+    "RichTextEditor (policy editor): saving a new policy appends to existing content rather than replacing on remount (the editor initializes from server HTML and edits in-place). Not a bug, but worth documenting: to fully replace, the user must select-all + delete before typing. The sanitizer correctly strips <script>/<style>/handlers (verified backend-side).",
+    "Backend pricing.py: default margin_divisor=0.76 in compute_custom_quotation but the demo company is seeded with 1.25 (public = net*0.8). The fallback semantics differ from the seed; consider unifying. Math is consistent at 1.25 for the demo and matches the live builder.",
+    "CompanyPublic response from /api/companies/me does not expose pricing.margin_divisor (returns None at top level). Frontend computes math correctly because backend recomputes on each create/patch, but exposing the divisor in a read endpoint would enable a true client-side preview without round-trips."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_iteration25_custom_policy.py (new)"
+  ],
+  "success_rate": {"backend": "100% (13/13)", "frontend": "100% (6/6 flows)"},
+  "test_credentials": "admin@aventurate.mx / Demo2026! (company_admin) — preserved; ejecutivo@aventurate.mx / Demo2026! used for RBAC negative test.",
+  "seed_data_creation": "Created 2 TEST personalizado quotations via UI ('TEST E2E Custom Quotation' and 'TEST E2E Submit Custom') and several via the pytest backend run. Cancellation policy was overwritten by tests; current value contains formatted bold + lists + leftover sanitized text from the XSS test. Main agent may want to reset Settings -> policy if a clean demo state is required.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Iter 25 fully green. Key facts: (1) Public link is created by POST /api/quotations/{id}/public-link returning {token, expires_at} — UI button lacks a stable data-testid. (2) public-config returns show_demo_credentials=false by default (env-driven). (3) Quotation top-level fields are subtotal/commission/commission_rate/total/currency/items (NOT under a 'pricing' key). (4) /api/public/quotations/{token} returns {quotation:{items}, company, itinerary[], includes[], excludes[], cancellation_policy}. (5) Demo company margin_divisor=1.25 → public = net*0.8. (6) Test idempotency: the policy editor appends rather than replacing content. (7) PDF for personalizado is ~4.5KB and starts with %PDF."
+}

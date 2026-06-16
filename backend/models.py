@@ -78,7 +78,12 @@ class CompanyPublic(BaseModel):
     stripe_allowed: bool = True
     transfer_allowed: bool = True
     email_provider: str = "resend"
+    cancellation_policy: str = ""  # rich-text HTML, inyectado en PDFs y enlaces públicos
     created_at: Optional[str] = None
+
+
+class PolicyUpdate(BaseModel):
+    cancellation_policy: str = ""
 
 
 class CompanyPlanUpdate(BaseModel):
@@ -350,9 +355,29 @@ class ExtraNights(BaseModel):
     unit: Literal["per_person", "per_room", "per_reservation"] = "per_reservation"
 
 
+# ---------- Custom / "Programa personalizado" (cotización a medida libre) ----------
+CustomUnit = Literal["per_person", "per_night", "per_room", "per_group", "per_day", "per_vehicle"]
+CustomCategory = Literal["hospedaje", "traslado", "tour", "extra"]
+
+
+class CustomItem(BaseModel):
+    category: CustomCategory = "extra"
+    name: str = ""
+    description: str = ""
+    net_price: float = Field(default=0.0, ge=0)
+    unit: CustomUnit = "per_group"
+    qty: int = Field(default=0, ge=0)  # 0 => server computes default by unit
+
+
+class CustomDay(BaseModel):
+    day: int = 1
+    title: str = ""
+    description: str = ""
+
+
 class QuotationCreate(BaseModel):
     client_id: str
-    type: Literal["paquete", "servicios"] = "paquete"
+    type: Literal["paquete", "servicios", "personalizado"] = "paquete"
     package_id: Optional[str] = None
     hotel_name: str = ""
     dates: QuotationDates = Field(default_factory=QuotationDates)
@@ -362,6 +387,14 @@ class QuotationCreate(BaseModel):
     contacts: Optional[QuotationContacts] = None
     notes: str = ""
     assigned_to: Optional[str] = None
+    # Custom / programa personalizado
+    custom_title: str = ""
+    custom_items: List[CustomItem] = []
+    custom_itinerary: List[CustomDay] = []
+    custom_includes: List[str] = []
+    custom_excludes: List[str] = []
+    custom_nights: int = Field(default=0, ge=0)
+    custom_rooms: int = Field(default=0, ge=0)
 
 
 class QuotationStateUpdate(BaseModel):
@@ -381,3 +414,11 @@ class QuotationUpdate(BaseModel):
     contacts: Optional[QuotationContacts] = None
     notes: Optional[str] = None
     assigned_to: Optional[str] = None
+    # Custom / programa personalizado
+    custom_title: Optional[str] = None
+    custom_items: Optional[List[CustomItem]] = None
+    custom_itinerary: Optional[List[CustomDay]] = None
+    custom_includes: Optional[List[str]] = None
+    custom_excludes: Optional[List[str]] = None
+    custom_nights: Optional[int] = None
+    custom_rooms: Optional[int] = None

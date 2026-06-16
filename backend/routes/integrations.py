@@ -7,8 +7,8 @@ EMAIL_RE = re.compile(r"^[^\s@]+@[^\s@]+\.[^\s@]+$")
 
 from database import get_db
 from auth import require_roles
-from models import CompanyIntegrationsUpdate, SMTPTestInput
-from deps import _integrations_view
+from models import CompanyIntegrationsUpdate, SMTPTestInput, PolicyUpdate
+from deps import _integrations_view, sanitize_richtext
 import notifications
 import currency
 
@@ -97,6 +97,21 @@ async def update_my_integrations(payload: CompanyIntegrationsUpdate, user: dict 
         await db.companies.update_one({"id": user["tenant_id"]}, {"$set": updates})
     company = await db.companies.find_one({"id": user["tenant_id"]}, {"_id": 0})
     return _integrations_view(company)
+
+
+@router.get("/companies/me/policy")
+async def get_my_policy(user: dict = Depends(require_roles("company_admin"))):
+    db = get_db()
+    company = await db.companies.find_one({"id": user["tenant_id"]}, {"_id": 0, "cancellation_policy": 1})
+    return {"cancellation_policy": (company or {}).get("cancellation_policy", "")}
+
+
+@router.patch("/companies/me/policy")
+async def update_my_policy(payload: PolicyUpdate, user: dict = Depends(require_roles("company_admin"))):
+    db = get_db()
+    clean = sanitize_richtext(payload.cancellation_policy or "")
+    await db.companies.update_one({"id": user["tenant_id"]}, {"$set": {"cancellation_policy": clean}})
+    return {"cancellation_policy": clean}
 
 
 @router.delete("/companies/me/integrations/stripe-secret")

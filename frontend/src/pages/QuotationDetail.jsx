@@ -207,13 +207,14 @@ export default function QuotationDetail() {
         <div>
           <p className="font-mono text-sm text-brand-500 font-semibold">{q.code}
             {q.type === 'servicios' && <span className="pill bg-peach-100 text-amber-700 ml-2">Servicios a la carta</span>}
+            {q.type === 'personalizado' && <span className="pill bg-peach-100 text-amber-700 ml-2">Programa personalizado</span>}
             {q.archived && <span className="pill bg-ink-100 text-ink-500 ml-2">Archivada</span>}
           </p>
           <h1 className="font-display text-3xl font-semibold text-ink-900 mt-1">{q.package_snapshot?.name || 'Servicios a la carta'}</h1>
           <p className="text-ink-500 mt-1">Cliente: <span className="text-ink-900 font-medium">{q.client_snapshot?.name}</span></p>
         </div>
         <div className="flex flex-wrap gap-2">
-          <button onClick={() => navigate(`/app/quotations/${id}/edit`)} className="btn-secondary text-sm" data-testid="edit-quotation-btn">
+          <button onClick={() => navigate(q.type === 'personalizado' ? `/app/quotations/custom/${id}/edit` : `/app/quotations/${id}/edit`)} className="btn-secondary text-sm" data-testid="edit-quotation-btn">
             <Pencil className="w-4 h-4" /> Editar
           </button>
           <button onClick={downloadPdf} className="btn-primary text-sm" data-testid="download-pdf-btn">
@@ -269,10 +270,10 @@ export default function QuotationDetail() {
             {q.notes && <><p className="text-xs uppercase tracking-widest text-ink-400 font-bold mt-6">Notas</p><p className="text-ink-700 mt-1 text-sm">{q.notes}</p></>}
           </div>
 
-          {pack?.itinerary?.length > 0 && (
+          {(pack?.itinerary?.length > 0 || q.custom_itinerary?.length > 0) && (
             <div className="card-surface p-6">
               <h3 className="font-display font-semibold text-ink-900 mb-4">Itinerario</h3>
-              {pack.itinerary.map((d) => (
+              {(pack?.itinerary || q.custom_itinerary).map((d) => (
                 <div key={d.day} className="flex gap-4 mb-4 last:mb-0">
                   <div className="shrink-0 w-10 h-10 rounded-xl bg-brand-50 text-brand-500 font-display font-bold flex items-center justify-center">{d.day}</div>
                   <div>

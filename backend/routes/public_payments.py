@@ -35,6 +35,13 @@ async def get_public_quotation(token: str):
     pack = None
     if q.get("package_id"):
         pack = await db.packages.find_one({"id": q["package_id"]}, {"_id": 0})
+    if q.get("type") == "personalizado":
+        pack = {
+            "itinerary": q.get("custom_itinerary", []),
+            "includes": q.get("custom_includes", []),
+            "excludes": q.get("custom_excludes", []),
+            "image_url": "",
+        }
     base_currency = company.get("base_currency", q.get("currency", "MXN"))
     final_total = q.get("final_total")
     if final_total is None:
@@ -90,6 +97,7 @@ async def get_public_quotation(token: str):
         "excludes": (pack or {}).get("excludes", []),
         "package_image_url": (pack or {}).get("image_url", ""),
         "season_applied": q.get("season_applied"),
+        "cancellation_policy": company.get("cancellation_policy", ""),
     }
 
 

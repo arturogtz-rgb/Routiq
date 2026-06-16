@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import AppShell from '@/components/AppShell';
 import api, { formatApiError } from '@/lib/api';
-import { ArrowLeft, ArrowRight, Check, User, Package, CalendarDays, Calculator, FileText, Plus, Sparkles, AlertTriangle, Moon, Briefcase, Users } from 'lucide-react';
+import { ArrowLeft, ArrowRight, Check, User, Package, CalendarDays, Calculator, FileText, Plus, Sparkles, AlertTriangle, Moon, Briefcase, Users, Wand2 } from 'lucide-react';
 import { formatDateEs, nightsBetween, addDays, weekdayMon0, WEEKDAYS_ES } from '@/lib/dates';
 
 const SERVICE_UNIT_ES = { per_person: 'por persona', per_group: 'por grupo', per_day: 'por día', per_access: 'por acceso' };
@@ -326,7 +326,7 @@ export default function QuotationBuilder() {
       </p>
 
       {/* Type selector */}
-      <div className="grid grid-cols-2 gap-3 mb-6 max-w-2xl">
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-6 max-w-3xl">
         <button type="button" onClick={() => setType('paquete')} disabled={editing}
           className={`rounded-xl border p-4 text-left transition-all ${form.type === 'paquete' ? 'border-brand-500 bg-brand-50' : 'border-ink-100 hover:border-brand-300'} ${editing ? 'opacity-60 cursor-not-allowed' : ''}`}
           data-testid="type-paquete">
@@ -340,6 +340,13 @@ export default function QuotationBuilder() {
           <Sparkles className="w-5 h-5 text-brand-500 mb-1" />
           <p className="font-semibold text-ink-900">Servicios a la carta</p>
           <p className="text-xs text-ink-500">Tours, traslados y extras sin paquete base.</p>
+        </button>
+        <button type="button" onClick={() => !editing && navigate('/app/quotations/new/custom')} disabled={editing}
+          className={`rounded-xl border p-4 text-left transition-all border-ink-100 hover:border-amber-300 ${editing ? 'opacity-60 cursor-not-allowed' : ''}`}
+          data-testid="type-personalizado">
+          <Wand2 className="w-5 h-5 text-amber-600 mb-1" />
+          <p className="font-semibold text-ink-900">Programa personalizado</p>
+          <p className="text-xs text-ink-500">Cotización a medida desde cero, sin catálogo.</p>
         </button>
       </div>
 

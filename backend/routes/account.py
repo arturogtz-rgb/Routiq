@@ -247,8 +247,8 @@ async def master_list_company_admins(user: dict = Depends(require_roles("super_a
 # ---------------------------------------------------------------------------
 @router.get("/public-config")
 async def public_config():
-    show = os.environ.get("SHOW_DEMO_CREDENTIALS", "true").lower() in ("1", "true", "yes")
-    return {"show_demo_credentials": show}
+    raw = (os.environ.get("SHOW_DEMO_CREDENTIALS", "false") or "").strip().strip('"').strip("'").lower()
+    return {"show_demo_credentials": raw in ("1", "true", "yes")}
 
 
 # ---------------------------------------------------------------------------

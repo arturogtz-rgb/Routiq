@@ -266,6 +266,14 @@ export default function PublicQuotation() {
           </div>
         )}
 
+        {/* Cancellation policy */}
+        {data.cancellation_policy && (
+          <div className="card-surface p-6" data-testid="public-policy">
+            <h2 className="font-display text-xl font-semibold text-ink-900 mb-3">Políticas de cancelación y cambios</h2>
+            <div className="policy-render text-sm text-ink-600" dangerouslySetInnerHTML={{ __html: data.cancellation_policy }} />
+          </div>
+        )}
+
         {/* Total + Accept */}
         <div className="card-surface p-6 sticky bottom-4" data-testid="public-total-card">
           <div className="flex items-center justify-between mb-2">

@@ -18,6 +18,21 @@ EXTRA_UNIT_ES = {
     "per_reservation": "por reservación",
 }
 
+CUSTOM_UNIT_ES = {
+    "per_person": "por persona",
+    "per_night": "por noche",
+    "per_room": "por habitación",
+    "per_group": "por grupo",
+    "per_day": "por día",
+    "per_vehicle": "por vehículo",
+}
+CUSTOM_CATEGORY_ES = {
+    "hospedaje": "Hospedaje",
+    "traslado": "Traslado",
+    "tour": "Tour",
+    "extra": "Extra",
+}
+
 
 def nights_between(start: str, end: str) -> int:
     try:
@@ -179,4 +194,64 @@ def compute_quotation(pack: dict | None, hotel_name: str, pax: dict, nights: int
         "nights_total": nights_total,
         "extra_nights": extra_nights,
         "season_applied": season_name,
+    }
+
+
+def _custom_default_qty(unit: str, total_pax: int, nights: int, rooms: int) -> int:
+    if unit == "per_person":
+        return max(1, total_pax)
+    if unit in ("per_night", "per_day"):
+        return max(1, nights)
+    if unit == "per_room":
+        return max(1, rooms)
+    return 1  # per_group / per_vehicle
+
+
+def compute_custom_quotation(custom_items: list, pax: dict, custom_nights: int,
+                             custom_rooms: int, client_channel: str, pricing_config: dict,
+                             dates: dict | None = None) -> dict:
+    """Free-form "programa personalizado": the executive defines each concept
+    (hospedaje/traslado/tour/extra) with a NET price + billing unit. The public
+    price is derived from the company's margin_divisor (same model as services),
+    qty is derived from the billing unit, and the channel commission is applied."""
+    margin_divisor = float(pricing_config.get("margin_divisor", 0.76) or 0.76)
+    menores = int(pax.get("menores", 0) or 0)
+    total_pax = int(pax.get("adultos", 0) or 0) + menores
+
+    nights_total = nights_between(dates.get("start"), dates.get("end")) if dates else 0
+    if nights_total <= 0:
+        nights_total = int(custom_nights or 0)
+    rooms = int(custom_rooms or 0)
+
+    items: List[dict] = []
+    for ci in (custom_items or []):
+        net = float(ci.get("net_price", 0) or 0)
+        public = round(net / margin_divisor, 2) if margin_divisor > 0 else round(net, 2)
+        unit = ci.get("unit") or "per_group"
+        sel_qty = int(ci.get("qty", 0) or 0)
+        qty = sel_qty if sel_qty > 0 else _custom_default_qty(unit, total_pax, nights_total, rooms)
+        name = (ci.get("name") or "").strip() or CUSTOM_CATEGORY_ES.get(ci.get("category", "extra"), "Concepto")
+        items.append({
+            "label": f"{name} · {CUSTOM_UNIT_ES.get(unit, '')}".strip(" ·"),
+            "unit_price": public, "qty": qty, "kind": "custom",
+            "category": ci.get("category", "extra"), "unit": unit,
+            "name": name, "description": ci.get("description", "") or "",
+            "net_price": net, "subtotal": round(public * qty, 2),
+        })
+
+    subtotal = sum(it["subtotal"] for it in items)
+    commission_rate = float(pricing_config.get("commissions", {}).get(client_channel, 0.0))
+    commission = round(subtotal * commission_rate, 2)
+    total = round(subtotal - commission, 2)
+
+    return {
+        "items": items,
+        "subtotal": round(subtotal, 2),
+        "commission": commission,
+        "commission_rate": commission_rate,
+        "total": total,
+        "currency": pricing_config.get("currency", "MXN"),
+        "nights_total": nights_total,
+        "extra_nights": 0,
+        "season_applied": None,
     }
