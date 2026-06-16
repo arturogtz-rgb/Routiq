@@ -279,6 +279,34 @@ async def update_company_plan(company_id: str, payload: CompanyPlanUpdate, user:
     return await db.companies.find_one({"id": company_id}, {"_id": 0})
 
 
+# Collections fully owned by a tenant (keyed by tenant_id) — wiped on hard-delete.
+_TENANT_COLLECTIONS = [
+    "users", "packages", "services", "tours", "transfers", "clients",
+    "quotations", "quotation_templates", "quote_requests", "payment_transactions",
+    "notifications", "push_subscriptions", "audit_log", "ai_usage",
+    "whatsapp_links", "whatsapp_messages",
+]
+
+
+@api.delete("/master/companies/{company_id}")
+async def delete_company(company_id: str, confirm_name: str = "", user: dict = Depends(require_roles("super_admin"))):
+    """Hard-delete a tenant and ALL its associated data (irreversible).
+    Requires `confirm_name` to exactly match the company name (double confirmation)."""
+    db = get_db()
+    company = await db.companies.find_one({"id": company_id}, {"_id": 0})
+    if not company:
+        raise HTTPException(status_code=404, detail="Empresa no encontrada")
+    if (confirm_name or "").strip() != company.get("name", ""):
+        raise HTTPException(status_code=400, detail="El nombre de confirmación no coincide con el de la empresa.")
+    deleted = {}
+    for coll in _TENANT_COLLECTIONS:
+        res = await db[coll].delete_many({"tenant_id": company_id})
+        if res.deleted_count:
+            deleted[coll] = res.deleted_count
+    await db.companies.delete_one({"id": company_id})
+    return {"ok": True, "company": company.get("name"), "deleted": deleted}
+
+
 # ---------------------------------------------------------------------------
 # WhatsApp numbers (mock for now)
 # ---------------------------------------------------------------------------

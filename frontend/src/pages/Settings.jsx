@@ -20,6 +20,8 @@ export default function Settings() {
   const [uploading, setUploading] = useState(false);
   const [smtpTesting, setSmtpTesting] = useState(false);
   const [smtpTestEmail, setSmtpTestEmail] = useState('');
+  const [resendTesting, setResendTesting] = useState(false);
+  const [resendTestEmail, setResendTestEmail] = useState('');
   const [showClear, setShowClear] = useState(false);
   const [clearText, setClearText] = useState('');
   const [clearing, setClearing] = useState(false);
@@ -126,6 +128,21 @@ export default function Settings() {
     finally { setSmtpTesting(false); }
   };
 
+  const testResend = async () => {
+    setError(''); setOk(''); setResendTesting(true);
+    try {
+      const { data } = await api.post('/companies/me/test-resend', {
+        resend_api_key: integ.resend_api_key || undefined,
+        resend_from_email: integ.resend_from_email || undefined,
+        resend_from_name: integ.resend_from_name || undefined,
+        to_email: resendTestEmail || undefined,
+      });
+      setOk(`Correo de prueba enviado a ${data.to} vía Resend. Revisa la bandeja de entrada.`);
+      setTimeout(() => setOk(''), 5000);
+    } catch (e) { setError(formatApiError(e)); }
+    finally { setResendTesting(false); }
+  };
+
   const uploadLogo = async (file) => {
     if (!file) return;
     setError(''); setUploading(true);
@@ -203,7 +220,8 @@ export default function Settings() {
             <PaymentSettings integ={integ} setInteg={setInteg} clearStripeSecret={clearStripeSecret} />
             <EmailSettings integ={integ} setInteg={setInteg} company={company} backend={backend}
               connectGmail={connectGmail} disconnectGmail={disconnectGmail}
-              testSmtp={testSmtp} smtpTesting={smtpTesting} smtpTestEmail={smtpTestEmail} setSmtpTestEmail={setSmtpTestEmail} />
+              testSmtp={testSmtp} smtpTesting={smtpTesting} smtpTestEmail={smtpTestEmail} setSmtpTestEmail={setSmtpTestEmail}
+              testResend={testResend} resendTesting={resendTesting} resendTestEmail={resendTestEmail} setResendTestEmail={setResendTestEmail} />
           </div>
 
           <BankingSettings integ={integ} setInteg={setInteg} />

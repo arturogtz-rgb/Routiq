@@ -4,6 +4,7 @@ export const EmailSettings = ({
   integ, setInteg, company, backend,
   connectGmail, disconnectGmail,
   testSmtp, smtpTesting, smtpTestEmail, setSmtpTestEmail,
+  testResend, resendTesting, resendTestEmail, setResendTestEmail,
 }) => {
   const provider = integ.email_provider || 'resend';
   return (
@@ -62,6 +63,16 @@ export const EmailSettings = ({
             <label className="label-text">Nombre remitente</label>
             <input className="input-field" value={integ.resend_from_name || ''} placeholder={company?.name || 'Tu empresa'}
               onChange={(e) => setInteg((s) => ({ ...s, resend_from_name: e.target.value }))} data-testid="resend-name-input" />
+          </div>
+          <div className="rounded-xl border border-ink-100 bg-cream/50 p-4">
+            <label className="label-text">Enviar prueba a (opcional)</label>
+            <div className="flex gap-2">
+              <input className="input-field flex-1" placeholder={integ.resend_from_email || 'correo@destino.com'} value={resendTestEmail} onChange={(e) => setResendTestEmail(e.target.value)} data-testid="resend-test-email-input" />
+              <button className="btn-ghost whitespace-nowrap" onClick={testResend} disabled={resendTesting || (!integ.resend_api_key && !integ.resend_api_key_set)} data-testid="resend-test-btn">
+                <Send className="w-4 h-4" /> {resendTesting ? 'Enviando…' : 'Probar'}
+              </button>
+            </div>
+            <p className="text-xs text-ink-400 mt-1">Confirma que tu dominio esté verificado en Resend antes de usarlo en producción.</p>
           </div>
         </>
       ) : (

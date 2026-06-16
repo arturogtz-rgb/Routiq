@@ -173,6 +173,13 @@ class SMTPTestInput(BaseModel):
     to_email: Optional[str] = None
 
 
+class ResendTestInput(BaseModel):
+    resend_api_key: Optional[str] = None  # if empty/masked, server uses the stored key
+    resend_from_email: Optional[str] = None
+    resend_from_name: Optional[str] = None
+    to_email: Optional[str] = None
+
+
 class ManualPaymentInput(BaseModel):
     amount: float = Field(gt=0)
     method: Literal["transfer", "cash", "card", "other"] = "transfer"

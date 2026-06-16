@@ -115,6 +115,32 @@ async def send_test_smtp(host: str, port: int, username: str, password: str,
 
 
 
+async def send_test_resend(api_key: str, from_email: str, from_name: str, to_email: str):
+    """Send a one-off Resend test email with explicit credentials.
+    Verifies the company's API key + sender domain are valid in Resend.
+    Returns (ok: bool, error: str)."""
+    from_str = f"{from_name or 'Routiq'} <{from_email}>"
+    html = (
+        "<div style='font-family:system-ui,Arial,sans-serif'>"
+        "<h2 style='color:#185FA5'>✅ Configuración de Resend correcta</h2>"
+        "<p>Tu dominio está verificado en Resend y tu API key funciona. A partir de "
+        "ahora, las cotizaciones y los cobros se enviarán desde tu propio remitente.</p>"
+        "<p style='color:#64748b;font-size:12px'>Enviado por Routiq como prueba.</p></div>"
+    )
+    try:
+        ok, status, text = await _resend_post(api_key, from_str, to_email,
+                                              "Prueba de configuración Resend — Routiq", html)
+        if not ok:
+            # Surface Resend's own message (e.g. domain not verified / invalid key)
+            msg = text[:300] if text else f"HTTP {status}"
+            log.warning("Resend test rejected (%s): %s", status, msg)
+            return False, msg
+        return True, ""
+    except Exception as e:
+        log.warning("Resend test failed: %s", e)
+        return False, str(e)
+
+
 async def _resend_post(api_key: str, from_str: str, to_email: str, subject: str, html: str):
     """POST to Resend. Returns (ok, status_code, text)."""
     async with httpx.AsyncClient(timeout=12) as client:

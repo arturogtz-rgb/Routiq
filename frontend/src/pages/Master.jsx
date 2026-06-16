@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import AppShell from '@/components/AppShell';
 import api, { formatApiError } from '@/lib/api';
-import { Building2, Plus, Power, PowerOff, Users as UsersIcon, FileText, TrendingUp, SlidersHorizontal, Bot, CreditCard, Landmark, BadgeCheck, ImageIcon, Crown, X, Inbox, Check, Clock, Copy, Database, Download, KeyRound, AlertTriangle } from 'lucide-react';
+import { Building2, Plus, Power, PowerOff, Users as UsersIcon, FileText, TrendingUp, SlidersHorizontal, Bot, CreditCard, Landmark, BadgeCheck, ImageIcon, Crown, X, Inbox, Check, Clock, Copy, Database, Download, KeyRound, AlertTriangle, Trash2 } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
 
 export default function MasterAdmin() {
@@ -100,6 +100,21 @@ export function MasterCompanies() {
   const [editCompanyForm, setEditCompanyForm] = useState({ name: '', contact_email: '', contact_phone: '' });
   const [resetInfo, setResetInfo] = useState(null);
   const [copied, setCopied] = useState(false);
+  const [deleteTarget, setDeleteTarget] = useState(null);
+  const [deleteText, setDeleteText] = useState('');
+  const [deleteBusy, setDeleteBusy] = useState(false);
+  const [deleteError, setDeleteError] = useState('');
+
+  const openDelete = (c) => { setDeleteTarget(c); setDeleteText(''); setDeleteError(''); };
+
+  const confirmDelete = async () => {
+    setDeleteBusy(true); setDeleteError('');
+    try {
+      await api.delete(`/master/companies/${deleteTarget.id}`, { params: { confirm_name: deleteText } });
+      setDeleteTarget(null); setDeleteText(''); load();
+    } catch (e) { setDeleteError(formatApiError(e)); }
+    finally { setDeleteBusy(false); }
+  };
 
   const adminFor = (tenantId) => admins.find((a) => a.tenant_id === tenantId);
 
@@ -329,6 +344,9 @@ export function MasterCompanies() {
               </button>
               <button onClick={() => toggle(c)} className="btn-ghost text-xs" data-testid={`toggle-company-${c.slug}`}>
                 {c.status === 'active' ? <><PowerOff className="w-4 h-4" /> Suspender</> : <><Power className="w-4 h-4" /> Reactivar</>}
+              </button>
+              <button onClick={() => openDelete(c)} className="btn-ghost text-xs text-red-600 hover:!bg-red-50" data-testid={`delete-company-${c.slug}`}>
+                <Trash2 className="w-4 h-4" /> Eliminar
               </button>
             </div>
           </div>
@@ -560,6 +578,32 @@ export function MasterCompanies() {
             <div className="flex justify-end gap-2 mt-6">
               <button className="btn-ghost" onClick={() => setRejectTarget(null)} disabled={reqBusy} data-testid="reject-cancel">Cancelar</button>
               <button className="btn-primary !bg-red-600 hover:!bg-red-700" onClick={confirmReject} disabled={reqBusy} data-testid="reject-confirm">{reqBusy ? 'Rechazando…' : 'Rechazar'}</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {deleteTarget && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-ink-900/50" onClick={() => !deleteBusy && setDeleteTarget(null)}>
+          <div className="bg-white rounded-2xl p-6 w-full max-w-md" onClick={(e) => e.stopPropagation()} data-testid="delete-company-modal">
+            <div className="w-14 h-14 rounded-full bg-red-100 text-red-600 flex items-center justify-center"><AlertTriangle className="w-7 h-7" /></div>
+            <h3 className="font-display text-xl font-semibold text-ink-900 mt-4">Eliminar empresa</h3>
+            <p className="text-sm text-ink-500 mt-1">
+              Esto borrará <span className="font-semibold text-ink-900">permanentemente</span> a <span className="font-semibold">{deleteTarget.name}</span> y <span className="font-semibold">todos</span> sus datos:
+              usuarios, cotizaciones, clientes, paquetes, plantillas, pagos, leads y conversaciones de WhatsApp.
+              <span className="block mt-1 font-semibold text-red-600">Esta acción no se puede deshacer.</span>
+            </p>
+            {deleteError && <div className="rounded-xl border border-red-200 bg-red-50 text-red-700 px-4 py-3 text-sm mt-3" data-testid="delete-company-error">{deleteError}</div>}
+            <div className="mt-4">
+              <label className="label-text">Para confirmar, escribe el nombre exacto: <span className="font-mono text-ink-900">{deleteTarget.name}</span></label>
+              <input className="input-field" value={deleteText} onChange={(e) => setDeleteText(e.target.value)} placeholder={deleteTarget.name} data-testid="delete-company-confirm-input" />
+            </div>
+            <div className="flex justify-end gap-2 mt-6">
+              <button className="btn-ghost" onClick={() => setDeleteTarget(null)} disabled={deleteBusy} data-testid="delete-company-cancel">Cancelar</button>
+              <button className="btn-primary !bg-red-600 hover:!bg-red-700" onClick={confirmDelete}
+                disabled={deleteBusy || deleteText.trim() !== deleteTarget.name} data-testid="delete-company-confirm">
+                {deleteBusy ? 'Eliminando…' : 'Eliminar definitivamente'}
+              </button>
             </div>
           </div>
         </div>

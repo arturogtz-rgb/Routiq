@@ -7,7 +7,7 @@ EMAIL_RE = re.compile(r"^[^\s@]+@[^\s@]+\.[^\s@]+$")
 
 from database import get_db
 from auth import require_roles
-from models import CompanyIntegrationsUpdate, SMTPTestInput, PolicyUpdate
+from models import CompanyIntegrationsUpdate, SMTPTestInput, ResendTestInput, PolicyUpdate
 from deps import _integrations_view, sanitize_richtext
 import notifications
 import currency
@@ -148,6 +148,33 @@ async def test_smtp(payload: SMTPTestInput, user: dict = Depends(require_roles("
     return {"ok": True, "to": to_email}
 
 
+
+
+@router.post("/companies/me/test-resend")
+async def test_resend(payload: ResendTestInput, user: dict = Depends(require_roles("company_admin"))):
+    """Send a test email via Resend using the company's API key to confirm the
+    sender domain is verified before relying on it in production."""
+    db = get_db()
+    company = await db.companies.find_one({"id": user["tenant_id"]}, {"_id": 0})
+    if not company:
+        raise HTTPException(status_code=404, detail="Empresa no encontrada")
+    resend = company.get("resend") or {}
+    api_key = payload.resend_api_key
+    if not api_key or api_key.startswith("••"):
+        api_key = resend.get("api_key") or ""
+    if not api_key:
+        raise HTTPException(status_code=400, detail="Falta la API key de Resend. Ingrésala y guarda para enviar la prueba.")
+    from_email = (payload.resend_from_email or resend.get("from_email") or "").strip()
+    if not from_email:
+        raise HTTPException(status_code=400, detail="Falta el correo remitente verificado en Resend.")
+    from_name = payload.resend_from_name or resend.get("from_name") or company.get("name") or "Routiq"
+    to_email = (payload.to_email or from_email or company.get("contact_email") or "").strip()
+    if not to_email:
+        raise HTTPException(status_code=400, detail="No hay correo destino para la prueba.")
+    ok, err = await notifications.send_test_resend(api_key, from_email, from_name, to_email)
+    if not ok:
+        raise HTTPException(status_code=400, detail=f"No se pudo enviar con Resend: {err or 'error desconocido'}. Verifica que el dominio del remitente esté verificado en Resend.")
+    return {"ok": True, "to": to_email}
 
 
 @router.get("/exchange-rate")
