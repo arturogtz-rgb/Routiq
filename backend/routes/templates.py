@@ -64,7 +64,7 @@ async def create_template(payload: TemplateCreate, user: dict = Depends(require_
 
 
 @router.patch("/templates/{template_id}")
-async def update_template(template_id: str, payload: TemplateUpdate, user: dict = Depends(require_tenant)):
+async def update_template(template_id: str, payload: TemplateUpdate, user: dict = Depends(require_roles("company_admin"))):
     db = get_db()
     updates = {k: v for k, v in payload.model_dump(exclude_unset=True).items() if v is not None}
     if not updates:

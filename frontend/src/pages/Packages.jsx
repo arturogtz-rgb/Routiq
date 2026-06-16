@@ -222,9 +222,11 @@ export default function Packages() {
                     <span className="pill bg-peach-100 text-amber-700 inline-flex items-center gap-1"><Wand2 className="w-3 h-3" /> Plantilla</span>
                     {t.featured && <span className="pill bg-amber-100 text-amber-700 inline-flex items-center gap-1" data-testid={`template-featured-badge-${t.id}`}><Star className="w-3 h-3 fill-amber-500 text-amber-500" /> Destacada</span>}
                   </div>
-                  <button onClick={() => toggleFeatured(t)} title={t.featured ? 'Quitar de destacadas' : 'Marcar como destacada'} className="p-1.5 rounded-lg hover:bg-amber-50" data-testid={`toggle-featured-${t.id}`}>
-                    <Star className={`w-5 h-5 ${t.featured ? 'fill-amber-400 text-amber-400' : 'text-ink-300'}`} />
-                  </button>
+                  {isAdmin && (
+                    <button onClick={() => toggleFeatured(t)} title={t.featured ? 'Quitar de destacadas' : 'Marcar como destacada'} className="p-1.5 rounded-lg hover:bg-amber-50" data-testid={`toggle-featured-${t.id}`}>
+                      <Star className={`w-5 h-5 ${t.featured ? 'fill-amber-400 text-amber-400' : 'text-ink-300'}`} />
+                    </button>
+                  )}
                 </div>
                 <h3 className="font-display font-semibold text-lg text-ink-900 leading-tight">{t.name}</h3>
                 {t.custom_title && t.custom_title !== t.name && <p className="text-sm text-ink-500 mt-1">{t.custom_title}</p>}
