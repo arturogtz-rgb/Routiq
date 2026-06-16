@@ -1,6 +1,7 @@
 import { useEffect, useState, useRef } from 'react';
 import AppShell from '@/components/AppShell';
 import api, { formatApiError } from '@/lib/api';
+import { useConfirm } from '@/components/ConfirmDialog';
 import { CreditCard, Save, AlertTriangle, Trash2, FileText } from 'lucide-react';
 import { LogoSettings } from '@/components/settings/LogoSettings';
 import { PricingSettings, PricingExample } from '@/components/settings/PricingSettings';
@@ -12,6 +13,7 @@ import { RichTextEditor } from '@/components/RichTextEditor';
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 export default function Settings() {
+  const confirm = useConfirm();
   const [company, setCompany] = useState(null);
   const [pricing, setPricing] = useState(null);
   const [integ, setInteg] = useState(null);
@@ -73,10 +75,26 @@ export default function Settings() {
       if (!payload.resend_api_key) delete payload.resend_api_key;
       if (!payload.smtp_password) delete payload.smtp_password;
       if (!payload.gmail_client_secret) delete payload.gmail_client_secret;
+      const notifyEmail = integ.notify_email;
       const { data } = await api.patch('/companies/me/integrations', payload);
       setInteg({ ...data, stripe_secret_key: '', resend_api_key: '', smtp_password: '', gmail_client_secret: '' });
-      setOk('Integraciones guardadas');
-      setTimeout(() => setOk(''), 2500);
+      // Safety net: right after saving a Resend config, auto-send a test email so the
+      // admin never ships quotations from an unverified domain.
+      if (data.email_provider === 'resend' && data.resend_api_key_set && data.resend_from_email) {
+        setOk('Integraciones guardadas · verificando Resend…');
+        setResendTesting(true);
+        try {
+          const r = await api.post('/companies/me/test-resend', { to_email: notifyEmail || undefined });
+          setOk(`Integraciones guardadas · ✓ Resend verificado (prueba enviada a ${r.data.to}).`);
+          setTimeout(() => setOk(''), 6000);
+        } catch (e) {
+          setOk('');
+          setError(`Integraciones guardadas, pero la prueba de Resend falló: ${formatApiError(e)}`);
+        } finally { setResendTesting(false); }
+      } else {
+        setOk('Integraciones guardadas');
+        setTimeout(() => setOk(''), 2500);
+      }
     } catch (e) { setError(formatApiError(e)); }
   };
 
@@ -89,7 +107,7 @@ export default function Settings() {
   };
 
   const disconnectGmail = async () => {
-    if (!window.confirm('¿Desconectar Gmail? Las cotizaciones dejarán de enviarse desde tu cuenta de Google.')) return;
+    if (!(await confirm({ title: 'Desconectar Gmail', description: 'Las cotizaciones dejarán de enviarse desde tu cuenta de Google.', confirmText: 'Desconectar' }))) return;
     try {
       const { data } = await api.post('/oauth/gmail/disconnect');
       setInteg({ ...data, stripe_secret_key: '', resend_api_key: '', smtp_password: '', gmail_client_secret: '' });
@@ -99,7 +117,7 @@ export default function Settings() {
   };
 
   const clearStripeSecret = async () => {
-    if (!window.confirm('¿Borrar la clave secreta de Stripe guardada? Se desactivarán los cobros con Stripe hasta que ingreses una nueva.')) return;
+    if (!(await confirm({ title: 'Borrar clave de Stripe', description: 'Se desactivarán los cobros con Stripe hasta que ingreses una nueva clave.', confirmText: 'Borrar clave' }))) return;
     setError(''); setOk('');
     try {
       const { data } = await api.delete('/companies/me/integrations/stripe-secret');
@@ -158,7 +176,7 @@ export default function Settings() {
   };
 
   const removeLogo = async () => {
-    if (!window.confirm('¿Eliminar el logo actual?')) return;
+    if (!(await confirm({ title: 'Eliminar logo', description: '¿Eliminar el logo actual de tu empresa?', confirmText: 'Eliminar' }))) return;
     try {
       const { data } = await api.delete('/companies/me/logo');
       setCompany(data);

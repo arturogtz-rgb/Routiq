@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { Link, useParams, useNavigate } from 'react-router-dom';
 import AppShell from '@/components/AppShell';
 import api, { formatApiError } from '@/lib/api';
+import { useConfirm } from '@/components/ConfirmDialog';
 import { ArrowLeft, Download, MessageCircle, Mail, FileText, Sparkles, Link2, Copy, CheckCircle2, X, Tag, CreditCard, Pencil, Archive, Trash2, History, Briefcase, Users, Smartphone, BookmarkPlus, Package as PackageIcon } from 'lucide-react';
 import { formatDateEs } from '@/lib/dates';
 import { useAuth } from '@/context/AuthContext';
@@ -18,6 +19,7 @@ const STATES = [
 function money(v, c = 'MXN') { return `$${Number(v || 0).toLocaleString('es-MX')} ${c}`; }
 
 export default function QuotationDetail() {
+  const confirm = useConfirm();
   const { id } = useParams();
   const navigate = useNavigate();
   const { user } = useAuth();
@@ -90,19 +92,21 @@ export default function QuotationDetail() {
   };
 
   const unlinkChat = async () => {
-    if (!window.confirm('¿Desvincular esta conversación de WhatsApp?')) return;
+    if (!(await confirm({ title: 'Desvincular conversación', description: '¿Desvincular esta conversación de WhatsApp?', confirmText: 'Desvincular' }))) return;
     await api.delete(`/whatsapp/link/${id}`);
     setWaLink(null);
   };
 
   const archive = async () => {
-    if (!window.confirm(q.archived ? '¿Restaurar esta cotización?' : '¿Archivar esta cotización? Se ocultará de la lista principal.')) return;
+    if (!(await confirm(q.archived
+      ? { title: 'Restaurar cotización', description: '¿Restaurar esta cotización a la lista principal?', confirmText: 'Restaurar', danger: false }
+      : { title: 'Archivar cotización', description: 'Se ocultará de la lista principal. Podrás restaurarla después.', confirmText: 'Archivar', danger: false }))) return;
     await api.patch(`/quotations/${id}/archive`, { archived: !q.archived });
     await load();
   };
 
   const remove = async () => {
-    if (!window.confirm('¿Eliminar esta cotización? Quedará registrada en la auditoría.')) return;
+    if (!(await confirm({ title: 'Eliminar cotización', description: 'Quedará registrada en la auditoría. Esta acción no se puede deshacer.', confirmText: 'Eliminar' }))) return;
     await api.delete(`/quotations/${id}`);
     navigate('/app/quotations');
   };
@@ -142,7 +146,7 @@ export default function QuotationDetail() {
   };
 
   const revokePublicLink = async () => {
-    if (!window.confirm('¿Revocar el enlace público? El cliente ya no podrá acceder.')) return;
+    if (!(await confirm({ title: 'Revocar enlace público', description: 'El cliente ya no podrá acceder a esta cotización con el enlace.', confirmText: 'Revocar' }))) return;
     await api.delete(`/quotations/${id}/public-link`);
     setPublicToken('');
     await load();
@@ -157,7 +161,7 @@ export default function QuotationDetail() {
 
   const sendWhatsApp = (kind) => {
     if (!publicToken) return;
-    const url = `${window.location.origin}/q/${publicToken}`;
+    const url = `${window.location.origin}/api/share/q/${publicToken}`;
     const name = q?.client_snapshot?.name || 'Hola';
     const code = q?.code || '';
     const pkg = q?.package_snapshot?.name || '';

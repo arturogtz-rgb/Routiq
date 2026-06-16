@@ -6,6 +6,7 @@ import logging
 from datetime import datetime, timezone, timedelta
 
 from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi.responses import HTMLResponse
 
 from database import get_db, new_id, now_iso
 from auth import require_tenant
@@ -100,6 +101,63 @@ async def get_public_quotation(token: str):
         "season_applied": q.get("season_applied"),
         "cancellation_policy": company.get("cancellation_policy", ""),
     }
+
+
+def _esc(s: str) -> str:
+    """Minimal HTML attribute escaping for OG meta values."""
+    return (str(s or "").replace("&", "&amp;").replace('"', "&quot;")
+            .replace("<", "&lt;").replace(">", "&gt;"))
+
+
+@router.get("/share/q/{token}", response_class=HTMLResponse)
+async def share_quotation(token: str, request: Request):
+    """Bot-friendly share page with per-tenant Open Graph tags (WhatsApp/FB preview),
+    then redirects real browsers to the SPA quotation page /q/{token}."""
+    db = get_db()
+    proto = request.headers.get("x-forwarded-proto") or request.url.scheme
+    host = request.headers.get("x-forwarded-host") or request.headers.get("host") or request.url.netloc
+    base = f"{proto}://{host}"
+    spa_url = f"{base}/q/{token}"
+
+    q = await db.quotations.find_one({"public_link.token": token}, {"_id": 0})
+    title = "Tu cotización de viaje"
+    desc = "Revisa los detalles, confirma y reserva en línea."
+    image = ""
+    if q:
+        company = await db.companies.find_one({"id": q["tenant_id"]}, {"_id": 0}) or {}
+        cname = company.get("name") or "Routiq"
+        client = (q.get("client_snapshot") or {}).get("name") or "viajero"
+        pkg = (q.get("package_snapshot") or {}).get("name") or q.get("custom_title") or ""
+        title = f"{cname} · Cotización {q.get('code', '')}".strip()
+        desc = (f"Hola {client}, tu cotización" + (f' de "{pkg}"' if pkg else "") +
+                " está lista. Ábrela para ver el itinerario, el total y reservar en línea.")
+        logo = company.get("logo_url") or ""
+        if logo.startswith("/"):
+            image = base + logo
+        elif logo.startswith("http"):
+            image = logo
+
+    img_tags = (f'<meta property="og:image" content="{_esc(image)}"/>'
+                f'<meta name="twitter:image" content="{_esc(image)}"/>') if image else ""
+    html = f"""<!doctype html>
+<html lang="es"><head><meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>{_esc(title)}</title>
+<meta name="description" content="{_esc(desc)}"/>
+<meta property="og:type" content="website"/>
+<meta property="og:title" content="{_esc(title)}"/>
+<meta property="og:description" content="{_esc(desc)}"/>
+<meta property="og:url" content="{_esc(spa_url)}"/>
+<meta name="twitter:card" content="summary_large_image"/>
+<meta name="twitter:title" content="{_esc(title)}"/>
+<meta name="twitter:description" content="{_esc(desc)}"/>
+{img_tags}
+<meta http-equiv="refresh" content="0; url={_esc(spa_url)}"/>
+<script>window.location.replace({spa_url!r});</script>
+</head><body>
+<p>Redirigiendo a tu cotización… <a href="{_esc(spa_url)}">Abrir cotización</a></p>
+</body></html>"""
+    return HTMLResponse(content=html)
 
 
 @router.post("/public/quotations/{token}/accept")

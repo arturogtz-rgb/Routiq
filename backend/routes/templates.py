@@ -115,21 +115,27 @@ async def _unique_package_code(db, tenant_id: str, base: str) -> str:
 async def _build_package_from_custom(db, tenant_id: str, src: dict, margin: float,
                                      nights: int, code_in: str | None, status: str) -> dict:
     """Build a catalog package doc from custom_* fields (quotation or template).
-    Descriptive content is copied verbatim; one hotel is pre-filled from the first
-    'hospedaje' concept's public price (net / margin_divisor)."""
-    hosp = next((it for it in (src.get("custom_items") or []) if it.get("category") == "hospedaje"), None)
-    if hosp:
-        net = float(hosp.get("net_price", 0) or 0)
+    Descriptive content is copied verbatim; EVERY 'hospedaje' concept becomes a
+    hotel pre-filled from its public price (net / margin_divisor). If the program
+    has no lodging concept, a single 'Por definir' placeholder hotel is created."""
+    def _hotel_from(item: dict) -> dict:
+        net = float(item.get("net_price", 0) or 0)
         public = round(net / margin, 2) if margin > 0 else round(net, 2)
-        hotel_name = hosp.get("name") or "Hotel"
+        return {
+            "name": item.get("name") or "Hotel", "category": "",
+            "prices_by_occupancy": {"sencilla": public, "doble": public, "triple": public, "cuadruple": public},
+            "minor_price": 0.0, "season_prices": {},
+        }
+
+    hospedajes = [it for it in (src.get("custom_items") or []) if it.get("category") == "hospedaje"]
+    if hospedajes:
+        hotels = [_hotel_from(it) for it in hospedajes]
     else:
-        public = 0.0
-        hotel_name = "Por definir"
-    hotel = {
-        "name": hotel_name, "category": "",
-        "prices_by_occupancy": {"sencilla": public, "doble": public, "triple": public, "cuadruple": public},
-        "minor_price": 0.0, "season_prices": {},
-    }
+        hotels = [{
+            "name": "Por definir", "category": "",
+            "prices_by_occupancy": {"sencilla": 0.0, "doble": 0.0, "triple": 0.0, "cuadruple": 0.0},
+            "minor_price": 0.0, "season_prices": {},
+        }]
     title = src.get("custom_title") or src.get("name") or "Programa personalizado"
     base_code = (code_in or slugify(title).replace("-", "").upper()) or "PROG"
     code = await _unique_package_code(db, tenant_id, base_code)
@@ -138,7 +144,7 @@ async def _build_package_from_custom(db, tenant_id: str, src: dict, margin: floa
         "code": code, "name": title, "nights": int(nights or 0),
         "description": "", "image_url": "",
         "itinerary": src.get("custom_itinerary", []) or [],
-        "hotels": [hotel],
+        "hotels": hotels,
         "seasons": [], "includes": src.get("custom_includes", []) or [],
         "excludes": src.get("custom_excludes", []) or [],
         "season_start": None, "season_end": None,

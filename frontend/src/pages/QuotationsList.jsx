@@ -78,7 +78,14 @@ export default function QuotationsList() {
             <div className="col-span-6 md:col-span-2 md:text-right font-display font-semibold text-ink-900">{money(x.total, x.currency)}</div>
           </Link>
         ))}
-        {filtered.length === 0 && <p className="p-8 text-center text-ink-400" data-testid="empty-list">Sin resultados</p>}
+        {filtered.length === 0 && (
+          <div className="p-12 text-center" data-testid="empty-list">
+            <Search className="w-9 h-9 mx-auto text-ink-300" />
+            <p className="text-ink-700 font-semibold mt-3">{showArchived ? 'No hay cotizaciones archivadas' : 'Aún no tienes cotizaciones'}</p>
+            <p className="text-ink-400 text-sm mt-1">{showArchived ? 'Las cotizaciones que archives aparecerán aquí.' : 'Crea tu primera cotización para empezar a vender.'}</p>
+            {!showArchived && <Link to="/app/quotations/new" className="btn-secondary text-sm mt-4 inline-flex"><Plus className="w-4 h-4" /> Nueva cotización</Link>}
+          </div>
+        )}
       </div>
     </AppShell>
   );

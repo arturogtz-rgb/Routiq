@@ -270,6 +270,7 @@ export default function QuotationBuilder() {
         notes: form.notes,
         contacts,
         presentation_text: form.presentation_text || '',
+        from_request: search.get('lead') || undefined,
       };
       if (isServices) {
         payload.pax = { adultos: totalAdults, menores: form.pax.menores || 0, rooms: [] };

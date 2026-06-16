@@ -33,6 +33,15 @@ async def public_package(slug: str, code: str):
     pack = await db.packages.find_one({"tenant_id": company["id"], "code": code}, {"_id": 0})
     if not pack or pack.get("status") == "inactive":
         raise HTTPException(status_code=404, detail="Paquete no disponible")
+    # Record a public view event for catalog analytics (best-effort, never blocks).
+    try:
+        await db.catalog_views.insert_one({
+            "id": new_id(), "tenant_id": company["id"],
+            "package_id": pack["id"], "package_code": pack["code"],
+            "created_at": now_iso(),
+        })
+    except Exception as e:
+        log.warning("catalog view tracking failed: %s", e)
     return {
         "package": {
             "code": pack["code"], "name": pack["name"], "nights": pack.get("nights"),
@@ -157,6 +166,60 @@ async def quote_request_stats(user: dict = Depends(require_tenant)):
         "attended": sum(1 for l in leads if l.get("status") == "attended"),
         "top_packages": [{"name": n, "count": c} for n, c in top],
     }
+
+
+@router.get("/catalog/analytics")
+async def catalog_analytics(period: str = "month", user: dict = Depends(require_tenant)):
+    """Per-package public catalog analytics: views, leads, quotations and
+    conversion rates (views -> lead -> quotation) for the selected period."""
+    from datetime import datetime, timezone, timedelta
+    db = get_db()
+    tid = user["tenant_id"]
+    days = 7 if period == "week" else 30
+    cutoff = (datetime.now(timezone.utc) - timedelta(days=days)).isoformat()
+
+    packs = await db.packages.find(
+        {"tenant_id": tid, "status": {"$ne": "inactive"}}, {"_id": 0}
+    ).sort("created_at", -1).to_list(500)
+
+    views = await db.catalog_views.find(
+        {"tenant_id": tid, "created_at": {"$gte": cutoff}}, {"_id": 0, "package_id": 1}
+    ).to_list(20000)
+    leads = await db.quote_requests.find(
+        {"tenant_id": tid, "created_at": {"$gte": cutoff}}, {"_id": 0, "package_id": 1}
+    ).to_list(20000)
+    quotes = await db.quotations.find(
+        {"tenant_id": tid, "created_at": {"$gte": cutoff}, "deleted": {"$ne": True},
+         "from_request": {"$ne": None}, "package_id": {"$ne": None}},
+        {"_id": 0, "package_id": 1}
+    ).to_list(20000)
+
+    def _count(rows, pid):
+        return sum(1 for r in rows if r.get("package_id") == pid)
+
+    def _rate(num, den):
+        return round(100.0 * num / den, 1) if den else 0.0
+
+    rows = []
+    for p in packs:
+        pid = p["id"]
+        v, l, qn = _count(views, pid), _count(leads, pid), _count(quotes, pid)
+        rows.append({
+            "package_id": pid, "code": p["code"], "name": p["name"],
+            "views": v, "leads": l, "quotations": qn,
+            "view_to_lead": _rate(l, v),
+            "lead_to_quote": _rate(qn, l),
+            "view_to_quote": _rate(qn, v),
+        })
+    rows.sort(key=lambda r: (-r["views"], -r["leads"], r["name"]))
+    totals = {
+        "views": sum(r["views"] for r in rows),
+        "leads": sum(r["leads"] for r in rows),
+        "quotations": sum(r["quotations"] for r in rows),
+    }
+    totals["view_to_lead"] = _rate(totals["leads"], totals["views"])
+    totals["lead_to_quote"] = _rate(totals["quotations"], totals["leads"])
+    return {"period": period, "days": days, "totals": totals, "packages": rows}
 
 
 @router.get("/quote-requests")

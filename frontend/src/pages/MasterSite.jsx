@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import AppShell from '@/components/AppShell';
 import api, { formatApiError } from '@/lib/api';
+import { useConfirm } from '@/components/ConfirmDialog';
 import { Save, UploadCloud, Eye, EyeOff, Rocket, RotateCcw, Globe, LogIn, Layers, Palette, Image as ImageIcon, Loader2, CheckCircle2, ChevronUp, ChevronDown, Plus, Trash2 } from 'lucide-react';
 import { applyTheme, THEME_PRESETS } from '@/lib/theme';
 
@@ -55,6 +56,7 @@ function ImageField({ label, value, onChange, onPersist, testid }) {
 }
 
 export default function MasterSite() {
+  const confirm = useConfirm();
   const [landing, setLanding] = useState(null);
   const [login, setLogin] = useState(null);
   const [theme, setTheme] = useState(null);
@@ -154,7 +156,7 @@ export default function MasterSite() {
   };
 
   const resetDraft = async () => {
-    if (!window.confirm('¿Descartar cambios y volver a la versión publicada?')) return;
+    if (!(await confirm({ title: 'Descartar cambios', description: '¿Descartar los cambios y volver a la versión publicada?', confirmText: 'Descartar' }))) return;
     await api.post('/site-settings/reset-draft');
     await load();
   };

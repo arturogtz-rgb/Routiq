@@ -114,7 +114,7 @@ export default function Leads() {
                 <p className="text-[11px] text-ink-300 mt-2">{(l.created_at || '').slice(0, 16).replace('T', ' ')}</p>
               </div>
               <div className="flex flex-wrap items-center gap-2 shrink-0">
-                <button onClick={() => navigate(`/app/quotations/new?package=${l.package_id}`)} className="btn-primary text-sm" data-testid={`lead-quote-${l.id}`}>
+                <button onClick={() => navigate(`/app/quotations/new?package=${l.package_id}&lead=${l.id}`)} className="btn-primary text-sm" data-testid={`lead-quote-${l.id}`}>
                   <FileText className="w-4 h-4" /> Crear cotización
                 </button>
                 {l.phone && <a href={waLink(l)} target="_blank" rel="noreferrer" className="btn-secondary text-sm" data-testid={`lead-wa-${l.id}`}><MessageCircle className="w-4 h-4" /> WhatsApp</a>}

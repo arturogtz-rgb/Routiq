@@ -151,6 +151,7 @@ async def create_quotation(payload: QuotationCreate, user: dict = Depends(requir
         "created_by": user["id"],
         "notes": payload.notes,
         "presentation_text": payload.presentation_text or "",
+        "from_request": payload.from_request or None,
         "history": [{
             "at": now_iso(), "user_id": user["id"], "user_name": user.get("name", ""),
             "action": "created", "detail": f"Cotización creada ({type_label})",

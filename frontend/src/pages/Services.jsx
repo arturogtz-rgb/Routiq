@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import AppShell from '@/components/AppShell';
 import api, { formatApiError } from '@/lib/api';
+import { useConfirm } from '@/components/ConfirmDialog';
 import { useAuth } from '@/context/AuthContext';
 import { Plus, Pencil, Trash2, X, Save, Sparkles, Bus, Ticket, Map } from 'lucide-react';
 
@@ -24,6 +25,7 @@ const EMPTY = { name: '', category: 'tour', description: '', net_price: 0, publi
 function money(v) { return `$${Number(v || 0).toLocaleString('es-MX', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`; }
 
 export default function Services() {
+  const confirm = useConfirm();
   const { user } = useAuth();
   const isAdmin = user?.role === 'company_admin';
   const [services, setServices] = useState([]);
@@ -61,7 +63,7 @@ export default function Services() {
   };
 
   const remove = async (svc) => {
-    if (!window.confirm(`¿Eliminar el servicio "${svc.name}"?`)) return;
+    if (!(await confirm({ title: 'Eliminar servicio', description: `¿Eliminar el servicio "${svc.name}"? Esta acción no se puede deshacer.`, confirmText: 'Eliminar' }))) return;
     try { await api.delete(`/services/${svc.id}`); await load(); }
     catch (e) { setError(formatApiError(e)); }
   };

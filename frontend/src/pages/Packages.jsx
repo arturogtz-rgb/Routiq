@@ -2,11 +2,13 @@ import { useEffect, useRef, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import AppShell from '@/components/AppShell';
 import api, { formatApiError } from '@/lib/api';
+import { useConfirm } from '@/components/ConfirmDialog';
 import { useAuth } from '@/context/AuthContext';
 import { Package as PackageIcon, MapPin, Calendar, Plus, Pencil, Trash2, Sun, FileSpreadsheet, Upload, X, CheckCircle2, AlertTriangle, Download, Share2, QrCode, Wand2, BookmarkPlus, Star, Globe } from 'lucide-react';
 import { ShareCatalogModal } from '@/components/ShareCatalogModal';
 
 export default function Packages() {
+  const confirm = useConfirm();
   const { user } = useAuth();
   const navigate = useNavigate();
   const isAdmin = user?.role === 'company_admin';
@@ -46,13 +48,13 @@ export default function Packages() {
   };
 
   const remove = async (p) => {
-    if (!window.confirm(`¿Eliminar el paquete "${p.name}"?`)) return;
+    if (!(await confirm({ title: 'Eliminar paquete', description: `¿Eliminar el paquete "${p.name}"? Esta acción no se puede deshacer.`, confirmText: 'Eliminar' }))) return;
     try { await api.delete(`/packages/${p.id}`); await load(); }
     catch (e) { setError(formatApiError(e)); }
   };
 
   const removeTemplate = async (t) => {
-    if (!window.confirm(`¿Eliminar la plantilla "${t.name}"?`)) return;
+    if (!(await confirm({ title: 'Eliminar plantilla', description: `¿Eliminar la plantilla "${t.name}"? Esta acción no se puede deshacer.`, confirmText: 'Eliminar' }))) return;
     try { await api.delete(`/templates/${t.id}`); await loadTemplates(); }
     catch (e) { setError(formatApiError(e)); }
   };

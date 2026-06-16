@@ -406,6 +406,7 @@ class QuotationCreate(BaseModel):
     notes: str = ""
     assigned_to: Optional[str] = None
     presentation_text: str = ""
+    from_request: Optional[str] = None  # lead id when created from a public catalog request
     # Custom / programa personalizado
     custom_title: str = ""
     custom_items: List[CustomItem] = []

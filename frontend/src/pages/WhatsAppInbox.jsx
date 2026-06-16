@@ -2,10 +2,12 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { useSearchParams, useNavigate } from 'react-router-dom';
 import AppShell from '@/components/AppShell';
 import api, { formatApiError } from '@/lib/api';
+import { useConfirm } from '@/components/ConfirmDialog';
 import { useAuth } from '@/context/AuthContext';
 import { MessageCircle, Sparkles, Smartphone, Send, Search, Plus, QrCode, Power, X, RefreshCw, Phone, FileText, Trash2 } from 'lucide-react';
 
 export default function WhatsAppInbox() {
+  const confirm = useConfirm();
   const { user } = useAuth();
   const navigate = useNavigate();
   const [params] = useSearchParams();
@@ -111,13 +113,13 @@ export default function WhatsAppInbox() {
   const closeQr = () => { if (qrTimer.current) clearInterval(qrTimer.current); setQrModal(false); };
 
   const logout = async (numId) => {
-    if (!window.confirm('¿Desconectar este número de WhatsApp?')) return;
+    if (!(await confirm({ title: 'Desconectar número', description: '¿Desconectar este número de WhatsApp?', confirmText: 'Desconectar' }))) return;
     try { await api.post(`/whatsapp/numbers/${numId}/logout`); loadNumbers(); }
     catch (e) { setError(formatApiError(e)); }
   };
 
   const removeNumber = async (numId) => {
-    if (!window.confirm('¿Eliminar este número de WhatsApp? Se cerrará su sesión y se borrará de la lista. Esta acción no se puede deshacer.')) return;
+    if (!(await confirm({ title: 'Eliminar número', description: 'Se cerrará su sesión y se borrará de la lista. Esta acción no se puede deshacer.', confirmText: 'Eliminar' }))) return;
     setError('');
     try {
       await api.delete(`/whatsapp/numbers/${numId}`);
