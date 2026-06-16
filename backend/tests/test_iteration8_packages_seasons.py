@@ -7,7 +7,7 @@ import io
 import requests
 import pytest
 
-BASE_URL = os.environ.get("REACT_APP_BACKEND_URL", "https://tour-quotes-dev.preview.emergentagent.com").rstrip("/")
+BASE_URL = os.environ.get("REACT_APP_BACKEND_URL", "https://free-itinerary-mode.preview.emergentagent.com").rstrip("/")
 API = f"{BASE_URL}/api"
 ADMIN = {"email": "admin@aventurate.mx", "password": "Demo2026!"}
 EXEC = {"email": "ejecutivo@aventurate.mx", "password": "Demo2026!"}
