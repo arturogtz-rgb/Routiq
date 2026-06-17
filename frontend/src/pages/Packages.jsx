@@ -295,7 +295,9 @@ export default function Packages() {
               <CheckCircle2 className="w-6 h-6 shrink-0" />
               <div>
                 <p className="font-semibold" data-testid="import-total">{report.total_imported} registro(s) importado(s)</p>
-                <p className="text-sm">Paquetes: {report.imported.paquetes} · Tours: {report.imported.tours} · Traslados: {report.imported.traslados}</p>
+                <p className="text-sm" data-testid="import-breakdown">
+                  {report.imported.paquetes} paquete(s) importado(s) (con {report.imported.hoteles ?? 0} hotel(es) en total) · {report.imported.tours} tour(s) · {report.imported.traslados} traslado(s)
+                </p>
               </div>
             </div>
             {report.error_count > 0 ? (

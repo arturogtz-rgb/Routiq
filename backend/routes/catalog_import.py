@@ -21,18 +21,22 @@ router = APIRouter()
 XLSX_MIME = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
 UNITS = {"per_person", "per_group", "per_day", "per_access"}
 
-PKG_COLS = ["code", "name", "nights", "description", "includes", "excludes",
+PKG_COLS = ["code", "name", "nights", "description", "image_url", "includes", "excludes",
             "hotel_name", "sencilla", "doble", "triple", "cuadruple", "menor"]
 SVC_COLS = ["name", "description", "net_price", "public_price", "unit"]
 
-# Multi-hotel example: PKG-001 has TWO hotels — second row repeats the code and
-# leaves the package-level columns blank (only the hotel columns are filled).
+# Multi-hotel example: PKG-001 has THREE hotels. The first row carries all the
+# package-level data + image_url + first hotel; the next rows repeat the code and
+# only fill the hotel columns (package columns left blank).
 PKG_EXAMPLES = [
     ["PKG-001", "Tequila Express 2N", 2, "Tour a Tequila con cata",
+     "https://misitio.com/img/tequila.jpg",
      "Hospedaje;Desayunos;Tour", "Vuelos;Propinas",
      "Hotel Solar de las Ánimas", 3500, 2400, 2100, 1900, 1500],
-    ["PKG-001", "", "", "", "", "",
+    ["PKG-001", "", "", "", "", "", "",
      "Hotel Matices de Amatitán", 3900, 2700, 2300, 2050, 1600],
+    ["PKG-001", "", "", "", "", "", "",
+     "Hotel Casa Salles", 3200, 2200, 1950, 1750, 1450],
 ]
 TOUR_EXAMPLES = [["City Tour Guadalajara", "Recorrido por el centro histórico", 600, 0, "per_person"]]
 TRASLADO_EXAMPLES = [["Traslado Aeropuerto-Hotel", "Sedán privado hasta 4 pax", 800, 0, "per_group"]]
@@ -89,28 +93,41 @@ async def download_template(user: dict = Depends(require_roles("company_admin"))
         "2. NO borres la fila de encabezados (fila 1). Las filas de ejemplo puedes reemplazarlas o borrarlas.",
         "",
         "PAQUETES — columnas obligatorias: code, name, nights.",
+        "   • description: texto de presentación del paquete.",
+        "   • image_url: URL de la imagen de portada del paquete (https://...). Opcional; déjala vacía si no tienes.",
         "   • includes/excludes: separa cada elemento con punto y coma (;).",
         "   • sencilla/doble/triple/cuadruple/menor: precios por ocupación de ESE hotel (numéricos).",
         "",
         "MÚLTIPLES HOTELES EN UN MISMO PAQUETE  ← (formato correcto):",
         "   • Usa UNA FILA POR HOTEL repitiendo el MISMO 'code' en cada fila.",
         "   • En la PRIMERA fila del paquete escribe todos los datos (code, name, nights,",
-        "     description, includes, excludes) y los datos del primer hotel.",
+        "     description, image_url, includes, excludes) y los datos del primer hotel.",
         "   • En las filas siguientes repite SOLO el 'code' y llena las columnas del hotel",
         "     (hotel_name, sencilla, doble, triple, cuadruple, menor). Deja vacías name, nights,",
-        "     description, includes y excludes: se toman de la primera fila.",
-        "   • Ejemplo: en la hoja 'Paquetes', las filas 2 y 3 son el paquete PKG-001 con dos hoteles.",
+        "     description, image_url, includes y excludes: se toman de la primera fila.",
         "   • También funciona si dejas la columna 'code' vacía en las filas de hoteles adicionales:",
         "     se asignarán automáticamente al paquete de la fila anterior.",
         "",
+        "   Ejemplo (hoja 'Paquetes', filas 2 a 4) — el paquete PKG-001 con 3 hoteles:",
+        "      Fila 2:  code=PKG-001 | name=Tequila Express 2N | nights=2 | ... | hotel_name=Hotel Solar de las Ánimas | precios...",
+        "      Fila 3:  code=PKG-001 | (resto vacío)                          | hotel_name=Hotel Matices de Amatitán | precios...",
+        "      Fila 4:  code=PKG-001 | (resto vacío)                          | hotel_name=Hotel Casa Salles         | precios...",
+        "",
+        "   Resultado en el sistema (Catálogo → Paquetes):",
+        "      • Se crea UN solo paquete 'PKG-001 — Tequila Express 2N'.",
+        "      • En su tarjeta verás la etiqueta '3 hoteles disponibles'.",
+        "      • Al cotizar, el ejecutivo elige entre los 3 hoteles y cada uno usa sus propios precios por ocupación.",
+        "",
         "TOURS / TRASLADOS — columna obligatoria: name.",
+        "   • description: descripción del servicio.",
         "   • net_price = costo; public_price = precio de venta (déjalo en 0 para autocalcular con tu margen).",
         "   • unit: per_person, per_group, per_day o per_access.",
         "",
         "3. Guarda el archivo y súbelo desde el panel: Catálogo → Importar Excel.",
+        "   Al terminar verás un resumen: 'X paquetes importados (con N hoteles en total), Y tours, Z traslados'.",
     ]:
         info.append([line])
-    info.column_dimensions["A"].width = 95
+    info.column_dimensions["A"].width = 100
 
     buf = io.BytesIO()
     wb.save(buf)
@@ -154,6 +171,7 @@ async def export_catalog(user: dict = Depends(require_roles("company_admin"))):
             if i == 0:
                 ws_pkg.append([
                     p.get("code", ""), p.get("name", ""), p.get("nights", 0), p.get("description", ""),
+                    p.get("image_url", ""),
                     ";".join(p.get("includes", [])), ";".join(p.get("excludes", [])),
                     hotel.get("name", "") if hotel else "",
                     occ.get("sencilla", 0), occ.get("doble", 0), occ.get("triple", 0),
@@ -162,7 +180,7 @@ async def export_catalog(user: dict = Depends(require_roles("company_admin"))):
             else:
                 # Continuation row: repeat the code, leave package columns blank, add the extra hotel.
                 ws_pkg.append([
-                    p.get("code", ""), "", "", "", "", "",
+                    p.get("code", ""), "", "", "", "", "", "",
                     hotel.get("name", ""),
                     occ.get("sencilla", 0), occ.get("doble", 0), occ.get("triple", 0),
                     occ.get("cuadruple", 0), hotel.get("minor_price", 0),
@@ -213,7 +231,7 @@ async def import_catalog(file: UploadFile = File(...), user: dict = Depends(requ
     divisor = float((company or {}).get("pricing_config", {}).get("margin_divisor") or 0.76) or 0.76
 
     errors: list[dict] = []
-    imported = {"paquetes": 0, "tours": 0, "traslados": 0}
+    imported = {"paquetes": 0, "hoteles": 0, "tours": 0, "traslados": 0}
 
     # --- Paquetes (grouped by code; one row per hotel) ---
     if "Paquetes" in wb.sheetnames:
@@ -279,12 +297,13 @@ async def import_catalog(file: UploadFile = File(...), user: dict = Depends(requ
                     "id": new_id(), "tenant_id": tenant_id, "created_at": now_iso(),
                     "code": code, "name": pname, "nights": nights,
                     "description": str(d.get("description") or ""),
-                    "image_url": "", "itinerary": [], "hotels": hotels, "seasons": [],
+                    "image_url": str(d.get("image_url") or "").strip(), "itinerary": [], "hotels": hotels, "seasons": [],
                     "includes": _split_list(d.get("includes")), "excludes": _split_list(d.get("excludes")),
                     "allowed_start_days": [], "special_departure_dates": [], "status": "active",
                 }
                 await db.packages.insert_one(dict(doc))
                 imported["paquetes"] += 1
+                imported["hoteles"] += len(hotels)
             except Exception as e:
                 errors.append({"sheet": "Paquetes", "row": first_row, "message": str(e)})
 
@@ -321,5 +340,5 @@ async def import_catalog(file: UploadFile = File(...), user: dict = Depends(requ
                 errors.append({"sheet": sheet, "row": idx, "message": str(e)})
 
     wb.close()
-    total = sum(imported.values())
+    total = imported["paquetes"] + imported["tours"] + imported["traslados"]
     return {"ok": True, "imported": imported, "total_imported": total, "errors": errors, "error_count": len(errors)}
