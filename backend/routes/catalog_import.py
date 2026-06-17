@@ -25,11 +25,17 @@ PKG_COLS = ["code", "name", "nights", "description", "includes", "excludes",
             "hotel_name", "sencilla", "doble", "triple", "cuadruple", "menor"]
 SVC_COLS = ["name", "description", "net_price", "public_price", "unit"]
 
-PKG_EXAMPLE = ["PKG-001", "Tequila Express 2N", 2, "Tour a Tequila con cata",
-               "Hospedaje;Desayunos;Tour", "Vuelos;Propinas",
-               "Hotel Solar de las Ánimas", 3500, 2400, 2100, 1900, 1500]
-TOUR_EXAMPLE = ["City Tour Guadalajara", "Recorrido por el centro histórico", 600, 0, "per_person"]
-TRASLADO_EXAMPLE = ["Traslado Aeropuerto-Hotel", "Sedán privado hasta 4 pax", 800, 0, "per_group"]
+# Multi-hotel example: PKG-001 has TWO hotels — second row repeats the code and
+# leaves the package-level columns blank (only the hotel columns are filled).
+PKG_EXAMPLES = [
+    ["PKG-001", "Tequila Express 2N", 2, "Tour a Tequila con cata",
+     "Hospedaje;Desayunos;Tour", "Vuelos;Propinas",
+     "Hotel Solar de las Ánimas", 3500, 2400, 2100, 1900, 1500],
+    ["PKG-001", "", "", "", "", "",
+     "Hotel Matices de Amatitán", 3900, 2700, 2300, 2050, 1600],
+]
+TOUR_EXAMPLES = [["City Tour Guadalajara", "Recorrido por el centro histórico", 600, 0, "per_person"]]
+TRASLADO_EXAMPLES = [["Traslado Aeropuerto-Hotel", "Sedán privado hasta 4 pax", 800, 0, "per_group"]]
 
 
 def _coerce_num(v, default=0.0):
@@ -56,21 +62,22 @@ async def download_template(user: dict = Depends(require_roles("company_admin"))
     header_font = Font(bold=True, color="FFFFFF")
     header_fill = PatternFill("solid", fgColor="185FA5")
 
-    def build(ws, cols, example):
+    def build(ws, cols, examples):
         ws.append(cols)
         for c in ws[1]:
             c.font = header_font
             c.fill = header_fill
             c.alignment = Alignment(horizontal="center")
-        ws.append(example)
+        for ex in examples:
+            ws.append(ex)
         for i, _ in enumerate(cols, start=1):
             ws.column_dimensions[openpyxl.utils.get_column_letter(i)].width = 20
 
     ws1 = wb.active
     ws1.title = "Paquetes"
-    build(ws1, PKG_COLS, PKG_EXAMPLE)
-    build(wb.create_sheet("Tours"), SVC_COLS, TOUR_EXAMPLE)
-    build(wb.create_sheet("Traslados"), SVC_COLS, TRASLADO_EXAMPLE)
+    build(ws1, PKG_COLS, PKG_EXAMPLES)
+    build(wb.create_sheet("Tours"), SVC_COLS, TOUR_EXAMPLES)
+    build(wb.create_sheet("Traslados"), SVC_COLS, TRASLADO_EXAMPLES)
 
     # Instructions sheet
     info = wb.create_sheet("Instrucciones")
@@ -79,17 +86,31 @@ async def download_template(user: dict = Depends(require_roles("company_admin"))
     for line in [
         "",
         "1. Llena cada hoja: Paquetes, Tours y Traslados.",
-        "2. NO borres la fila de encabezados (fila 1). La fila 2 es un ejemplo: puedes reemplazarla o borrarla.",
-        "Paquetes — columnas obligatorias: code, name, nights.",
-        "   includes/excludes: separa cada elemento con punto y coma (;).",
-        "   sencilla/doble/triple/cuadruple/menor: precios por ocupación (numéricos).",
-        "Tours/Traslados — columna obligatoria: name.",
-        "   net_price = costo; public_price = precio de venta (déjalo en 0 para autocalcular con tu margen).",
-        "   unit: per_person, per_group, per_day o per_access.",
+        "2. NO borres la fila de encabezados (fila 1). Las filas de ejemplo puedes reemplazarlas o borrarlas.",
+        "",
+        "PAQUETES — columnas obligatorias: code, name, nights.",
+        "   • includes/excludes: separa cada elemento con punto y coma (;).",
+        "   • sencilla/doble/triple/cuadruple/menor: precios por ocupación de ESE hotel (numéricos).",
+        "",
+        "MÚLTIPLES HOTELES EN UN MISMO PAQUETE  ← (formato correcto):",
+        "   • Usa UNA FILA POR HOTEL repitiendo el MISMO 'code' en cada fila.",
+        "   • En la PRIMERA fila del paquete escribe todos los datos (code, name, nights,",
+        "     description, includes, excludes) y los datos del primer hotel.",
+        "   • En las filas siguientes repite SOLO el 'code' y llena las columnas del hotel",
+        "     (hotel_name, sencilla, doble, triple, cuadruple, menor). Deja vacías name, nights,",
+        "     description, includes y excludes: se toman de la primera fila.",
+        "   • Ejemplo: en la hoja 'Paquetes', las filas 2 y 3 son el paquete PKG-001 con dos hoteles.",
+        "   • También funciona si dejas la columna 'code' vacía en las filas de hoteles adicionales:",
+        "     se asignarán automáticamente al paquete de la fila anterior.",
+        "",
+        "TOURS / TRASLADOS — columna obligatoria: name.",
+        "   • net_price = costo; public_price = precio de venta (déjalo en 0 para autocalcular con tu margen).",
+        "   • unit: per_person, per_group, per_day o per_access.",
+        "",
         "3. Guarda el archivo y súbelo desde el panel: Catálogo → Importar Excel.",
     ]:
         info.append([line])
-    info.column_dimensions["A"].width = 90
+    info.column_dimensions["A"].width = 95
 
     buf = io.BytesIO()
     wb.save(buf)
@@ -127,15 +148,25 @@ async def export_catalog(user: dict = Depends(require_roles("company_admin"))):
     ws_pkg.title = "Paquetes"
     header(ws_pkg, PKG_COLS)
     for p in packages:
-        hotel = (p.get("hotels") or [{}])[0]
-        occ = hotel.get("prices_by_occupancy", {}) if hotel else {}
-        ws_pkg.append([
-            p.get("code", ""), p.get("name", ""), p.get("nights", 0), p.get("description", ""),
-            ";".join(p.get("includes", [])), ";".join(p.get("excludes", [])),
-            hotel.get("name", "") if hotel else "",
-            occ.get("sencilla", 0), occ.get("doble", 0), occ.get("triple", 0),
-            occ.get("cuadruple", 0), hotel.get("minor_price", 0) if hotel else 0,
-        ])
+        hotels = p.get("hotels") or [{}]
+        for i, hotel in enumerate(hotels):
+            occ = hotel.get("prices_by_occupancy", {}) if hotel else {}
+            if i == 0:
+                ws_pkg.append([
+                    p.get("code", ""), p.get("name", ""), p.get("nights", 0), p.get("description", ""),
+                    ";".join(p.get("includes", [])), ";".join(p.get("excludes", [])),
+                    hotel.get("name", "") if hotel else "",
+                    occ.get("sencilla", 0), occ.get("doble", 0), occ.get("triple", 0),
+                    occ.get("cuadruple", 0), hotel.get("minor_price", 0) if hotel else 0,
+                ])
+            else:
+                # Continuation row: repeat the code, leave package columns blank, add the extra hotel.
+                ws_pkg.append([
+                    p.get("code", ""), "", "", "", "", "",
+                    hotel.get("name", ""),
+                    occ.get("sencilla", 0), occ.get("doble", 0), occ.get("triple", 0),
+                    occ.get("cuadruple", 0), hotel.get("minor_price", 0),
+                ])
 
     def svc_sheet(title, category):
         ws = wb.create_sheet(title)
@@ -184,33 +215,66 @@ async def import_catalog(file: UploadFile = File(...), user: dict = Depends(requ
     errors: list[dict] = []
     imported = {"paquetes": 0, "tours": 0, "traslados": 0}
 
-    # --- Paquetes ---
+    # --- Paquetes (grouped by code; one row per hotel) ---
     if "Paquetes" in wb.sheetnames:
         ws = wb["Paquetes"]
+        # 1) Group rows into packages. Rows sharing a 'code' (or with a blank
+        #    'code' that continues the previous package) become one package with
+        #    multiple hotels. Package-level fields come from the first row.
+        groups: dict[str, dict] = {}
+        order: list[str] = []
+        current_code: str | None = None
         for idx, row in enumerate(ws.iter_rows(min_row=2, values_only=True), start=2):
             if not row or all(c is None or str(c).strip() == "" for c in row):
                 continue
             d = dict(zip(PKG_COLS, list(row) + [None] * len(PKG_COLS)))
+            code = str(d.get("code") or "").strip()
+            if not code:
+                # Continuation row -> belongs to the previous package.
+                if not current_code:
+                    errors.append({"sheet": "Paquetes", "row": idx,
+                                   "message": "falta 'code' y no hay un paquete previo al que pertenezca esta fila"})
+                    continue
+                code = current_code
+            else:
+                current_code = code
+            grp = groups.get(code)
+            if grp is None:
+                grp = {"code": code, "base": d, "first_row": idx, "hotel_rows": []}
+                groups[code] = grp
+                order.append(code)
+            # Collect the hotel defined on this row (if any).
+            if str(d.get("hotel_name") or "").strip():
+                grp["hotel_rows"].append((idx, d))
+
+        # 2) Validate and insert one package per group.
+        for code in order:
+            grp = groups[code]
+            d = grp["base"]
+            first_row = grp["first_row"]
             try:
-                code = str(d["code"] or "").strip()
-                pname = str(d["name"] or "").strip()
-                if not code or not pname:
-                    raise ValueError("code y name son obligatorios")
-                nights = int(_coerce_num(d["nights"], 0))
+                pname = str(d.get("name") or "").strip()
+                if not pname:
+                    raise ValueError("name es obligatorio (en la primera fila del paquete)")
+                nights = int(_coerce_num(d.get("nights"), 0))
                 if nights <= 0:
-                    raise ValueError("nights debe ser un entero > 0")
+                    raise ValueError("nights debe ser un entero > 0 (en la primera fila del paquete)")
                 if await db.packages.find_one({"tenant_id": tenant_id, "code": code}, {"_id": 1}):
                     raise ValueError(f"el código '{code}' ya existe")
                 hotels = []
-                if str(d.get("hotel_name") or "").strip():
-                    hotels.append({
-                        "name": str(d["hotel_name"]).strip(), "category": "",
-                        "prices_by_occupancy": {
-                            "sencilla": _coerce_num(d["sencilla"]), "doble": _coerce_num(d["doble"]),
-                            "triple": _coerce_num(d["triple"]), "cuadruple": _coerce_num(d["cuadruple"]),
-                        },
-                        "minor_price": _coerce_num(d["menor"]), "season_prices": {},
-                    })
+                for (hidx, hd) in grp["hotel_rows"]:
+                    try:
+                        hotels.append({
+                            "name": str(hd["hotel_name"]).strip(), "category": "",
+                            "prices_by_occupancy": {
+                                "sencilla": _coerce_num(hd["sencilla"]), "doble": _coerce_num(hd["doble"]),
+                                "triple": _coerce_num(hd["triple"]), "cuadruple": _coerce_num(hd["cuadruple"]),
+                            },
+                            "minor_price": _coerce_num(hd["menor"]), "season_prices": {},
+                        })
+                    except Exception as he:
+                        errors.append({"sheet": "Paquetes", "row": hidx,
+                                       "message": f"hotel '{hd.get('hotel_name')}': {he}"})
                 doc = {
                     "id": new_id(), "tenant_id": tenant_id, "created_at": now_iso(),
                     "code": code, "name": pname, "nights": nights,
@@ -222,7 +286,7 @@ async def import_catalog(file: UploadFile = File(...), user: dict = Depends(requ
                 await db.packages.insert_one(dict(doc))
                 imported["paquetes"] += 1
             except Exception as e:
-                errors.append({"sheet": "Paquetes", "row": idx, "message": str(e)})
+                errors.append({"sheet": "Paquetes", "row": first_row, "message": str(e)})
 
     # --- Tours / Traslados (services) ---
     for sheet, category in (("Tours", "tour"), ("Traslados", "traslado")):
