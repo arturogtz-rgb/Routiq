@@ -33,6 +33,7 @@ import Leads from '@/pages/Leads';
 import CatalogAnalytics from '@/pages/CatalogAnalytics';
 import SalesStats from '@/pages/SalesStats';
 import { ConfirmProvider } from '@/components/ConfirmDialog';
+import { Toaster } from 'sonner';
 import Profile from '@/pages/Profile';
 import ForgotPassword from '@/pages/ForgotPassword';
 import ResetPassword from '@/pages/ResetPassword';
@@ -63,6 +64,7 @@ export default function App() {
       <BrowserRouter>
         <ThemeApplier />
         <ConfirmProvider>
+        <Toaster richColors position="top-right" closeButton />
         <Routes>
           <Route path="/" element={<HomeRedirect />} />
           <Route path="/login" element={<Login />} />

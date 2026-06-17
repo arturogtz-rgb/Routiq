@@ -3,6 +3,7 @@ import AppShell from '@/components/AppShell';
 import api, { formatApiError } from '@/lib/api';
 import { useAuth } from '@/context/AuthContext';
 import { UserPlus, ShieldCheck, User as UserIcon, ShieldOff, Crown, Pencil, KeyRound, Copy, Check, Trash2, AlertTriangle } from 'lucide-react';
+import { toast } from 'sonner';
 
 export default function Team() {
   const { user } = useAuth();
@@ -80,9 +81,16 @@ export default function Team() {
 
   const confirmDelete = async () => {
     setError(''); setDeleting(true);
+    const name = deleteUser.name;
     try {
-      await api.delete(`/users/${deleteUser.id}`);
+      const { data } = await api.delete(`/users/${deleteUser.id}`);
+      const n = data?.reassigned || 0;
       setDeleteUser(null); setDeleteWorkload(null); load();
+      if (n > 0) {
+        toast.success(`${name} eliminado`, { description: `${n} cotización${n === 1 ? '' : 'es'} reasignada${n === 1 ? '' : 's'} a ti.` });
+      } else {
+        toast.success(`${name} eliminado`, { description: 'No tenía cotizaciones asignadas.' });
+      }
     } catch (e) { setError(formatApiError(e)); }
     finally { setDeleting(false); }
   };
