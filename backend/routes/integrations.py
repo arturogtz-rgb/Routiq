@@ -76,7 +76,10 @@ async def update_my_integrations(payload: CompanyIntegrationsUpdate, user: dict 
     if "report_frequency" in data and data["report_frequency"]:
         updates["sales_report.frequency"] = data["report_frequency"]
     if "report_day" in data and data["report_day"] is not None:
-        updates["sales_report.day"] = int(data["report_day"])
+        freq = data.get("report_frequency") or "weekly"
+        day = int(data["report_day"])
+        day = max(0, min(6, day)) if freq == "weekly" else max(1, min(28, day))
+        updates["sales_report.day"] = day
     if "report_hour" in data and data["report_hour"] is not None:
         updates["sales_report.hour"] = int(data["report_hour"])
     if "base_currency" in data and data["base_currency"]:
