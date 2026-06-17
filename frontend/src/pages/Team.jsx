@@ -218,13 +218,13 @@ export default function Team() {
             <p className="text-sm text-ink-600 mt-2">Vas a eliminar a <b>{deleteUser.name}</b> ({deleteUser.email}). Esta acción no se puede deshacer.</p>
             {deleteWorkload === null ? (
               <p className="text-sm text-ink-400 mt-3">Revisando cotizaciones asignadas…</p>
-            ) : deleteWorkload.active > 0 ? (
+            ) : deleteWorkload.total > 0 ? (
               <div className="rounded-xl border border-amber-200 bg-peach-100/60 text-amber-800 px-4 py-3 text-sm mt-3 flex items-start gap-2" data-testid="delete-user-warning">
                 <AlertTriangle className="w-5 h-5 shrink-0 mt-0.5 text-amber-600" />
-                <span>Tiene <b>{deleteWorkload.active}</b> cotización(es) activa(s) (de {deleteWorkload.total} en total). Al eliminarlo, sus cotizaciones se <b>reasignarán a ti</b> automáticamente.</span>
+                <span>Este ejecutivo tiene <b>{deleteWorkload.total}</b> cotización(es) asignada(s){deleteWorkload.active > 0 ? ` (${deleteWorkload.active} activa(s))` : ''} que serán <b>reasignadas a ti (administrador)</b> automáticamente. No se eliminan ni se pierden.</span>
               </div>
             ) : (
-              <p className="text-sm text-ink-500 mt-3">{deleteWorkload.total > 0 ? `Sus ${deleteWorkload.total} cotización(es) se reasignarán a ti.` : 'No tiene cotizaciones asignadas.'}</p>
+              <p className="text-sm text-ink-500 mt-3">No tiene cotizaciones asignadas.</p>
             )}
             {error && <div className="rounded-xl border border-red-200 bg-red-50 text-red-700 px-4 py-3 text-sm mt-3" data-testid="delete-user-error">{error}</div>}
             <div className="flex justify-end gap-2 mt-5">
