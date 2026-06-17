@@ -24,6 +24,7 @@ export default function Settings() {
   const [smtpTestEmail, setSmtpTestEmail] = useState('');
   const [resendTesting, setResendTesting] = useState(false);
   const [resendTestEmail, setResendTestEmail] = useState('');
+  const [sendingReport, setSendingReport] = useState(false);
   const [showClear, setShowClear] = useState(false);
   const [clearText, setClearText] = useState('');
   const [clearing, setClearing] = useState(false);
@@ -159,6 +160,21 @@ export default function Settings() {
       setTimeout(() => setOk(''), 5000);
     } catch (e) { setError(formatApiError(e)); }
     finally { setResendTesting(false); }
+  };
+
+  const sendReportNow = async () => {
+    setError(''); setOk(''); setSendingReport(true);
+    try {
+      const period = (integ.report_frequency || 'weekly') === 'weekly' ? 'week' : 'month';
+      const { data } = await api.post('/stats/sales/send-report', null, { params: { period } });
+      if (data.ok) {
+        setOk(`Resumen enviado a ${data.to}. Revisa la bandeja de entrada.`);
+        setTimeout(() => setOk(''), 6000);
+      } else {
+        setError(data.detail || 'No se pudo enviar el resumen.');
+      }
+    } catch (e) { setError(formatApiError(e)); }
+    finally { setSendingReport(false); }
   };
 
   const uploadLogo = async (file) => {

@@ -67,6 +67,22 @@ async def _startup():
     log.info("Startup complete — super admin + demo tenant seeded")
     asyncio.create_task(_reminder_loop())
     asyncio.create_task(_backup_check_loop())
+    asyncio.create_task(_sales_report_loop())
+
+
+async def _sales_report_loop():
+    """Background loop: hourly check for companies due a weekly/monthly sales report."""
+    import reports
+    while True:
+        try:
+            await asyncio.sleep(3600)
+            res = await reports.run_sales_reports()
+            if res.get("sent"):
+                log.info("sales reports sent: %s", res)
+        except asyncio.CancelledError:
+            break
+        except Exception:
+            log.exception("sales report loop error")
 
 
 async def _backup_check_loop():

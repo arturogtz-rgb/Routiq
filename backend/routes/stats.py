@@ -190,21 +190,14 @@ async def _compute(db, tenant_id: str, period: str) -> dict:
     }
 
 
-@router.get("/stats/sales")
-async def sales_stats(period: str = "month", user: dict = Depends(require_roles("company_admin"))):
-    db = get_db()
-    return await _compute(db, user["tenant_id"], period)
-
-
 def _money(v, ccy):
     return f"${float(v or 0):,.2f} {ccy}"
 
 
-@router.get("/stats/sales/export")
-async def export_sales_stats(period: str = "month", user: dict = Depends(require_roles("company_admin"))):
-    db = get_db()
-    data = await _compute(db, user["tenant_id"], period)
+def build_workbook(data: dict) -> io.BytesIO:
+    """Build the sales report XLSX in-memory from a _compute() payload."""
     ccy = data["currency"]
+    period = data["period"]
     wb = openpyxl.Workbook()
     bold = Font(bold=True, color="FFFFFF")
     fill = PatternFill("solid", fgColor="185FA5")
@@ -220,7 +213,6 @@ async def export_sales_stats(period: str = "month", user: dict = Depends(require
             ws.column_dimensions[openpyxl.utils.get_column_letter(i)].width = 24
         return ws
 
-    # Resumen
     ws = wb.active; ws.title = "Resumen"
     period_label = {"week": "Última semana", "month": "Último mes", "quarter": "Último trimestre", "year": "Último año"}.get(period, period)
     summary = [
@@ -254,8 +246,34 @@ async def export_sales_stats(period: str = "month", user: dict = Depends(require
     buf = io.BytesIO()
     wb.save(buf)
     buf.seek(0)
+    return buf
+
+
+@router.get("/stats/sales")
+async def sales_stats(period: str = "month", user: dict = Depends(require_roles("company_admin"))):
+    db = get_db()
+    return await _compute(db, user["tenant_id"], period)
+
+
+@router.get("/stats/sales/export")
+async def export_sales_stats(period: str = "month", user: dict = Depends(require_roles("company_admin"))):
+    db = get_db()
+    data = await _compute(db, user["tenant_id"], period)
+    buf = build_workbook(data)
     stamp = datetime.now(timezone.utc).strftime("%Y%m%d")
     return StreamingResponse(
         buf, media_type=XLSX_MIME,
         headers={"Content-Disposition": f'attachment; filename="routiq-ventas-{period}-{stamp}.xlsx"'},
     )
+
+
+@router.post("/stats/sales/send-report")
+async def send_sales_report_now(period: str = "month", user: dict = Depends(require_roles("company_admin"))):
+    """Send the sales summary email (with XLSX attached) right now — manual trigger/test."""
+    import reports
+    db = get_db()
+    company = await db.companies.find_one({"id": user["tenant_id"]}, {"_id": 0})
+    ok, to, err = await reports.send_company_report(db, company, period)
+    if not ok:
+        return {"ok": False, "detail": err or "No se pudo enviar el reporte."}
+    return {"ok": True, "to": to, "period": period}

@@ -1,10 +1,13 @@
-import { Mail, Server, Send, Trash2 } from 'lucide-react';
+import { Mail, Server, Send, Trash2, BarChart3 } from 'lucide-react';
+
+const WEEKDAYS = [['1', 'Lunes'], ['2', 'Martes'], ['3', 'Miércoles'], ['4', 'Jueves'], ['5', 'Viernes'], ['6', 'Sábado'], ['0', 'Domingo']];
 
 export const EmailSettings = ({
   integ, setInteg, company, backend,
   connectGmail, disconnectGmail,
   testSmtp, smtpTesting, smtpTestEmail, setSmtpTestEmail,
   testResend, resendTesting, resendTestEmail, setResendTestEmail,
+  sendReportNow, sendingReport,
 }) => {
   const provider = integ.email_provider || 'resend';
   return (
@@ -114,6 +117,55 @@ export const EmailSettings = ({
         <input className="input-field" value={integ.notify_email || ''} placeholder="ventas@tudominio.com"
           onChange={(e) => setInteg((s) => ({ ...s, notify_email: e.target.value }))} data-testid="notify-email-input" />
         <p className="text-xs text-ink-400 mt-1">Recibe avisos cuando un cliente acepta o paga una cotización.</p>
+      </div>
+
+      <div className="rounded-xl border border-ink-100 bg-cream/50 p-4 space-y-3" data-testid="report-section">
+        <h3 className="font-semibold text-ink-900 flex items-center gap-2"><BarChart3 className="w-4 h-4 text-brand-500" /> Resumen automático de ventas</h3>
+        <label className="flex items-center gap-2 cursor-pointer text-sm text-ink-700">
+          <input type="checkbox" checked={!!integ.report_enabled}
+            onChange={(e) => setInteg((s) => ({ ...s, report_enabled: e.target.checked }))} data-testid="report-enabled-input" />
+          Enviar un resumen periódico con los KPIs y el Excel adjunto al correo de avisos.
+        </label>
+        {integ.report_enabled && (
+          <div className="grid grid-cols-2 gap-3" data-testid="report-config">
+            <div>
+              <label className="label-text">Frecuencia</label>
+              <select className="input-field" value={integ.report_frequency || 'weekly'}
+                onChange={(e) => setInteg((s) => ({ ...s, report_frequency: e.target.value }))} data-testid="report-frequency-input">
+                <option value="weekly">Semanal</option>
+                <option value="monthly">Mensual</option>
+              </select>
+            </div>
+            <div>
+              <label className="label-text">{(integ.report_frequency || 'weekly') === 'weekly' ? 'Día de la semana' : 'Día del mes'}</label>
+              {(integ.report_frequency || 'weekly') === 'weekly' ? (
+                <select className="input-field" value={String(integ.report_day ?? 1)}
+                  onChange={(e) => setInteg((s) => ({ ...s, report_day: Number(e.target.value) }))} data-testid="report-day-input">
+                  {WEEKDAYS.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
+                </select>
+              ) : (
+                <select className="input-field" value={String(integ.report_day ?? 1)}
+                  onChange={(e) => setInteg((s) => ({ ...s, report_day: Number(e.target.value) }))} data-testid="report-day-input">
+                  {Array.from({ length: 28 }, (_, i) => i + 1).map((d) => <option key={d} value={d}>{d}</option>)}
+                </select>
+              )}
+            </div>
+            <div>
+              <label className="label-text">Hora de envío</label>
+              <select className="input-field" value={String(integ.report_hour ?? 8)}
+                onChange={(e) => setInteg((s) => ({ ...s, report_hour: Number(e.target.value) }))} data-testid="report-hour-input">
+                {Array.from({ length: 24 }, (_, i) => i).map((h) => <option key={h} value={h}>{String(h).padStart(2, '0')}:00</option>)}
+              </select>
+              <p className="text-xs text-ink-400 mt-1">Hora de México (CDMX).</p>
+            </div>
+            <div className="flex items-end">
+              <button type="button" className="btn-ghost text-sm" onClick={sendReportNow} disabled={sendingReport} data-testid="report-send-now-btn">
+                <Send className="w-4 h-4" /> {sendingReport ? 'Enviando…' : 'Enviar ahora (prueba)'}
+              </button>
+            </div>
+          </div>
+        )}
+        <p className="text-xs text-ink-400">Guarda los cambios para activarlo. El correo se envía con tu proveedor configurado arriba.</p>
       </div>
     </div>
   );

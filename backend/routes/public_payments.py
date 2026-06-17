@@ -55,7 +55,9 @@ async def get_public_quotation(token: str):
     transfer_enabled = transfer_allowed and bool(bank.get("enabled")) and any(
         bank.get(k) for k in ("name", "clabe", "account", "usd_account"))
     rates = await currency.get_rates()
-    total_usd = currency.convert(final_total, base_currency, "USD", rates) if base_currency == "MXN" else None
+    other_ccy = "USD" if base_currency == "MXN" else "MXN"
+    equivalent_amount = currency.convert(final_total, base_currency, other_ccy, rates) if base_currency != other_ccy else None
+    total_usd = equivalent_amount if other_ccy == "USD" else None
     return {
         "quotation": {
             "code": q["code"], "type": q.get("type", "paquete"),
@@ -86,6 +88,8 @@ async def get_public_quotation(token: str):
             "base_currency": base_currency,
             "deposit_percent": company.get("deposit_percent", 50),
             "total_usd_equivalent": total_usd,
+            "equivalent_amount": equivalent_amount,
+            "equivalent_currency": other_ccy,
             "rate_mxn_per_usd": rates.get("mxn_per_usd"),
             "bank": {
                 "name": bank.get("name", ""), "holder": bank.get("holder", ""),

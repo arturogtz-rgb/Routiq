@@ -160,6 +160,11 @@ class CompanyIntegrationsUpdate(BaseModel):
     gmail_client_id: Optional[str] = None
     gmail_client_secret: Optional[str] = None
     gmail_from_name: Optional[str] = None
+    # Automated sales report email
+    report_enabled: Optional[bool] = None
+    report_frequency: Optional[Literal["weekly", "monthly"]] = None
+    report_day: Optional[int] = Field(default=None, ge=0, le=31)
+    report_hour: Optional[int] = Field(default=None, ge=0, le=23)
 
 
 class SMTPTestInput(BaseModel):

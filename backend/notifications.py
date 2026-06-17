@@ -53,7 +53,7 @@ async def send_platform_email(to_email: str, subject: str, html: str) -> bool:
 
 
 
-async def _send_smtp(company: dict, to_email: str, subject: str, html: str) -> bool:
+async def _send_smtp(company: dict, to_email: str, subject: str, html: str, attachments=None) -> bool:
     smtp = (company or {}).get("smtp") or {}
     host = smtp.get("host")
     if not host:
@@ -66,6 +66,11 @@ async def _send_smtp(company: dict, to_email: str, subject: str, html: str) -> b
     msg["Subject"] = subject
     msg.set_content("Este correo requiere un cliente con soporte HTML.")
     msg.add_alternative(html, subtype="html")
+    for a in (attachments or []):
+        mime = a.get("mime", "application/octet-stream")
+        maintype, _, subtype = mime.partition("/")
+        msg.add_attachment(a["data"], maintype=maintype or "application",
+                           subtype=subtype or "octet-stream", filename=a["filename"])
     port = int(smtp.get("port", 587) or 587)
     use_tls = bool(smtp.get("use_tls", True))
     try:
@@ -141,18 +146,26 @@ async def send_test_resend(api_key: str, from_email: str, from_name: str, to_ema
         return False, str(e)
 
 
-async def _resend_post(api_key: str, from_str: str, to_email: str, subject: str, html: str):
-    """POST to Resend. Returns (ok, status_code, text)."""
-    async with httpx.AsyncClient(timeout=12) as client:
+async def _resend_post(api_key: str, from_str: str, to_email: str, subject: str, html: str, attachments=None):
+    """POST to Resend. Returns (ok, status_code, text). `attachments` is an
+    optional list of {filename, data(bytes), mime}."""
+    import base64
+    body = {"from": from_str, "to": [to_email], "subject": subject, "html": html}
+    if attachments:
+        body["attachments"] = [
+            {"filename": a["filename"], "content": base64.b64encode(a["data"]).decode()}
+            for a in attachments
+        ]
+    async with httpx.AsyncClient(timeout=20) as client:
         r = await client.post(
             "https://api.resend.com/emails",
             headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
-            json={"from": from_str, "to": [to_email], "subject": subject, "html": html},
+            json=body,
         )
     return r.status_code in (200, 201), r.status_code, r.text
 
 
-async def _platform_fallback(company: dict, to_email: str, subject: str, html: str) -> bool:
+async def _platform_fallback(company: dict, to_email: str, subject: str, html: str, attachments=None) -> bool:
     """Always-on fallback: deliver via PLATFORM_RESEND_API_KEY + PLATFORM_FROM_EMAIL
     (Routiq's verified domain) when the company's own provider is missing OR fails
     (e.g. the company configured a Resend sender on an unverified domain)."""
@@ -163,7 +176,7 @@ async def _platform_fallback(company: dict, to_email: str, subject: str, html: s
     plat_from = os.environ.get("PLATFORM_FROM_EMAIL", "no-reply@routiq.com.mx")
     from_name = (company or {}).get("name") or "Routiq"
     try:
-        ok, status, text = await _resend_post(plat_key, f"{from_name} <{plat_from}>", to_email, subject, html)
+        ok, status, text = await _resend_post(plat_key, f"{from_name} <{plat_from}>", to_email, subject, html, attachments)
         if not ok:
             log.warning("platform-fallback Resend rechazado (%s): %s", status, text[:300])
         return ok
@@ -172,10 +185,11 @@ async def _platform_fallback(company: dict, to_email: str, subject: str, html: s
         return False
 
 
-async def send_email(company: dict, to_email: str, subject: str, html: str) -> bool:
+async def send_email(company: dict, to_email: str, subject: str, html: str, attachments=None) -> bool:
     """Send an email using the company's configured provider, with an automatic
     fallback to the platform Resend sender whenever the company provider is not
     configured OR the send fails (unverified domain, bad key, SMTP error, etc.).
+    `attachments`: optional list of {filename, data(bytes), mime}.
     Best-effort: returns True if accepted, False otherwise (never raises)."""
     if not to_email:
         log.info("send_email skipped (no recipient) -> %s", subject)
@@ -185,15 +199,15 @@ async def send_email(company: dict, to_email: str, subject: str, html: str) -> b
 
     # 1) Company provider (Gmail / SMTP) -> on failure, fall back to platform.
     if provider == "gmail" and ((company or {}).get("gmail") or {}).get("refresh_token"):
-        if await _send_gmail(company, to_email, subject, html):
+        if await _send_gmail(company, to_email, subject, html, attachments):
             return True
         log.info("Gmail falló -> fallback a plataforma (%s)", to_email)
-        return await _platform_fallback(company, to_email, subject, html)
+        return await _platform_fallback(company, to_email, subject, html, attachments)
     if provider == "smtp" and ((company or {}).get("smtp") or {}).get("host"):
-        if await _send_smtp(company, to_email, subject, html):
+        if await _send_smtp(company, to_email, subject, html, attachments):
             return True
         log.info("SMTP falló -> fallback a plataforma (%s)", to_email)
-        return await _platform_fallback(company, to_email, subject, html)
+        return await _platform_fallback(company, to_email, subject, html, attachments)
 
     # 2) Company Resend key (if any) -> on failure, fall back to platform.
     resend = (company or {}).get("resend") or {}
@@ -202,7 +216,7 @@ async def send_email(company: dict, to_email: str, subject: str, html: str) -> b
         from_email = resend.get("from_email") or "onboarding@resend.dev"
         from_name = resend.get("from_name") or (company or {}).get("name") or "Routiq"
         try:
-            ok, status, text = await _resend_post(api_key, f"{from_name} <{from_email}>", to_email, subject, html)
+            ok, status, text = await _resend_post(api_key, f"{from_name} <{from_email}>", to_email, subject, html, attachments)
             if ok:
                 return True
             log.warning("Resend de empresa rechazado (%s): %s -> fallback a plataforma", status, text[:300])
@@ -210,10 +224,10 @@ async def send_email(company: dict, to_email: str, subject: str, html: str) -> b
             log.warning("Resend de empresa falló: %s -> fallback a plataforma", e)
 
     # 3) No company provider, or it failed -> platform fallback (verified domain).
-    return await _platform_fallback(company, to_email, subject, html)
+    return await _platform_fallback(company, to_email, subject, html, attachments)
 
 
-async def _send_gmail(company: dict, to_email: str, subject: str, html: str) -> bool:
+async def _send_gmail(company: dict, to_email: str, subject: str, html: str, attachments=None) -> bool:
     """Send via the company's Gmail account (OAuth2 refresh token). Best-effort."""
     import base64
     from email.message import EmailMessage as _EM
@@ -240,6 +254,11 @@ async def _send_gmail(company: dict, to_email: str, subject: str, html: str) -> 
             msg["Subject"] = subject
             msg.set_content("Tu cliente de correo no soporta HTML.")
             msg.add_alternative(html, subtype="html")
+            for a in (attachments or []):
+                mime = a.get("mime", "application/octet-stream")
+                maintype, _, subtype = mime.partition("/")
+                msg.add_attachment(a["data"], maintype=maintype or "application",
+                                   subtype=subtype or "octet-stream", filename=a["filename"])
             raw = base64.urlsafe_b64encode(msg.as_bytes()).decode()
             r = await client.post(
                 "https://gmail.googleapis.com/gmail/v1/users/me/messages/send",

@@ -120,6 +120,11 @@ def _integrations_view(company: dict) -> dict:
         "gmail_from_name": (company.get("gmail") or {}).get("from_name", ""),
         "gmail_connected": bool((company.get("gmail") or {}).get("refresh_token")),
         "gmail_email": (company.get("gmail") or {}).get("email", ""),
+        # Automated sales report
+        "report_enabled": bool((company.get("sales_report") or {}).get("enabled", False)),
+        "report_frequency": (company.get("sales_report") or {}).get("frequency", "weekly"),
+        "report_day": (company.get("sales_report") or {}).get("day", 1),
+        "report_hour": (company.get("sales_report") or {}).get("hour", 8),
     }
 
 

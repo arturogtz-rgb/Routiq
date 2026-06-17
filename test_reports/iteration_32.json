@@ -1,0 +1,35 @@
+{
+  "summary": "Iteration 32 verified end-to-end. Backend pytest 9/9 PASS (test_iteration32_api.py) + 5/5 PASS (existing test_iteration32_reports.py unit tests). (1) Sales report config — GET /api/companies/me/integrations exposes report_enabled/report_frequency/report_day/report_hour; PATCH weekly{day=1,hour=8} and monthly{day=15,hour=9} both persist and reflect on GET. (2) Manual trigger POST /api/stats/sales/send-report?period=week returns HTTP 200 with JSON {ok:false, detail:'...'} containing a clear Spanish provider-rejected message (no provider key configured in this pod) — NO crash; executive role correctly receives 403. (3) Multi-currency public quotation: with base_currency=MXN the public payment block contains base_currency/equivalent_amount/equivalent_currency/rate_mxn_per_usd and equivalent_currency='USD'; after PATCH base_currency=USD it flips to equivalent_currency='MXN' with recomputed amount; reverted to MXN. (4) Email-attachment plumbing regression: /api/companies/me/test-resend with empty key returns HTTP 400 + Spanish error; /api/stats/sales returns full payload; /api/stats/sales/export returns valid XLSX with all 6 sheets (Resumen, Ejecutivos, Clientes, Paquetes, Servicios, Perdidas). Frontend: /app/settings (no tab nav — single-page layout) shows report-section with report-enabled-input pre-checked; report-config visible; report-frequency-input switches weekly(7 day options)↔monthly(28 day options); saving and reloading retained {enabled:true, weekly, day=1, hour=8}; clicking 'Enviar ahora (prueba)' shows a Spanish message (graceful, no crash). 'Moneda base' currency selector toggles MXN↔USD and persists on Guardar integraciones (restored to MXN). Regression: /app/stats KPIs+trend chart+Exportar Excel render, /app/analytics insights cards render (14 analytics-* testids).",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "/app/settings", "issues": ["Settings is a single long page, not tabs — review_request mentioned a 'Correo' tab which does not exist; section is reachable directly. Not blocking, just spec-vs-impl note."]}
+    ]
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_iteration32_api.py",
+    "/app/backend/tests/test_iteration32_reports.py",
+    "/app/test_reports/pytest/iter32_api.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "routes/integrations.py — PATCH report_day uses int() without range validation. If frontend posts day=99 for monthly or day=10 for weekly, it persists and _is_due silently never fires. Add Pydantic validation in CompanyIntegrationsUpdate (weekly: 0..6, monthly: 1..28) for defense-in-depth.",
+    "routes/integrations.py — PATCH report_hour also unvalidated (0..23). Same suggestion: bound it.",
+    "routes/stats.py send_sales_report_now — returns HTTP 200 with {ok:false} on provider failure (good UX for the test button) but this conflates protocol-level success with business failure; consider returning HTTP 200 only when ok:true and a 502/424 with the same JSON body when ok:false so monitoring/automation can distinguish. Currently fine because spec explicitly mandates 200 here.",
+    "reports.py — sales-report email body/attachment send happens inside the request handler synchronously; for large tenants the XLSX build (up to 20k quotations) could exceed a few seconds. Consider running send_company_report() in a BackgroundTask for the manual trigger.",
+    "EmailSettings.jsx — option elements wrap their text inside a dev-tooling injected <span style='display:contents'> causing React hydration warning ('<span> cannot be a child of <option>'). This is the x-component/data-ve-dynamic dev overlay injecting children — not the production bundle — but worth noting if production logs ever show it.",
+    "PaymentSettings.jsx — base_currency select doesn't carry a data-testid; for future automation add data-testid='base-currency-input' (works fine today via label, but explicit testid is preferred per project convention)."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_iteration32_api.py (new)"
+  ],
+  "success_rate": {"backend": "100% (9/9 api + 5/5 unit)", "frontend": "100% (report config persist+toggle, send-now message, currency toggle, /stats + /analytics regression)"},
+  "test_credentials": "admin@aventurate.mx / Demo2026! (company_admin); ejecutivo@aventurate.mx / Demo2026! (executive); /app/memory/test_credentials.md verified.",
+  "seed_data_creation": "Report config left as: enabled=true, frequency=weekly, day=1 (Monday), hour=8. base_currency restored to MXN (verified via curl post-tests). No quotation mutation. Iteration 31 left quotation aa493b1f-... in 'perdida' state — unchanged by this run.",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "Iteration 32 fully verified. Regression suite: /app/backend/tests/test_iteration32_api.py (login as admin/exec, persists report config, manual trigger graceful-fail, multi-currency public flip, email/stats regression — auto-restores base_currency=MXN on teardown). Settings page is single-page (no tabs); the report-section is found near the bottom of the Pagos e integraciones card. To run pytest, must export REACT_APP_BACKEND_URL first (it sources from frontend/.env). No email provider configured in this pod — send-report returns ok:false with Spanish error and that is EXPECTED, not a bug.",
+  "rca of the issue": "N/A — no bugs found in iteration 32 scope."
+}

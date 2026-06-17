@@ -70,6 +70,15 @@ async def update_my_integrations(payload: CompanyIntegrationsUpdate, user: dict 
         updates["gmail.client_secret"] = data["gmail_client_secret"]
     if "gmail_from_name" in data:
         updates["gmail.from_name"] = data["gmail_from_name"] or ""
+    # Automated sales report config
+    if "report_enabled" in data:
+        updates["sales_report.enabled"] = bool(data["report_enabled"])
+    if "report_frequency" in data and data["report_frequency"]:
+        updates["sales_report.frequency"] = data["report_frequency"]
+    if "report_day" in data and data["report_day"] is not None:
+        updates["sales_report.day"] = int(data["report_day"])
+    if "report_hour" in data and data["report_hour"] is not None:
+        updates["sales_report.hour"] = int(data["report_hour"])
     if "base_currency" in data and data["base_currency"]:
         updates["base_currency"] = data["base_currency"]
         # keep pricing currency in sync
