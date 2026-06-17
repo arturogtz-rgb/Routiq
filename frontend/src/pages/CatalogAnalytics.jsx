@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import AppShell from '@/components/AppShell';
 import api, { formatApiError } from '@/lib/api';
-import { Eye, Inbox, FileText, TrendingUp, BarChart3, Share2 } from 'lucide-react';
+import { Eye, Inbox, FileText, TrendingUp, BarChart3, Share2, Trophy, Lightbulb } from 'lucide-react';
 
 export default function CatalogAnalytics() {
   const [data, setData] = useState(null);
@@ -24,6 +24,14 @@ export default function CatalogAnalytics() {
   const rows = data?.packages || [];
   const hasViews = rows.some((r) => r.views > 0);
 
+  // Actionable insights: best converter & biggest opportunity (most views, no conversion)
+  const converters = rows.filter((r) => r.quotations > 0 && r.views > 0);
+  const bestConverter = converters.length
+    ? converters.reduce((a, b) => (b.view_to_quote > a.view_to_quote ? b : a)) : null;
+  const opportunities = rows.filter((r) => r.views > 0 && r.quotations === 0);
+  const opportunity = opportunities.length
+    ? opportunities.reduce((a, b) => (b.views > a.views ? b : a)) : null;
+
   return (
     <AppShell>
       <div className="flex flex-col md:flex-row md:items-end md:justify-between gap-4 mb-8">
@@ -40,6 +48,25 @@ export default function CatalogAnalytics() {
       </div>
 
       {error && <div className="rounded-xl border border-red-200 bg-red-50 text-red-700 px-4 py-3 text-sm mb-4" data-testid="analytics-error">{error}</div>}
+
+      {(bestConverter || opportunity) && (
+        <div className="grid md:grid-cols-2 gap-4 mb-6" data-testid="analytics-insights">
+          {bestConverter && (
+            <div className="card-surface p-5 border-l-4 border-emerald-500" data-testid="insight-best">
+              <div className="flex items-center gap-2 text-emerald-700"><Trophy className="w-5 h-5" /><span className="text-xs uppercase tracking-widest font-bold">Tu mejor vendedor</span></div>
+              <p className="font-display text-xl font-semibold text-ink-900 mt-2 truncate">{bestConverter.name}</p>
+              <p className="text-sm text-ink-500 mt-1">Convierte el <span className="font-bold text-emerald-700">{bestConverter.view_to_quote}%</span> de sus vistas en cotización ({bestConverter.quotations} de {bestConverter.views}). Dale más visibilidad: destácalo y compártelo más.</p>
+            </div>
+          )}
+          {opportunity && (
+            <div className="card-surface p-5 border-l-4 border-amber-500" data-testid="insight-opportunity">
+              <div className="flex items-center gap-2 text-amber-700"><Lightbulb className="w-5 h-5" /><span className="text-xs uppercase tracking-widest font-bold">Oportunidad de mejora</span></div>
+              <p className="font-display text-xl font-semibold text-ink-900 mt-2 truncate">{opportunity.name}</p>
+              <p className="text-sm text-ink-500 mt-1">Tiene <span className="font-bold text-amber-700">{opportunity.views} vistas</span> pero ninguna cotización. Revisa precio, fotos o descripción para convertir ese interés en ventas.</p>
+            </div>
+          )}
+        </div>
+      )}
 
       <div className="grid grid-cols-2 lg:grid-cols-5 gap-4 mb-6" data-testid="analytics-totals">
         {[

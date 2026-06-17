@@ -38,6 +38,8 @@ export default function QuotationDetail() {
   const [aiError, setAiError] = useState('');
   const [publicToken, setPublicToken] = useState('');
   const [copiedPublic, setCopiedPublic] = useState(false);
+  const [lostModal, setLostModal] = useState(false);
+  const [lostReason, setLostReason] = useState('');
   const [discount, setDiscount] = useState({ discount_type: 'none', discount_value: 0 });
   const [clientPhone, setClientPhone] = useState('');
   const [companyName, setCompanyName] = useState('Routiq');
@@ -116,9 +118,22 @@ export default function QuotationDetail() {
     await load();
   };
 
-  const changeState = async (state) => {
-    await api.patch(`/quotations/${id}/state`, { state });
+  const changeState = async (state, reason) => {
+    await api.patch(`/quotations/${id}/state`, { state, reason: reason || undefined });
     await load();
+  };
+
+  const onStateClick = (state) => {
+    if (state === 'perdida' && q.state !== 'perdida') {
+      setLostReason(''); setLostModal(true);
+    } else {
+      changeState(state);
+    }
+  };
+
+  const confirmLost = async () => {
+    setLostModal(false);
+    await changeState('perdida', lostReason.trim());
   };
 
   const downloadPdf = async () => {
@@ -277,7 +292,7 @@ export default function QuotationDetail() {
       {/* State selector */}
       <div className="flex flex-wrap gap-2 mb-8" data-testid="state-selector">
         {STATES.map((s) => (
-          <button key={s.id} onClick={() => changeState(s.id)}
+          <button key={s.id} onClick={() => onStateClick(s.id)}
             className={`pill transition-all ${q.state === s.id ? 'bg-brand-500 text-white' : 'bg-white border border-ink-100 text-ink-700 hover:bg-brand-50'}`}
             data-testid={`state-btn-${s.id}`}>
             {s.label}
@@ -584,6 +599,24 @@ export default function QuotationDetail() {
               <button className="btn-primary" disabled={savingPkg} onClick={saveAsPackage} data-testid="save-package-confirm">
                 <PackageIcon className="w-4 h-4" /> {savingPkg ? 'Creando…' : 'Crear y abrir editor'}
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {lostModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-ink-900/50" onClick={() => setLostModal(false)}>
+          <div className="bg-white rounded-2xl p-6 w-full max-w-md" onClick={(e) => e.stopPropagation()} data-testid="lost-reason-modal">
+            <h3 className="font-display text-xl font-semibold text-ink-900">Marcar como perdida</h3>
+            <p className="text-sm text-ink-500 mt-1">Registra el motivo (opcional) para entender por qué se pierden ventas. Aparecerá en tu reporte de Ventas.</p>
+            <div className="mt-4">
+              <label className="label-text">Motivo</label>
+              <textarea className="input-field" rows={3} value={lostReason} onChange={(e) => setLostReason(e.target.value)}
+                placeholder="Ej: precio fuera de presupuesto, eligió otra agencia, cambió de fechas…" data-testid="lost-reason-input" />
+            </div>
+            <div className="flex justify-end gap-2 mt-6">
+              <button className="btn-ghost" onClick={() => setLostModal(false)} data-testid="lost-reason-cancel">Cancelar</button>
+              <button className="btn-primary !bg-red-600 hover:!bg-red-700" onClick={confirmLost} data-testid="lost-reason-confirm">Marcar perdida</button>
             </div>
           </div>
         </div>

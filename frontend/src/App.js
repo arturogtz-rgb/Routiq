@@ -31,6 +31,7 @@ import PublicPackage from '@/pages/PublicPackage';
 import PublicCatalog from '@/pages/PublicCatalog';
 import Leads from '@/pages/Leads';
 import CatalogAnalytics from '@/pages/CatalogAnalytics';
+import SalesStats from '@/pages/SalesStats';
 import { ConfirmProvider } from '@/components/ConfirmDialog';
 import Profile from '@/pages/Profile';
 import ForgotPassword from '@/pages/ForgotPassword';
@@ -82,6 +83,7 @@ export default function App() {
           <Route path="/app/quotations" element={<ProtectedRoute roles={['company_admin', 'executive']}><QuotationsList /></ProtectedRoute>} />
           <Route path="/app/leads" element={<ProtectedRoute roles={['company_admin', 'executive']}><Leads /></ProtectedRoute>} />
           <Route path="/app/analytics" element={<ProtectedRoute roles={['company_admin']}><CatalogAnalytics /></ProtectedRoute>} />
+          <Route path="/app/stats" element={<ProtectedRoute roles={['company_admin']}><SalesStats /></ProtectedRoute>} />
           <Route path="/app/quotations/new" element={<ProtectedRoute roles={['company_admin', 'executive']}><QuotationBuilder /></ProtectedRoute>} />
           <Route path="/app/clients" element={<ProtectedRoute roles={['company_admin', 'executive']}><Clients /></ProtectedRoute>} />
           <Route path="/app/quotations/new/custom" element={<ProtectedRoute roles={['company_admin', 'executive']}><CustomQuotationBuilder /></ProtectedRoute>} />

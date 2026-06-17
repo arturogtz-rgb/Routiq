@@ -170,16 +170,21 @@ async def update_quotation_state(quotation_id: str, payload: QuotationStateUpdat
     if not q:
         raise HTTPException(status_code=404, detail="Cotización no encontrada")
     prev = q.get("state")
+    set_fields = {"state": payload.state, "last_activity_at": now_iso()}
+    if payload.state == "perdida" and (payload.reason or "").strip():
+        set_fields["lost_reason"] = payload.reason.strip()
     await db.quotations.update_one(
         {"id": quotation_id, "tenant_id": user["tenant_id"]},
-        {"$set": {"state": payload.state, "last_activity_at": now_iso()}},
+        {"$set": set_fields},
     )
     STATE_LABELS = {
         "nueva_consulta": "Nueva consulta", "cotizando": "Cotizando", "enviada": "Enviada",
         "negociacion": "En negociación", "ganada": "Ganada", "perdida": "Perdida",
     }
-    await _append_history(db, quotation_id, user, "state_change",
-                          f"Estado: {STATE_LABELS.get(prev, prev)} → {STATE_LABELS.get(payload.state, payload.state)}")
+    detail = f"Estado: {STATE_LABELS.get(prev, prev)} → {STATE_LABELS.get(payload.state, payload.state)}"
+    if set_fields.get("lost_reason"):
+        detail += f" · Motivo: {set_fields['lost_reason']}"
+    await _append_history(db, quotation_id, user, "state_change", detail)
     if payload.state == "ganada" and prev != "ganada":
         await _record_audit(db, user["tenant_id"], user, "won", q, "Marcada como ganada")
     return {"ok": True, "state": payload.state}

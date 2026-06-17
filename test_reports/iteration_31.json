@@ -1,0 +1,32 @@
+{
+  "summary": "Iteration 31 Sales & Statistics + lost reason + analytics insights fully verified. Backend: 10/10 pytest pass (test_iteration31_sales_stats.py): /api/stats/sales returns proper payload with required keys, trend length per period (week=7, month=30, quarter=13, year=12), 401 unauth, 403 for executive; /api/stats/sales/export returns valid xlsx with correct MIME, content-disposition routiq-ventas-month-YYYYMMDD.xlsx, and sheets {Resumen, Ejecutivos, Clientes, Paquetes, Servicios, Perdidas}; PATCH /api/quotations/{id}/state with {state:perdida, reason} persists lost_reason and appears in /stats/sales lost list. Regression GET /api/catalog/analytics still 200. Frontend: login admin OK, sidebar nav-stats visible for company_admin, /app/stats renders KPIs, period toggle (week/month/quarter/year), trend recharts SVG, ranking tables (executives/clients/packages/services), lost table, Exportar Excel button; switching period to week reloaded without errors. /app/analytics shows analytics-totals + analytics-table + analytics-insights with insight-opportunity card (insight-best absent because no package met both views+conversions thresholds, expected). QuotationDetail: clicking state-btn-cotizando changed state with NO modal; clicking state-btn-perdida opened styled lost-reason-modal (textarea/cancel/confirm); confirming with a reason closed the modal and the API confirms state='perdida' with lost_reason persisted.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_iteration31_sales_stats.py",
+    "/app/test_reports/pytest/iter31_results.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "stats.py _compute scans up to 20000 quotations per tenant per request without any time-based DB filter. For large tenants this will get slow; recommend adding a Mongo query filter on created_at/last_activity_at >= cutoff for created_in/won_in/lost_in (currently the cutoff filter is only applied in Python). Acceptable for current scale but worth tracking.",
+    "stats.py is ~260 lines and fine; openpyxl workbook is built in-memory which is OK for small tenants. Add a guard if data['lost'] gets very large (>1000) to avoid huge XLSX downloads.",
+    "QuotationStateUpdate.reason validation is permissive (no max length). Consider Field(max_length=500) to prevent abuse.",
+    "SalesStats.jsx exportXlsx does not derive filename from server's content-disposition; uses client-side `routiq-ventas-${period}.xlsx` (no date). Minor UX nit — backend filename includes date stamp which is lost on download. Not blocking.",
+    "Recharts logged width(-1)/height(-1) warnings during initial render in stats-trend ResponsiveContainer; visual chart still renders fine on first interaction. Could set minHeight on the wrapper to silence warnings.",
+    "PATCH /quotations/{id}/state with state='perdida' stores lost_reason only when non-empty; if a user empties the reason later, prior lost_reason persists. Consider clearing lost_reason when state moves away from 'perdida'."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_iteration31_sales_stats.py (new)"
+  ],
+  "success_rate": {"backend": "100% (10/10)", "frontend": "100% (nav, sales page, period switch, chart, export btn, analytics insights, lost modal flow)"},
+  "test_credentials": "admin@aventurate.mx / Demo2026! (company_admin), ejecutivo@aventurate.mx / Demo2026! (executive)",
+  "seed_data_creation": "Backend test temporarily flips first quotation to state='perdida' with lost_reason 'precio fuera de presupuesto TEST_ITER31' then attempts to restore. Frontend test marked quotation aa493b1f-a105-4b69-ad8e-fa15e33ef932 (COT-2026024 TEST BUG3 Programa) as perdida with lost_reason 'TEST_ITER31 motivo de prueba ui' — currently left in 'perdida' state. Main agent or next test agent can reset via PATCH /api/quotations/aa493b1f-a105-4b69-ad8e-fa15e33ef932/state {state:'cotizando'} if needed.",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "Iteration 31 (sales stats, excel export, lost reason, analytics insights) fully verified. Regression suite is /app/backend/tests/test_iteration31_sales_stats.py — idempotent, uses TEST_ITER31 prefix. Note the seed mutation above on quotation aa493b1f-a105-4b69-ad8e-fa15e33ef932 (now 'perdida'). nav-stats only shows for company_admin (executive sees no Ventas link, confirmed by 403 from /api/stats/sales). recharts ^3.6.0 emits harmless width(-1) warning on first chart mount which can be ignored.",
+  "rca of the issue": "N/A — no bugs found."
+}
