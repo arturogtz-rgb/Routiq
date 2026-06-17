@@ -294,9 +294,9 @@ export default function Packages() {
             <div className="rounded-xl bg-mint-100 text-emerald-800 p-4 flex items-center gap-3 mb-4">
               <CheckCircle2 className="w-6 h-6 shrink-0" />
               <div>
-                <p className="font-semibold" data-testid="import-total">{report.total_imported} registro(s) importado(s)</p>
+                <p className="font-semibold" data-testid="import-total">{report.total_imported} registro(s) procesado(s)</p>
                 <p className="text-sm" data-testid="import-breakdown">
-                  {report.imported.paquetes} paquete(s) importado(s) (con {report.imported.hoteles ?? 0} hotel(es) en total) · {report.imported.tours} tour(s) · {report.imported.traslados} traslado(s)
+                  {report.imported.paquetes_nuevos ?? 0} paquete(s) nuevo(s) · {report.imported.paquetes_actualizados ?? 0} paquete(s) actualizado(s) · {report.imported.hoteles ?? 0} hotel(es) en total · {report.imported.tours} tour(s) · {report.imported.traslados} traslado(s)
                 </p>
               </div>
             </div>

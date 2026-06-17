@@ -118,13 +118,19 @@ async def download_template(user: dict = Depends(require_roles("company_admin"))
         "      • En su tarjeta verás la etiqueta '3 hoteles disponibles'.",
         "      • Al cotizar, el ejecutivo elige entre los 3 hoteles y cada uno usa sus propios precios por ocupación.",
         "",
+        "ACTUALIZAR PRECIOS / TARIFAS DE TEMPORADA (sin borrar):",
+        "   • Si el 'code' YA EXISTE en tu catálogo, el paquete se ACTUALIZA (no se duplica):",
+        "     se sobrescriben nombre, noches, descripción, imagen, incluye/no incluye y TODOS los hoteles",
+        "     con lo que traiga el Excel. Ideal para actualizar tarifas cada año o por temporada.",
+        "   • Si el 'code' es nuevo, se crea un paquete nuevo.",
+        "",
         "TOURS / TRASLADOS — columna obligatoria: name.",
         "   • description: descripción del servicio.",
         "   • net_price = costo; public_price = precio de venta (déjalo en 0 para autocalcular con tu margen).",
         "   • unit: per_person, per_group, per_day o per_access.",
         "",
         "3. Guarda el archivo y súbelo desde el panel: Catálogo → Importar Excel.",
-        "   Al terminar verás un resumen: 'X paquetes importados (con N hoteles en total), Y tours, Z traslados'.",
+        "   Al terminar verás un resumen: 'X paquetes nuevos, Y paquetes actualizados, Z hoteles en total, ...'.",
     ]:
         info.append([line])
     info.column_dimensions["A"].width = 100
@@ -231,7 +237,7 @@ async def import_catalog(file: UploadFile = File(...), user: dict = Depends(requ
     divisor = float((company or {}).get("pricing_config", {}).get("margin_divisor") or 0.76) or 0.76
 
     errors: list[dict] = []
-    imported = {"paquetes": 0, "hoteles": 0, "tours": 0, "traslados": 0}
+    imported = {"paquetes_nuevos": 0, "paquetes_actualizados": 0, "hoteles": 0, "tours": 0, "traslados": 0}
 
     # --- Paquetes (grouped by code; one row per hotel) ---
     if "Paquetes" in wb.sheetnames:
@@ -277,8 +283,7 @@ async def import_catalog(file: UploadFile = File(...), user: dict = Depends(requ
                 nights = int(_coerce_num(d.get("nights"), 0))
                 if nights <= 0:
                     raise ValueError("nights debe ser un entero > 0 (en la primera fila del paquete)")
-                if await db.packages.find_one({"tenant_id": tenant_id, "code": code}, {"_id": 1}):
-                    raise ValueError(f"el código '{code}' ya existe")
+                existing = await db.packages.find_one({"tenant_id": tenant_id, "code": code}, {"_id": 0, "id": 1})
                 hotels = []
                 for (hidx, hd) in grp["hotel_rows"]:
                     try:
@@ -293,16 +298,28 @@ async def import_catalog(file: UploadFile = File(...), user: dict = Depends(requ
                     except Exception as he:
                         errors.append({"sheet": "Paquetes", "row": hidx,
                                        "message": f"hotel '{hd.get('hotel_name')}': {he}"})
-                doc = {
-                    "id": new_id(), "tenant_id": tenant_id, "created_at": now_iso(),
-                    "code": code, "name": pname, "nights": nights,
+                fields = {
+                    "name": pname, "nights": nights,
                     "description": str(d.get("description") or ""),
-                    "image_url": str(d.get("image_url") or "").strip(), "itinerary": [], "hotels": hotels, "seasons": [],
+                    "image_url": str(d.get("image_url") or "").strip(),
+                    "hotels": hotels,
                     "includes": _split_list(d.get("includes")), "excludes": _split_list(d.get("excludes")),
-                    "allowed_start_days": [], "special_departure_dates": [], "status": "active",
                 }
-                await db.packages.insert_one(dict(doc))
-                imported["paquetes"] += 1
+                if existing:
+                    # Update existing package (overwrite data + hotels) — keeps id/created_at/status.
+                    await db.packages.update_one(
+                        {"tenant_id": tenant_id, "code": code},
+                        {"$set": {**fields, "updated_at": now_iso()}})
+                    imported["paquetes_actualizados"] += 1
+                else:
+                    doc = {
+                        "id": new_id(), "tenant_id": tenant_id, "created_at": now_iso(),
+                        "code": code, "itinerary": [], "seasons": [],
+                        "allowed_start_days": [], "special_departure_dates": [], "status": "active",
+                        **fields,
+                    }
+                    await db.packages.insert_one(dict(doc))
+                    imported["paquetes_nuevos"] += 1
                 imported["hoteles"] += len(hotels)
             except Exception as e:
                 errors.append({"sheet": "Paquetes", "row": first_row, "message": str(e)})
@@ -340,5 +357,6 @@ async def import_catalog(file: UploadFile = File(...), user: dict = Depends(requ
                 errors.append({"sheet": sheet, "row": idx, "message": str(e)})
 
     wb.close()
-    total = imported["paquetes"] + imported["tours"] + imported["traslados"]
+    total = (imported["paquetes_nuevos"] + imported["paquetes_actualizados"]
+             + imported["tours"] + imported["traslados"])
     return {"ok": True, "imported": imported, "total_imported": total, "errors": errors, "error_count": len(errors)}
