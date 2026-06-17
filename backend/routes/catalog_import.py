@@ -128,9 +128,11 @@ async def download_template(user: dict = Depends(require_roles("company_admin"))
         "   • description: descripción del servicio.",
         "   • net_price = costo; public_price = precio de venta (déjalo en 0 para autocalcular con tu margen).",
         "   • unit: per_person, per_group, per_day o per_access.",
+        "   • ACTUALIZAR sin duplicar: si coincide el NOMBRE (tours) o el NOMBRE + UNIDAD (traslados),",
+        "     el servicio se actualiza en lugar de crear uno nuevo.",
         "",
         "3. Guarda el archivo y súbelo desde el panel: Catálogo → Importar Excel.",
-        "   Al terminar verás un resumen: 'X paquetes nuevos, Y paquetes actualizados, Z hoteles en total, ...'.",
+        "   Al terminar verás un resumen: 'X paquetes nuevos, Y actualizados, Z hoteles · tours nuevos/actualizados · traslados nuevos/actualizados'.",
     ]:
         info.append([line])
     info.column_dimensions["A"].width = 100
@@ -237,7 +239,11 @@ async def import_catalog(file: UploadFile = File(...), user: dict = Depends(requ
     divisor = float((company or {}).get("pricing_config", {}).get("margin_divisor") or 0.76) or 0.76
 
     errors: list[dict] = []
-    imported = {"paquetes_nuevos": 0, "paquetes_actualizados": 0, "hoteles": 0, "tours": 0, "traslados": 0}
+    imported = {
+        "paquetes_nuevos": 0, "paquetes_actualizados": 0, "hoteles": 0,
+        "tours_nuevos": 0, "tours_actualizados": 0,
+        "traslados_nuevos": 0, "traslados_actualizados": 0,
+    }
 
     # --- Paquetes (grouped by code; one row per hotel) ---
     if "Paquetes" in wb.sheetnames:
@@ -325,6 +331,7 @@ async def import_catalog(file: UploadFile = File(...), user: dict = Depends(requ
                 errors.append({"sheet": "Paquetes", "row": first_row, "message": str(e)})
 
     # --- Tours / Traslados (services) ---
+    # Upsert by uniqueness key: tours -> (name, category); traslados -> (name, unit, category).
     for sheet, category in (("Tours", "tour"), ("Traslados", "traslado")):
         if sheet not in wb.sheetnames:
             continue
@@ -344,19 +351,31 @@ async def import_catalog(file: UploadFile = File(...), user: dict = Depends(requ
                 unit = str(d.get("unit") or "per_group").strip()
                 if unit not in UNITS:
                     unit = "per_group"
-                doc = {
-                    "id": new_id(), "tenant_id": tenant_id, "created_at": now_iso(),
-                    "name": sname, "category": category,
+                fields = {
                     "description": str(d.get("description") or ""),
                     "net_price": net, "public_price": pub, "unit": unit,
-                    "per_person": unit == "per_person", "status": "active",
+                    "per_person": unit == "per_person",
                 }
-                await db.services.insert_one(dict(doc))
-                imported["tours" if category == "tour" else "traslados"] += 1
+                # Uniqueness: tours by name; traslados by name + unit (both scoped to category/tenant).
+                match = {"tenant_id": tenant_id, "category": category, "name": sname}
+                if category == "traslado":
+                    match["unit"] = unit
+                existing = await db.services.find_one(match, {"_id": 0, "id": 1})
+                if existing:
+                    await db.services.update_one(match, {"$set": {**fields, "updated_at": now_iso()}})
+                    imported["tours_actualizados" if category == "tour" else "traslados_actualizados"] += 1
+                else:
+                    doc = {
+                        "id": new_id(), "tenant_id": tenant_id, "created_at": now_iso(),
+                        "name": sname, "category": category, "status": "active", **fields,
+                    }
+                    await db.services.insert_one(dict(doc))
+                    imported["tours_nuevos" if category == "tour" else "traslados_nuevos"] += 1
             except Exception as e:
                 errors.append({"sheet": sheet, "row": idx, "message": str(e)})
 
     wb.close()
     total = (imported["paquetes_nuevos"] + imported["paquetes_actualizados"]
-             + imported["tours"] + imported["traslados"])
+             + imported["tours_nuevos"] + imported["tours_actualizados"]
+             + imported["traslados_nuevos"] + imported["traslados_actualizados"])
     return {"ok": True, "imported": imported, "total_imported": total, "errors": errors, "error_count": len(errors)}
