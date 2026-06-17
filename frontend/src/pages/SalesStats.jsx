@@ -5,7 +5,7 @@ import {
   ResponsiveContainer, LineChart, Line, XAxis, YAxis, Tooltip, CartesianGrid, Area, AreaChart,
 } from 'recharts';
 import {
-  DollarSign, Wallet, TrendingUp, XCircle, Users, UserCog, Package, Sparkles, Download, BarChart3,
+  DollarSign, Wallet, TrendingUp, XCircle, Users, UserCog, Package, Sparkles, Download, BarChart3, ArrowUp, ArrowDown,
 } from 'lucide-react';
 
 const PERIODS = [['week', 'Semana'], ['month', 'Mes'], ['quarter', 'Trimestre'], ['year', 'Año']];
@@ -42,10 +42,21 @@ export default function SalesStats() {
   };
 
   const conv = data?.conversion || {};
+  const deltas = data?.deltas || {};
+  const Delta = ({ d }) => {
+    if (d === undefined || d === null) return <span className="text-xs font-semibold text-ink-300 ml-1">nuevo</span>;
+    if (d === 0) return <span className="text-xs font-semibold text-ink-300 ml-1">0%</span>;
+    const up = d > 0;
+    return (
+      <span className={`text-xs font-bold ml-1 inline-flex items-center ${up ? 'text-emerald-600' : 'text-red-500'}`}>
+        {up ? <ArrowUp className="w-3 h-3" /> : <ArrowDown className="w-3 h-3" />}{Math.abs(d)}%
+      </span>
+    );
+  };
   const kpis = [
-    { icon: DollarSign, label: 'Ingresos (ganadas)', v: money(data?.revenue_total), tone: 'bg-brand-500 text-white' },
-    { icon: Wallet, label: 'Cobrado', v: money(data?.collected_total), tone: 'bg-mint-100 text-emerald-700' },
-    { icon: TrendingUp, label: 'Conversión', v: `${conv.rate ?? 0}%`, sub: `${conv.won ?? 0}/${conv.total ?? 0} ganadas`, tone: 'bg-brand-50 text-brand-500' },
+    { icon: DollarSign, label: 'Ingresos (ganadas)', v: money(data?.revenue_total), delta: deltas.revenue, tone: 'bg-brand-500 text-white' },
+    { icon: Wallet, label: 'Cobrado', v: money(data?.collected_total), delta: deltas.collected, tone: 'bg-mint-100 text-emerald-700' },
+    { icon: TrendingUp, label: 'Conversión', v: `${conv.rate ?? 0}%`, delta: deltas.rate, sub: `${conv.won ?? 0}/${conv.total ?? 0} ganadas`, tone: 'bg-brand-50 text-brand-500' },
     { icon: XCircle, label: 'Perdidas', v: conv.lost ?? 0, tone: 'bg-red-100 text-red-600' },
   ];
 
@@ -54,7 +65,7 @@ export default function SalesStats() {
       <div className="flex flex-col md:flex-row md:items-end md:justify-between gap-4 mb-8">
         <div>
           <h1 className="font-display text-3xl md:text-4xl font-semibold text-ink-900 tracking-tight">Ventas y estadísticas</h1>
-          <p className="text-ink-500 mt-1">Ingresos, conversión y rendimiento de tu equipo y catálogo.</p>
+          <p className="text-ink-500 mt-1">Ingresos, conversión y rendimiento de tu equipo y catálogo · vs. período anterior.</p>
         </div>
         <div className="flex items-center gap-2">
           <div className="flex gap-1 bg-white border border-ink-100 rounded-xl p-1" data-testid="stats-period">
@@ -72,11 +83,11 @@ export default function SalesStats() {
       {error && <div className="rounded-xl border border-red-200 bg-red-50 text-red-700 px-4 py-3 text-sm mb-4" data-testid="stats-error">{error}</div>}
 
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6" data-testid="stats-kpis">
-        {kpis.map(({ icon: Icon, label, v, sub, tone }) => (
+        {kpis.map(({ icon: Icon, label, v, sub, delta, tone }) => (
           <div key={label} className="card-surface p-5" data-testid={`stats-kpi-${label}`}>
             <div className={`w-9 h-9 rounded-xl ${tone} flex items-center justify-center`}><Icon className="w-4 h-4" /></div>
             <p className="text-xs uppercase tracking-widest text-ink-400 font-bold mt-3">{label}</p>
-            <p className="font-display text-2xl font-bold text-ink-900 mt-1 truncate">{v}</p>
+            <p className="font-display text-2xl font-bold text-ink-900 mt-1 truncate flex items-baseline">{v}{delta !== undefined && <Delta d={delta} />}</p>
             {sub && <p className="text-xs text-ink-400 mt-0.5">{sub}</p>}
           </div>
         ))}

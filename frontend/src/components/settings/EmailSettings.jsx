@@ -2,6 +2,19 @@ import { Mail, Server, Send, Trash2, BarChart3 } from 'lucide-react';
 
 const WEEKDAYS = [['1', 'Lunes'], ['2', 'Martes'], ['3', 'Miércoles'], ['4', 'Jueves'], ['5', 'Viernes'], ['6', 'Sábado'], ['0', 'Domingo']];
 
+const TIMEZONES = [
+  ['America/Mexico_City', 'CDMX (Centro de México)'],
+  ['America/Cancun', 'Cancún / Quintana Roo'],
+  ['America/Tijuana', 'Tijuana (Pacífico)'],
+  ['America/Bogota', 'Bogotá / Lima / Quito'],
+  ['America/New_York', 'Nueva York (EST)'],
+  ['America/Chicago', 'Chicago (CST)'],
+  ['America/Los_Angeles', 'Los Ángeles (PST)'],
+  ['America/Argentina/Buenos_Aires', 'Buenos Aires'],
+  ['America/Santiago', 'Santiago de Chile'],
+  ['Europe/Madrid', 'Madrid'],
+];
+
 export const EmailSettings = ({
   integ, setInteg, company, backend,
   connectGmail, disconnectGmail,
@@ -156,7 +169,14 @@ export const EmailSettings = ({
                 onChange={(e) => setInteg((s) => ({ ...s, report_hour: Number(e.target.value) }))} data-testid="report-hour-input">
                 {Array.from({ length: 24 }, (_, i) => i).map((h) => <option key={h} value={h}>{String(h).padStart(2, '0')}:00</option>)}
               </select>
-              <p className="text-xs text-ink-400 mt-1">Hora de México (CDMX).</p>
+              <p className="text-xs text-ink-400 mt-1">En tu zona horaria.</p>
+            </div>
+            <div>
+              <label className="label-text">Zona horaria</label>
+              <select className="input-field" value={integ.report_timezone || 'America/Mexico_City'}
+                onChange={(e) => setInteg((s) => ({ ...s, report_timezone: e.target.value }))} data-testid="report-timezone-input">
+                {TIMEZONES.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
+              </select>
             </div>
             <div className="flex items-end">
               <button type="button" className="btn-ghost text-sm" onClick={sendReportNow} disabled={sendingReport} data-testid="report-send-now-btn">

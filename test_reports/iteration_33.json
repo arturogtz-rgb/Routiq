@@ -1,0 +1,33 @@
+{
+  "summary": "Iteration 33 fully verified end-to-end. Backend: 12/12 pytest PASS in /app/backend/tests/test_iteration33_stats_tz.py (period-over-period deltas for week/month/quarter/year, executive 403, timezone GET default + PATCH valid persist + invalid Foo/Bar gracefully ignored, restore to CDMX, send-report graceful ok:false, xlsx export, report config persistence). GET /api/stats/sales now returns top-level `previous` {revenue_total, collected_total, conversion:{total,won,lost,rate}} and `deltas` {revenue, collected, created, won, rate}; each delta is number-or-null and matches spec (null when prev=0 and cur>0 'nuevo', 0.0 when both 0, percentage otherwise). Frontend: admin sidebar renders 13 items in exact order Dashboard→Embudo→Cotizaciones→Clientes→Solicitudes→Analítica→Ventas→Paquetes→Servicios→WhatsApp→Equipo→Auditoría→Ajustes (Pipeline correctly renamed to 'Embudo'); each nav-* navigates to a working page (no 404). Executive sidebar shows the reduced 8-item set Dashboard→Embudo→Cotizaciones→Clientes→Solicitudes→Paquetes→Servicios→WhatsApp; nav-analytics/stats/team/audit/settings are correctly absent; direct visit to /app/stats and /app/settings as executive redirects to /app/dashboard via ProtectedRoute (no crash). /app/stats subtitle includes 'vs. período anterior'; stats-kpis renders 4 cards (Ingresos / Cobrado / Conversión / Perdidas) with delta badges showing 'nuevo' / '0%' / percentage (e.g. Ingresos shows 'nuevo', Cobrado '0%', Conversión 'nuevo'); switching stats-period-week/month/quarter/year reloads with no stats-error. /app/settings → 'Resumen automático de ventas': report-timezone-input present (10 options, default America/Mexico_City), changed to America/Cancun, Guardar integraciones persists, reload retained the value, then restored to America/Mexico_City as required.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "/app/settings (EmailSettings)", "issues": ["React hydration warning '<span> cannot be a child of <option>' continues to appear in EmailSettings select options (day/hour/timezone). This is the dev-overlay (data-ve-dynamic) injecting <span> wrappers into option children — not the production bundle. Cosmetic noise in console only; same finding was noted in iteration 32."]}
+    ]
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_iteration33_stats_tz.py",
+    "/app/test_reports/pytest/iter33.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "routes/stats.py — _compute uses ISO-string comparison for date windows ('created_at' >= cutoff). Works because dates are stored as ISO-8601 UTC, but if any record ever has a different format (naive vs aware, no Z, +offset) the comparison silently misclassifies. Consider converting to datetime objects or normalising on write.",
+    "routes/stats.py — `_compute` fetches up to 20000 quotations in a single $or scan covering 2× the period. For a tenant approaching the cap with period=year (730d) this loads everything to memory; consider using a Mongo aggregation pipeline with $facet for previous-vs-current windows.",
+    "routes/integrations.py PATCH — invalid `report_timezone` is silently ignored (try/except + pass). UX is correct (no 500), but the client never learns that 'Foo/Bar' was rejected. Consider returning HTTP 400 with a Spanish message when ZoneInfo() raises, instead of swallowing — at minimum log a warning.",
+    "routes/integrations.py PATCH — `report_hour` still lacks 0..23 bounds (iter32 follow-up not addressed). Same with report_day for monthly (1..28) — currently coerced inside the route but bypassable if report_frequency is omitted on update.",
+    "AppShell.jsx — nav-profile is a NavLink with data-testid='nav-profile' inside <aside>; this matches the [data-testid^=\"nav-\"] selector and would inflate any audit counting 'nav-*' items. Not a bug, just noting selector hygiene."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_iteration33_stats_tz.py (new — 12 tests)"
+  ],
+  "success_rate": {"backend": "100% (12/12)", "frontend": "100% (sidebar order admin+exec, route guards, KPI deltas+'vs. período anterior' subtitle, period switching, timezone select persist+restore)"},
+  "test_credentials": "admin@aventurate.mx / Demo2026! (company_admin); ejecutivo@aventurate.mx / Demo2026! (executive); verified against /app/memory/test_credentials.md.",
+  "seed_data_creation": "No new seed data created. End-state verified via curl: report_timezone=America/Mexico_City, report_enabled=true, frequency=weekly, day=1, hour=8 — exactly as left by iteration 32. Demo quotations untouched.",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "Iteration 33 fully green. Regression suite for stats deltas + timezone lives at /app/backend/tests/test_iteration33_stats_tz.py. /api/stats/sales response now has 'previous' and 'deltas' top-level keys — any future stats-related test should not assume those are absent. Frontend sidebar audit: when checking sidebar nav-* testids, ALWAYS `await page.wait_for_selector('[data-testid=\"nav-dashboard\"]', state='visible')` first; the sidebar hydrates progressively and an immediate query right after wait_for_url races and returns null for the first few items (false negative). Pipeline label has been renamed to 'Embudo' but route is still /app/kanban with testid nav-kanban (intentional). Executive role correctly blocked from /app/stats /app/settings /app/analytics /app/team /app/audit via ProtectedRoute (redirects to /app/dashboard). No email provider configured in this pod — send-report endpoint still returns 200 {ok:false, detail:...} as designed.",
+  "rca of the issue": "N/A — no bugs found in iteration 33 scope."
+}

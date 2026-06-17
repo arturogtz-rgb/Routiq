@@ -82,6 +82,14 @@ async def update_my_integrations(payload: CompanyIntegrationsUpdate, user: dict 
         updates["sales_report.day"] = day
     if "report_hour" in data and data["report_hour"] is not None:
         updates["sales_report.hour"] = int(data["report_hour"])
+    if "report_timezone" in data and data["report_timezone"]:
+        tz = data["report_timezone"]
+        try:
+            from zoneinfo import ZoneInfo
+            ZoneInfo(tz)  # validate
+            updates["sales_report.timezone"] = tz
+        except Exception:
+            pass  # ignore invalid tz; keep existing/default
     if "base_currency" in data and data["base_currency"]:
         updates["base_currency"] = data["base_currency"]
         # keep pricing currency in sync

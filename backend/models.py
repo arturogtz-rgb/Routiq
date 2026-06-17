@@ -165,6 +165,7 @@ class CompanyIntegrationsUpdate(BaseModel):
     report_frequency: Optional[Literal["weekly", "monthly"]] = None
     report_day: Optional[int] = Field(default=None, ge=0, le=31)
     report_hour: Optional[int] = Field(default=None, ge=0, le=23)
+    report_timezone: Optional[str] = None
 
 
 class SMTPTestInput(BaseModel):

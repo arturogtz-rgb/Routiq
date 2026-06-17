@@ -27,28 +27,40 @@ def _money(v, ccy):
     return f"${float(v or 0):,.0f} {ccy}"
 
 
+def _delta_badge(d) -> str:
+    if d is None:
+        return "<span style='color:#94a3b8;font-size:12px;font-weight:600'> nuevo</span>"
+    if d == 0:
+        return "<span style='color:#94a3b8;font-size:12px;font-weight:600'> 0%</span>"
+    arrow = "&#9650;" if d > 0 else "&#9660;"
+    color = "#059669" if d > 0 else "#dc2626"
+    return f"<span style='color:{color};font-size:13px;font-weight:700'> {arrow} {abs(d)}%</span>"
+
+
 def _kpi_html(company: dict, data: dict, period_label: str) -> str:
     ccy = data["currency"]
     conv = data["conversion"]
+    deltas = data.get("deltas", {})
     top_exec = data["executives"][0]["name"] if data["executives"] else "—"
     cards = [
-        ("Ingresos", _money(data["revenue_total"], ccy)),
-        ("Cotizaciones creadas", str(conv["total"])),
-        ("Tasa de conversión", f"{conv['rate']}%"),
-        ("Ejecutivo top", top_exec),
+        ("Ingresos", _money(data["revenue_total"], ccy), deltas.get("revenue")),
+        ("Cotizaciones creadas", str(conv["total"]), deltas.get("created")),
+        ("Tasa de conversión", f"{conv['rate']}%", deltas.get("rate")),
+        ("Ejecutivo top", top_exec, "skip"),
     ]
 
-    def _cell(label, val):
+    def _cell(label, val, delta):
+        badge = "" if delta == "skip" else _delta_badge(delta)
         return (f"<td style='padding:14px 18px;background:#f8fafc;border-radius:12px;width:50%'>"
                 f"<div style='font-size:11px;text-transform:uppercase;letter-spacing:1px;color:#94a3b8;font-weight:700'>{label}</div>"
-                f"<div style='font-size:22px;font-weight:700;color:#0f172a;margin-top:4px'>{val}</div></td>")
+                f"<div style='font-size:22px;font-weight:700;color:#0f172a;margin-top:4px'>{val}{badge}</div></td>")
 
     row1 = f"<tr>{_cell(*cards[0])}<td style='width:12px'></td>{_cell(*cards[1])}</tr>"
     row2 = f"<tr>{_cell(*cards[2])}<td style='width:12px'></td>{_cell(*cards[3])}</tr>"
     return (
         f"<div style='font-family:system-ui,Arial,sans-serif;max-width:560px'>"
         f"<h2 style='color:#185FA5;margin-bottom:2px'>Resumen de ventas · {period_label}</h2>"
-        f"<p style='color:#64748b;margin-top:0'>{company.get('name','')}</p>"
+        f"<p style='color:#64748b;margin-top:0'>{company.get('name','')} · vs. período anterior</p>"
         f"<table style='border-collapse:separate;border-spacing:0 12px;width:100%'>{row1}{row2}</table>"
         f"<p style='color:#475569'>Ganadas: <b>{conv['won']}</b> · Perdidas: <b>{conv['lost']}</b> · "
         f"Cobrado: <b>{_money(data['collected_total'], ccy)}</b></p>"
@@ -106,9 +118,9 @@ def _is_due(cfg: dict, now_local: datetime, last_sent_iso: str) -> bool:
 
 
 async def run_sales_reports(db=None) -> dict:
-    """Check all companies and send due sales reports. Idempotent per day window."""
+    """Check all companies and send due sales reports. Idempotent per day window.
+    Each company is evaluated in its own configured timezone (default CDMX)."""
     db = db or get_db()
-    now_local = datetime.now(_TZ)
     companies = await db.companies.find(
         {"sales_report.enabled": True}, {"_id": 0}
     ).to_list(1000)
@@ -116,6 +128,11 @@ async def run_sales_reports(db=None) -> dict:
     for company in companies:
         cfg = company.get("sales_report") or {}
         checked += 1
+        try:
+            tz = ZoneInfo(cfg.get("timezone") or "America/Mexico_City")
+        except Exception:
+            tz = _TZ
+        now_local = datetime.now(tz)
         if not _is_due(cfg, now_local, company.get("sales_report_last_sent_at", "")):
             continue
         period = "week" if cfg.get("frequency", "weekly") == "weekly" else "month"

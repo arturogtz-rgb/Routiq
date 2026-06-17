@@ -11,7 +11,7 @@ import {
 const NAV_BY_ROLE = {
   company_admin: [
     { to: '/app/dashboard', label: 'Dashboard', icon: LayoutDashboard, testid: 'nav-dashboard' },
-    { to: '/app/kanban', label: 'Pipeline', icon: Kanban, testid: 'nav-kanban' },
+    { to: '/app/kanban', label: 'Embudo', icon: Kanban, testid: 'nav-kanban' },
     { to: '/app/quotations', label: 'Cotizaciones', icon: FileText, testid: 'nav-quotations' },
     { to: '/app/clients', label: 'Clientes', icon: UserCog, testid: 'nav-clients' },
     { to: '/app/leads', label: 'Solicitudes', icon: Inbox, testid: 'nav-leads' },
@@ -26,7 +26,7 @@ const NAV_BY_ROLE = {
   ],
   executive: [
     { to: '/app/dashboard', label: 'Dashboard', icon: LayoutDashboard, testid: 'nav-dashboard' },
-    { to: '/app/kanban', label: 'Pipeline', icon: Kanban, testid: 'nav-kanban' },
+    { to: '/app/kanban', label: 'Embudo', icon: Kanban, testid: 'nav-kanban' },
     { to: '/app/quotations', label: 'Cotizaciones', icon: FileText, testid: 'nav-quotations' },
     { to: '/app/clients', label: 'Clientes', icon: UserCog, testid: 'nav-clients' },
     { to: '/app/leads', label: 'Solicitudes', icon: Inbox, testid: 'nav-leads' },

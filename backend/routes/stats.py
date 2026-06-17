@@ -77,11 +77,13 @@ def _buckets(period: str):
 
 async def _compute(db, tenant_id: str, period: str) -> dict:
     days = _period_days(period)
-    cutoff = (datetime.now(timezone.utc) - timedelta(days=days)).isoformat()
+    now = datetime.now(timezone.utc)
+    cutoff = (now - timedelta(days=days)).isoformat()
+    prev_cutoff = (now - timedelta(days=2 * days)).isoformat()
 
     quotations = await db.quotations.find(
         {"tenant_id": tenant_id, "deleted": {"$ne": True},
-         "$or": [{"created_at": {"$gte": cutoff}}, {"last_activity_at": {"$gte": cutoff}}]},
+         "$or": [{"created_at": {"$gte": prev_cutoff}}, {"last_activity_at": {"$gte": prev_cutoff}}]},
         {"_id": 0}
     ).to_list(20000)
     users = await db.users.find({"tenant_id": tenant_id}, {"_id": 0, "id": 1, "name": 1}).to_list(500)
@@ -90,6 +92,21 @@ async def _compute(db, tenant_id: str, period: str) -> dict:
     created_in = [q for q in quotations if (q.get("created_at") or "") >= cutoff and not q.get("archived")]
     won_in = [q for q in quotations if q.get("state") == "ganada" and _won_date(q) >= cutoff]
     lost_in = [q for q in quotations if q.get("state") == "perdida" and _won_date(q) >= cutoff]
+
+    # Previous window [prev_cutoff, cutoff) for period-over-period comparison.
+    prev_created = [q for q in quotations if prev_cutoff <= (q.get("created_at") or "") < cutoff and not q.get("archived")]
+    prev_won = [q for q in quotations if q.get("state") == "ganada" and prev_cutoff <= _won_date(q) < cutoff]
+    prev_revenue = round(sum(_value(q) for q in prev_won), 2)
+    prev_collected = round(sum(float(q.get("amount_paid", 0) or 0) for q in prev_won), 2)
+    prev_total = len(prev_created)
+    prev_won_n = sum(1 for q in prev_created if q.get("state") == "ganada")
+    prev_lost_n = sum(1 for q in prev_created if q.get("state") == "perdida")
+    prev_rate = round(100.0 * prev_won_n / prev_total, 1) if prev_total else 0.0
+
+    def _delta(cur, prev):
+        if prev == 0:
+            return None if cur else 0.0
+        return round(100.0 * (cur - prev) / prev, 1)
 
     currency = quotations[0].get("currency", "MXN") if quotations else "MXN"
     revenue_total = round(sum(_value(q) for q in won_in), 2)
@@ -187,6 +204,17 @@ async def _compute(db, tenant_id: str, period: str) -> dict:
         "executives": executives, "clients": clients,
         "packages": packages, "services": services,
         "lost": lost_list,
+        "previous": {
+            "revenue_total": prev_revenue, "collected_total": prev_collected,
+            "conversion": {"total": prev_total, "won": prev_won_n, "lost": prev_lost_n, "rate": prev_rate},
+        },
+        "deltas": {
+            "revenue": _delta(revenue_total, prev_revenue),
+            "collected": _delta(collected_total, prev_collected),
+            "created": _delta(total_created, prev_total),
+            "won": _delta(won_created, prev_won_n),
+            "rate": _delta(conv_rate, prev_rate),
+        },
     }
 
 

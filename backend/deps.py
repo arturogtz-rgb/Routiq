@@ -125,6 +125,7 @@ def _integrations_view(company: dict) -> dict:
         "report_frequency": (company.get("sales_report") or {}).get("frequency", "weekly"),
         "report_day": (company.get("sales_report") or {}).get("day", 1),
         "report_hour": (company.get("sales_report") or {}).get("hour", 8),
+        "report_timezone": (company.get("sales_report") or {}).get("timezone", "America/Mexico_City"),
     }
 
 
