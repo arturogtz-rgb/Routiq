@@ -171,11 +171,15 @@ async def update_quotation_state(quotation_id: str, payload: QuotationStateUpdat
         raise HTTPException(status_code=404, detail="Cotización no encontrada")
     prev = q.get("state")
     set_fields = {"state": payload.state, "last_activity_at": now_iso()}
+    update_ops: dict = {}
     if payload.state == "perdida" and (payload.reason or "").strip():
         set_fields["lost_reason"] = payload.reason.strip()
+    elif payload.state != "perdida" and q.get("lost_reason"):
+        update_ops["$unset"] = {"lost_reason": ""}
+    update_ops["$set"] = set_fields
     await db.quotations.update_one(
         {"id": quotation_id, "tenant_id": user["tenant_id"]},
-        {"$set": set_fields},
+        update_ops,
     )
     STATE_LABELS = {
         "nueva_consulta": "Nueva consulta", "cotizando": "Cotizando", "enviada": "Enviada",

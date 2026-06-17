@@ -80,7 +80,9 @@ async def _compute(db, tenant_id: str, period: str) -> dict:
     cutoff = (datetime.now(timezone.utc) - timedelta(days=days)).isoformat()
 
     quotations = await db.quotations.find(
-        {"tenant_id": tenant_id, "deleted": {"$ne": True}}, {"_id": 0}
+        {"tenant_id": tenant_id, "deleted": {"$ne": True},
+         "$or": [{"created_at": {"$gte": cutoff}}, {"last_activity_at": {"$gte": cutoff}}]},
+        {"_id": 0}
     ).to_list(20000)
     users = await db.users.find({"tenant_id": tenant_id}, {"_id": 0, "id": 1, "name": 1}).to_list(500)
     uname = {u["id"]: u.get("name", "—") for u in users}

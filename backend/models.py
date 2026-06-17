@@ -419,7 +419,7 @@ class QuotationCreate(BaseModel):
 
 class QuotationStateUpdate(BaseModel):
     state: Literal["nueva_consulta", "cotizando", "enviada", "negociacion", "ganada", "perdida"]
-    reason: Optional[str] = None  # optional loss reason when state == 'perdida'
+    reason: Optional[str] = Field(default=None, max_length=500)  # optional loss reason when state == 'perdida'
 
 
 class QuotationArchive(BaseModel):
