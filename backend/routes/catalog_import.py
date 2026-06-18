@@ -21,25 +21,36 @@ router = APIRouter()
 XLSX_MIME = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
 UNITS = {"per_person", "per_group", "per_day", "per_access"}
 
-PKG_COLS = ["code", "name", "nights", "description", "image_url", "includes", "excludes",
-            "hotel_name", "sencilla", "doble", "triple", "cuadruple", "menor"]
-SVC_COLS = ["name", "description", "net_price", "public_price", "unit"]
+# Itinerario día a día: dia_1_titulo, dia_1_descripcion ... dia_10_titulo, dia_10_descripcion
+ITIN_COLS = [c for i in range(1, 11) for c in (f"dia_{i}_titulo", f"dia_{i}_descripcion")]
+PKG_BASE_COLS = ["code", "name", "nights", "description", "image_url", "includes", "excludes",
+                 "hotel_name", "sencilla", "doble", "triple", "cuadruple", "menor"]
+PKG_COLS = PKG_BASE_COLS + ITIN_COLS
+SVC_COLS = ["name", "description", "net_price", "public_price", "unit", "image_url"]
+
+# Hojas de servicios -> categoría, y prefijo de contadores en el reporte de import.
+SVC_SHEETS = (("Tours", "tour"), ("Traslados", "traslado"), ("Accesos", "acceso"), ("Extras", "extra"))
+CAT_KEY = {"tour": "tours", "traslado": "traslados", "acceso": "accesos", "extra": "extras"}
 
 # Multi-hotel example: PKG-001 has THREE hotels. The first row carries all the
-# package-level data + image_url + first hotel; the next rows repeat the code and
-# only fill the hotel columns (package columns left blank).
+# package-level data + image_url + first hotel + itinerario; the next rows repeat the
+# code and only fill the hotel columns (package columns left blank).
 PKG_EXAMPLES = [
     ["PKG-001", "Tequila Express 2N", 2, "Tour a Tequila con cata",
      "https://misitio.com/img/tequila.jpg",
      "Hospedaje;Desayunos;Tour", "Vuelos;Propinas",
-     "Hotel Solar de las Ánimas", 3500, 2400, 2100, 1900, 1500],
+     "Hotel Solar de las Ánimas", 3500, 2400, 2100, 1900, 1500,
+     "Día 1: Llegada a Guadalajara", "Traslado al hotel y tarde libre en el centro histórico (check-in 15:00).",
+     "Día 2: Ruta del Tequila", "Salida 09:00 al pueblo mágico de Tequila, visita a destilería con cata y comida."],
     ["PKG-001", "", "", "", "", "", "",
      "Hotel Matices de Amatitán", 3900, 2700, 2300, 2050, 1600],
     ["PKG-001", "", "", "", "", "", "",
      "Hotel Casa Salles", 3200, 2200, 1950, 1750, 1450],
 ]
-TOUR_EXAMPLES = [["City Tour Guadalajara", "Recorrido por el centro histórico", 600, 0, "per_person"]]
-TRASLADO_EXAMPLES = [["Traslado Aeropuerto-Hotel", "Sedán privado hasta 4 pax", 800, 0, "per_group"]]
+TOUR_EXAMPLES = [["City Tour Guadalajara", "Recorrido por el centro histórico", 600, 0, "per_person", ""]]
+TRASLADO_EXAMPLES = [["Traslado Aeropuerto-Hotel", "Sedán privado hasta 4 pax", 800, 0, "per_group", ""]]
+ACCESO_EXAMPLES = [["Acceso Parque Temático", "Entrada general de día completo", 450, 0, "per_access", ""]]
+EXTRA_EXAMPLES = [["Seguro de viaje", "Cobertura médica básica", 120, 0, "per_person", ""]]
 
 
 def _coerce_num(v, default=0.0):
@@ -82,6 +93,8 @@ async def download_template(user: dict = Depends(require_roles("company_admin"))
     build(ws1, PKG_COLS, PKG_EXAMPLES)
     build(wb.create_sheet("Tours"), SVC_COLS, TOUR_EXAMPLES)
     build(wb.create_sheet("Traslados"), SVC_COLS, TRASLADO_EXAMPLES)
+    build(wb.create_sheet("Accesos"), SVC_COLS, ACCESO_EXAMPLES)
+    build(wb.create_sheet("Extras"), SVC_COLS, EXTRA_EXAMPLES)
 
     # Instructions sheet
     info = wb.create_sheet("Instrucciones")
@@ -97,6 +110,12 @@ async def download_template(user: dict = Depends(require_roles("company_admin"))
         "   • image_url: URL de la imagen de portada del paquete (https://...). Opcional; déjala vacía si no tienes.",
         "   • includes/excludes: separa cada elemento con punto y coma (;).",
         "   • sencilla/doble/triple/cuadruple/menor: precios por ocupación de ESE hotel (numéricos).",
+        "     Deja el precio en 0 si esa ocupación NO está disponible en el hotel (no se mostrará al cotizar).",
+        "",
+        "ITINERARIO DÍA A DÍA (opcional, solo en la PRIMERA fila del paquete):",
+        "   • Columnas dia_1_titulo, dia_1_descripcion ... hasta dia_10_titulo, dia_10_descripcion.",
+        "   • Ejemplo: dia_1_titulo='Día 1: Llegada' | dia_1_descripcion='Traslado al hotel, tarde libre.'",
+        "   • Puedes incluir horarios en la descripción (ej. 'Salida 09:00...'). Se cargan automáticamente al paquete.",
         "",
         "MÚLTIPLES HOTELES EN UN MISMO PAQUETE  ← (formato correcto):",
         "   • Usa UNA FILA POR HOTEL repitiendo el MISMO 'code' en cada fila.",
@@ -124,14 +143,18 @@ async def download_template(user: dict = Depends(require_roles("company_admin"))
         "     con lo que traiga el Excel. Ideal para actualizar tarifas cada año o por temporada.",
         "   • Si el 'code' es nuevo, se crea un paquete nuevo.",
         "",
-        "TOURS / TRASLADOS — columna obligatoria: name.",
+        "TOURS / TRASLADOS / ACCESOS / EXTRAS — columna obligatoria: name.",
+        "   • Cada hoja corresponde a una categoría de servicio (Tours, Traslados, Accesos, Extras).",
         "   • description: descripción del servicio.",
         "   • net_price = costo; public_price = precio de venta (déjalo en 0 para autocalcular con tu margen).",
         "   • unit: per_person, per_group, per_day o per_access.",
-        "   • ACTUALIZAR sin duplicar: si coincide el NOMBRE (tours) o el NOMBRE + UNIDAD (traslados),",
+        "   • image_url: URL de imagen del servicio (https://...). Opcional.",
+        "   • ACTUALIZAR sin duplicar: si coincide el NOMBRE (tours/accesos/extras) o el NOMBRE + UNIDAD (traslados),",
         "     el servicio se actualiza en lugar de crear uno nuevo.",
+        "   • IMPORTACIÓN POR CATEGORÍA INDEPENDIENTE: puedes subir un Excel con SOLO una hoja llena",
+        "     (p.ej. solo Tours) y las demás categorías NO se verán afectadas.",
         "",
-        "3. Guarda el archivo y súbelo desde el panel: Catálogo → Importar Excel.",
+        "3. Guarda el archivo y súbelo desde el panel: Catálogo → Importar Excel (o Servicios → Importar Excel).",
         "   Al terminar verás un resumen: 'X paquetes nuevos, Y actualizados, Z hoteles · tours nuevos/actualizados · traslados nuevos/actualizados'.",
     ]:
         info.append([line])
@@ -174,6 +197,11 @@ async def export_catalog(user: dict = Depends(require_roles("company_admin"))):
     header(ws_pkg, PKG_COLS)
     for p in packages:
         hotels = p.get("hotels") or [{}]
+        itin = {int(d.get("day", 0)): d for d in (p.get("itinerary") or []) if d}
+        itin_cells = []
+        for i in range(1, 11):
+            dd = itin.get(i, {})
+            itin_cells += [dd.get("title", ""), dd.get("description", "")]
         for i, hotel in enumerate(hotels):
             occ = hotel.get("prices_by_occupancy", {}) if hotel else {}
             if i == 0:
@@ -184,6 +212,7 @@ async def export_catalog(user: dict = Depends(require_roles("company_admin"))):
                     hotel.get("name", "") if hotel else "",
                     occ.get("sencilla", 0), occ.get("doble", 0), occ.get("triple", 0),
                     occ.get("cuadruple", 0), hotel.get("minor_price", 0) if hotel else 0,
+                    *itin_cells,
                 ])
             else:
                 # Continuation row: repeat the code, leave package columns blank, add the extra hotel.
@@ -201,10 +230,11 @@ async def export_catalog(user: dict = Depends(require_roles("company_admin"))):
             if s.get("category") != category:
                 continue
             ws.append([s.get("name", ""), s.get("description", ""),
-                       s.get("net_price", 0), s.get("public_price", 0), s.get("unit", "per_group")])
+                       s.get("net_price", 0), s.get("public_price", 0),
+                       s.get("unit", "per_group"), s.get("image_url", "")])
 
-    svc_sheet("Tours", "tour")
-    svc_sheet("Traslados", "traslado")
+    for title, cat in SVC_SHEETS:
+        svc_sheet(title, cat)
 
     buf = io.BytesIO()
     wb.save(buf)
@@ -243,6 +273,8 @@ async def import_catalog(file: UploadFile = File(...), user: dict = Depends(requ
         "paquetes_nuevos": 0, "paquetes_actualizados": 0, "hoteles": 0,
         "tours_nuevos": 0, "tours_actualizados": 0,
         "traslados_nuevos": 0, "traslados_actualizados": 0,
+        "accesos_nuevos": 0, "accesos_actualizados": 0,
+        "extras_nuevos": 0, "extras_actualizados": 0,
     }
 
     # --- Paquetes (grouped by code; one row per hotel) ---
@@ -311,6 +343,15 @@ async def import_catalog(file: UploadFile = File(...), user: dict = Depends(requ
                     "hotels": hotels,
                     "includes": _split_list(d.get("includes")), "excludes": _split_list(d.get("excludes")),
                 }
+                # Itinerario día a día (dia_1_titulo/dia_1_descripcion ... dia_10_*) — solo desde la fila base.
+                itinerary = []
+                for i in range(1, 11):
+                    t = str(d.get(f"dia_{i}_titulo") or "").strip()
+                    desc = str(d.get(f"dia_{i}_descripcion") or "").strip()
+                    if t or desc:
+                        itinerary.append({"day": i, "title": t, "description": desc})
+                if itinerary:
+                    fields["itinerary"] = itinerary
                 if existing:
                     # Update existing package (overwrite data + hotels) — keeps id/created_at/status.
                     await db.packages.update_one(
@@ -330,11 +371,12 @@ async def import_catalog(file: UploadFile = File(...), user: dict = Depends(requ
             except Exception as e:
                 errors.append({"sheet": "Paquetes", "row": first_row, "message": str(e)})
 
-    # --- Tours / Traslados (services) ---
-    # Upsert by uniqueness key: tours -> (name, category); traslados -> (name, unit, category).
-    for sheet, category in (("Tours", "tour"), ("Traslados", "traslado")):
+    # --- Servicios por categoría (Tours / Traslados / Accesos / Extras) ---
+    # Upsert por clave de unicidad: por defecto (name, category); traslados -> (name, unit, category).
+    for sheet, category in SVC_SHEETS:
         if sheet not in wb.sheetnames:
             continue
+        key = CAT_KEY[category]
         ws = wb[sheet]
         for idx, row in enumerate(ws.iter_rows(min_row=2, values_only=True), start=2):
             if not row or all(c is None or str(c).strip() == "" for c in row):
@@ -355,27 +397,27 @@ async def import_catalog(file: UploadFile = File(...), user: dict = Depends(requ
                     "description": str(d.get("description") or ""),
                     "net_price": net, "public_price": pub, "unit": unit,
                     "per_person": unit == "per_person",
+                    "image_url": str(d.get("image_url") or "").strip(),
                 }
-                # Uniqueness: tours by name; traslados by name + unit (both scoped to category/tenant).
                 match = {"tenant_id": tenant_id, "category": category, "name": sname}
                 if category == "traslado":
                     match["unit"] = unit
                 existing = await db.services.find_one(match, {"_id": 0, "id": 1})
                 if existing:
                     await db.services.update_one(match, {"$set": {**fields, "updated_at": now_iso()}})
-                    imported["tours_actualizados" if category == "tour" else "traslados_actualizados"] += 1
+                    imported[f"{key}_actualizados"] += 1
                 else:
                     doc = {
                         "id": new_id(), "tenant_id": tenant_id, "created_at": now_iso(),
                         "name": sname, "category": category, "status": "active", **fields,
                     }
                     await db.services.insert_one(dict(doc))
-                    imported["tours_nuevos" if category == "tour" else "traslados_nuevos"] += 1
+                    imported[f"{key}_nuevos"] += 1
             except Exception as e:
                 errors.append({"sheet": sheet, "row": idx, "message": str(e)})
 
     wb.close()
     total = (imported["paquetes_nuevos"] + imported["paquetes_actualizados"]
-             + imported["tours_nuevos"] + imported["tours_actualizados"]
-             + imported["traslados_nuevos"] + imported["traslados_actualizados"])
+             + sum(imported[f"{k}_nuevos"] + imported[f"{k}_actualizados"]
+                   for k in ("tours", "traslados", "accesos", "extras")))
     return {"ok": True, "imported": imported, "total_imported": total, "errors": errors, "error_count": len(errors)}

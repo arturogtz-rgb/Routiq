@@ -29,6 +29,9 @@ export default function Settings() {
   const [clearText, setClearText] = useState('');
   const [clearing, setClearing] = useState(false);
   const [policy, setPolicy] = useState('');
+  const [generalCond, setGeneralCond] = useState('');
+  const [catalogSubtitle, setCatalogSubtitle] = useState('');
+  const [savingSubtitle, setSavingSubtitle] = useState(false);
   const [savingPolicy, setSavingPolicy] = useState(false);
   const fileInputRef = useRef(null);
   const backend = process.env.REACT_APP_BACKEND_URL || '';
@@ -38,6 +41,8 @@ export default function Settings() {
     setCompany(data);
     setPricing(data.pricing_config);
     setPolicy(data.cancellation_policy || '');
+    setGeneralCond(data.general_conditions || '');
+    setCatalogSubtitle(data.catalog_subtitle || '');
     setInteg({ ...ig.data, stripe_secret_key: '', resend_api_key: '', smtp_password: '', gmail_client_secret: '' });
   };
 
@@ -202,12 +207,24 @@ export default function Settings() {
   const savePolicy = async () => {
     setError(''); setOk(''); setSavingPolicy(true);
     try {
-      const { data } = await api.patch('/companies/me/policy', { cancellation_policy: policy });
+      const { data } = await api.patch('/companies/me/policy', { cancellation_policy: policy, general_conditions: generalCond });
       setPolicy(data.cancellation_policy || '');
-      setOk('Políticas de cancelación guardadas');
+      setGeneralCond(data.general_conditions || '');
+      setOk('Condiciones y políticas guardadas');
       setTimeout(() => setOk(''), 2500);
     } catch (e) { setError(formatApiError(e)); }
     finally { setSavingPolicy(false); }
+  };
+
+  const saveSubtitle = async () => {
+    setError(''); setOk(''); setSavingSubtitle(true);
+    try {
+      const { data } = await api.patch('/companies/me', { catalog_subtitle: catalogSubtitle });
+      setCompany(data); setCatalogSubtitle(data.catalog_subtitle || '');
+      setOk('Subtítulo del catálogo guardado');
+      setTimeout(() => setOk(''), 2500);
+    } catch (e) { setError(formatApiError(e)); }
+    finally { setSavingSubtitle(false); }
   };
 
   const clearData = async () => {
@@ -266,16 +283,37 @@ export default function Settings() {
         </div>
       )}
 
-      <div className="card-surface p-6 mt-6" data-testid="policy-card">
-        <h2 className="font-display font-semibold text-lg text-ink-900 flex items-center gap-2"><FileText className="w-5 h-5 text-brand-500" /> Políticas de cancelación y cambios</h2>
-        <p className="text-sm text-ink-500 mt-1">Este texto se agrega automáticamente al PDF de cada cotización y a su enlace público para el cliente. Usa negritas y listas para estructurar plazos y porcentajes.</p>
+      <div className="card-surface p-6 mt-6" data-testid="catalog-text-card">
+        <h2 className="font-display font-semibold text-lg text-ink-900 flex items-center gap-2"><FileText className="w-5 h-5 text-brand-500" /> Catálogo público</h2>
+        <p className="text-sm text-ink-500 mt-1">Personaliza el subtítulo que aparece bajo el nombre de tu empresa en tu catálogo público{company?.slug ? <> (<a href={`/c/${company.slug}`} target="_blank" rel="noreferrer" className="text-brand-500 hover:underline">/c/{company.slug}</a>)</> : ''}.</p>
         <div className="mt-4">
+          <label className="label-text">Subtítulo del catálogo</label>
+          <input className="input-field" value={catalogSubtitle} onChange={(e) => setCatalogSubtitle(e.target.value)}
+            placeholder="Explora nuestros paquetes y solicita tu cotización personalizada en segundos." data-testid="catalog-subtitle-input" />
+        </div>
+        <div className="pt-4 mt-2 border-t border-ink-100 flex justify-end">
+          <button className="btn-primary" onClick={saveSubtitle} disabled={savingSubtitle} data-testid="save-subtitle-btn">
+            <Save className="w-4 h-4" /> {savingSubtitle ? 'Guardando…' : 'Guardar subtítulo'}
+          </button>
+        </div>
+      </div>
+
+      <div className="card-surface p-6 mt-6" data-testid="policy-card">
+        <h2 className="font-display font-semibold text-lg text-ink-900 flex items-center gap-2"><FileText className="w-5 h-5 text-brand-500" /> Condiciones generales y políticas de cancelación</h2>
+        <p className="text-sm text-ink-500 mt-1">Se publican en tu página pública{company?.slug ? <> (<a href={`/c/${company.slug}/condiciones`} target="_blank" rel="noreferrer" className="text-brand-500 hover:underline">/c/{company.slug}/condiciones</a>)</> : ''} y el enlace aparece al pie de cada PDF y cotización.</p>
+        <div className="mt-4">
+          <label className="label-text">Condiciones generales (precios, procedimientos, reembolsos)</label>
+          <RichTextEditor value={generalCond} onChange={setGeneralCond} testid="general-conditions-editor"
+            placeholder="Ej. Los precios están sujetos a disponibilidad. Procedimiento de reservación y anticipos…" />
+        </div>
+        <div className="mt-5">
+          <label className="label-text">Políticas de cancelación (penalizaciones por tiempo)</label>
           <RichTextEditor value={policy} onChange={setPolicy} testid="policy-editor"
             placeholder="Ej. Cancelaciones con más de 30 días: reembolso del 90%. Entre 15 y 30 días: 50%. Menos de 15 días: sin reembolso…" />
         </div>
         <div className="pt-4 mt-2 border-t border-ink-100 flex justify-end">
           <button className="btn-primary" onClick={savePolicy} disabled={savingPolicy} data-testid="save-policy-btn">
-            <Save className="w-4 h-4" /> {savingPolicy ? 'Guardando…' : 'Guardar políticas'}
+            <Save className="w-4 h-4" /> {savingPolicy ? 'Guardando…' : 'Guardar condiciones'}
           </button>
         </div>
       </div>

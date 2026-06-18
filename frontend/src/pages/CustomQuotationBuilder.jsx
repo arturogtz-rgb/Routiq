@@ -75,6 +75,7 @@ export default function CustomQuotationBuilder() {
     custom_includes: [],
     custom_excludes: [],
     presentation_text: '',
+    important_info: '',
     contacts: JSON.parse(JSON.stringify(EMPTY_CONTACTS)),
     notes: '',
   });
@@ -98,6 +99,7 @@ export default function CustomQuotationBuilder() {
             custom_includes: q.custom_includes || [],
             custom_excludes: q.custom_excludes || [],
             presentation_text: q.presentation_text || '',
+            important_info: q.important_info || '',
             contacts: { ...JSON.parse(JSON.stringify(EMPTY_CONTACTS)), ...(q.contacts || {}) },
             notes: q.notes || '',
           });
@@ -130,7 +132,7 @@ export default function CustomQuotationBuilder() {
       await api.post('/templates', {
         name: tplName.trim(),
         custom_title: form.custom_title.trim(),
-        custom_items: form.custom_items.map((it) => ({ category: it.category, name: it.name, description: it.description || '', net_price: Number(it.net_price) || 0, unit: it.unit, qty: Number(it.qty) || 0 })),
+        custom_items: form.custom_items.map((it) => ({ category: it.category, name: it.name, description: it.description || '', net_price: Number(it.net_price) || 0, price_type: it.price_type || 'neto', unit: it.unit, qty: Number(it.qty) || 0 })),
         custom_itinerary: form.custom_itinerary.map((d, i) => ({ day: i + 1, title: d.title || '', description: d.description || '' })),
         custom_includes: form.custom_includes.filter((x) => (x || '').trim()),
         custom_excludes: form.custom_excludes.filter((x) => (x || '').trim()),
@@ -165,12 +167,28 @@ export default function CustomQuotationBuilder() {
     if (unit === 'per_room') return Math.max(1, rooms);
     return 1;
   };
+  const channel = client?.channel || 'directo';
+  const commissions = company?.pricing_config?.commissions || {};
   const publicPrice = (net) => (margin > 0 ? Math.round((Number(net) || 0) / margin * 100) / 100 : Number(net) || 0);
-  const itemSubtotal = (it) => publicPrice(it.net_price) * (Number(it.qty) || 0);
+  // Precio que paga el cliente por unidad según el tipo de precio del concepto:
+  //  - 'publico': el monto ingresado YA es público (lógica de servicios, comisionable).
+  //  - 'neto': monto neto -> público=neto/divisor -> precio por canal (no comisionable).
+  const unitPriceFor = (it) => {
+    const amt = Number(it.net_price) || 0;
+    if ((it.price_type || 'neto') === 'publico') return Math.round(amt * 100) / 100;
+    const pub = publicPrice(amt);
+    if (channel === 'operador') return Math.round(amt * 100) / 100;
+    if (channel === 'mayorista') return Math.round(pub * (1 - (Number(commissions.mayorista) || 0)) * 100) / 100;
+    return pub;
+  };
+  const itemSubtotal = (it) => unitPriceFor(it) * (Number(it.qty) || 0);
 
+  const publicoSubtotal = form.custom_items.filter((it) => (it.price_type || 'neto') === 'publico').reduce((s, it) => s + itemSubtotal(it), 0);
   const subtotal = form.custom_items.reduce((s, it) => s + itemSubtotal(it), 0);
-  const commission = Math.round(subtotal * commissionRate * 100) / 100;
+  const commission = Math.round(publicoSubtotal * commissionRate * 100) / 100;  // sólo conceptos de precio público
   const total = subtotal - commission;
+  const hasNeto = form.custom_items.some((it) => (it.price_type || 'neto') !== 'publico');
+  const priceNote = (hasNeto && (channel === 'mayorista' || channel === 'operador')) ? 'Precio neto no comisionable' : '';
 
   const STEPS = [
     { key: 'client', label: 'Cliente', icon: User },
@@ -198,7 +216,7 @@ export default function CustomQuotationBuilder() {
   };
 
   const addItem = (category) => setForm((f) => ({
-    ...f, custom_items: [...f.custom_items, { category, name: '', description: '', net_price: 0, unit: 'per_person', qty: defaultQty('per_person'), service_date: '', start_time: '', end_time: '' }],
+    ...f, custom_items: [...f.custom_items, { category, name: '', description: '', net_price: 0, price_type: 'neto', unit: 'per_person', qty: defaultQty('per_person'), service_date: '', start_time: '', end_time: '' }],
   }));
   const updateItem = (idx, patch) => setForm((f) => ({
     ...f, custom_items: f.custom_items.map((it, i) => {
@@ -249,7 +267,7 @@ export default function CustomQuotationBuilder() {
         custom_rooms: Number(form.custom_rooms) || 0,
         custom_items: form.custom_items.map((it) => ({
           category: it.category, name: it.name, description: it.description || '',
-          net_price: Number(it.net_price) || 0, unit: it.unit, qty: Number(it.qty) || 0,
+          net_price: Number(it.net_price) || 0, price_type: it.price_type || 'neto', unit: it.unit, qty: Number(it.qty) || 0,
           service_date: it.service_date || '', start_time: it.start_time || '', end_time: it.end_time || '',
         })),
         custom_itinerary: form.custom_itinerary.map((d, i) => ({ day: i + 1, title: d.title || '', description: d.description || '' })),
@@ -258,6 +276,7 @@ export default function CustomQuotationBuilder() {
         contacts: isB2B ? form.contacts : null,
         notes: form.notes,
         presentation_text: form.presentation_text || '',
+        important_info: form.important_info || '',
       };
       if (editing) {
         await api.patch(`/quotations/${id}`, payload);
@@ -416,8 +435,20 @@ export default function CustomQuotationBuilder() {
                       </div>
                     </div>
                     <div className="mt-3"><label className="label-text">Descripción (opcional)</label><input className="input-field" value={it.description} onChange={(e) => updateItem(idx, { description: e.target.value })} data-testid={`custom-item-desc-${idx}`} /></div>
+                    <div className="mt-3">
+                      <label className="label-text">Tipo de precio</label>
+                      <div className="flex gap-2" data-testid={`custom-item-pricetype-${idx}`}>
+                        <button type="button" onClick={() => updateItem(idx, { price_type: 'neto' })}
+                          className={`flex-1 rounded-lg border px-3 py-2 text-xs font-medium transition-colors ${(it.price_type || 'neto') === 'neto' ? 'border-brand-500 bg-brand-50 text-brand-700' : 'border-ink-100 text-ink-500 hover:border-brand-300'}`}
+                          data-testid={`custom-item-pricetype-neto-${idx}`}>🔒 Tarifa neta</button>
+                        <button type="button" onClick={() => updateItem(idx, { price_type: 'publico' })}
+                          className={`flex-1 rounded-lg border px-3 py-2 text-xs font-medium transition-colors ${it.price_type === 'publico' ? 'border-emerald-500 bg-mint-100 text-emerald-700' : 'border-ink-100 text-ink-500 hover:border-emerald-300'}`}
+                          data-testid={`custom-item-pricetype-publico-${idx}`}>💰 Precio público</button>
+                      </div>
+                      <p className="text-[11px] text-ink-400 mt-1">{(it.price_type || 'neto') === 'publico' ? 'El monto ya es público; se le descuenta la comisión del canal.' : 'Tarifa neta confidencial; el público se calcula (neto / divisor) y luego según el canal.'}</p>
+                    </div>
                     <div className="grid md:grid-cols-3 gap-3 mt-3">
-                      <div><label className="label-text">Precio neto</label><input type="number" min="0" step="0.01" className="input-field" value={it.net_price} onChange={(e) => updateItem(idx, { net_price: +e.target.value || 0 })} data-testid={`custom-item-net-${idx}`} /></div>
+                      <div><label className="label-text">{(it.price_type || 'neto') === 'publico' ? 'Precio público' : 'Tarifa neta'}</label><input type="number" min="0" step="0.01" className="input-field" value={it.net_price} onChange={(e) => updateItem(idx, { net_price: +e.target.value || 0 })} data-testid={`custom-item-net-${idx}`} /></div>
                       <div><label className="label-text">Unidad de cobro</label>
                         <select className="input-field" value={it.unit} onChange={(e) => updateItem(idx, { unit: e.target.value })} data-testid={`custom-item-unit-${idx}`}>
                           {UNITS.map((u) => <option key={u.v} value={u.v}>{u.label}</option>)}
@@ -431,7 +462,9 @@ export default function CustomQuotationBuilder() {
                       <div><label className="label-text">Hora fin (opc.)</label><input type="time" className="input-field" value={it.end_time || ''} onChange={(e) => updateItem(idx, { end_time: e.target.value })} data-testid={`custom-item-end-${idx}`} /></div>
                     </div>
                     <div className="flex flex-wrap items-center justify-end gap-x-4 gap-y-1 mt-3 text-sm">
-                      <span className="text-ink-400">Público: <b className="text-ink-700">{money(publicPrice(it.net_price), currency)}</b> / {UNIT_ES[it.unit]}</span>
+                      <span className="text-ink-400">{(it.price_type || 'neto') === 'publico'
+                        ? <>Público: <b className="text-ink-700">{money(Number(it.net_price) || 0, currency)}</b></>
+                        : <>Neto <b className="text-ink-700">{money(Number(it.net_price) || 0, currency)}</b> · Público <b className="text-ink-700">{money(publicPrice(it.net_price), currency)}</b></>} / {UNIT_ES[it.unit]}</span>
                       <span className="font-semibold text-brand-600" data-testid={`custom-item-subtotal-${idx}`}>Subtotal: {money(itemSubtotal(it), currency)}</span>
                     </div>
                   </div>
@@ -501,6 +534,12 @@ export default function CustomQuotationBuilder() {
               <textarea rows="4" className="input-field" value={form.presentation_text} placeholder="Estimada/o [nombre], a continuación le presento la cotización para su viaje…"
                 onChange={(e) => setForm((f) => ({ ...f, presentation_text: e.target.value }))} data-testid="custom-presentation-input" />
             </div>
+            <div className="card-surface p-5">
+              <label className="label-text">Información importante (opcional)</label>
+              <p className="text-xs text-ink-400 mb-2">Condiciones específicas de esta cotización. Aparece en el PDF y en el enlace del cliente.</p>
+              <textarea rows="3" className="input-field" value={form.important_info || ''} placeholder="Ej. Tarifas vigentes solo para las fechas indicadas. Anticipo del 50% para confirmar…"
+                onChange={(e) => setForm((f) => ({ ...f, important_info: e.target.value }))} data-testid="custom-important-info-input" />
+            </div>
             <div className="grid md:grid-cols-2 gap-4 text-sm">
               <div className="rounded-xl border border-ink-100 p-4">
                 <p className="text-xs uppercase tracking-widest font-bold text-ink-400 mb-1">Cliente</p>
@@ -514,12 +553,12 @@ export default function CustomQuotationBuilder() {
             </div>
             <div className="rounded-xl border border-ink-100 overflow-hidden">
               <table className="w-full text-sm">
-                <thead className="bg-cream text-ink-500"><tr><th className="text-left p-3">Concepto</th><th className="text-right p-3">Público</th><th className="text-center p-3">Cant.</th><th className="text-right p-3">Subtotal</th></tr></thead>
+                <thead className="bg-cream text-ink-500"><tr><th className="text-left p-3">Concepto</th><th className="text-right p-3">Precio</th><th className="text-center p-3">Cant.</th><th className="text-right p-3">Subtotal</th></tr></thead>
                 <tbody>
                   {form.custom_items.map((it, i) => (
                     <tr key={i} className="border-t border-ink-100" data-testid={`custom-review-item-${i}`}>
-                      <td className="p-3"><span className="font-medium text-ink-900">{it.name || '—'}</span> <span className="text-ink-400 text-xs">· {UNIT_ES[it.unit]}</span></td>
-                      <td className="p-3 text-right">{money(publicPrice(it.net_price), currency)}</td>
+                      <td className="p-3"><span className="font-medium text-ink-900">{it.name || '—'}</span> <span className="text-ink-400 text-xs">· {UNIT_ES[it.unit]}{(it.price_type || 'neto') === 'neto' ? ' · neto' : ''}</span></td>
+                      <td className="p-3 text-right">{money(unitPriceFor(it), currency)}</td>
                       <td className="p-3 text-center">{it.qty}</td>
                       <td className="p-3 text-right font-semibold">{money(itemSubtotal(it), currency)}</td>
                     </tr>
@@ -529,11 +568,12 @@ export default function CustomQuotationBuilder() {
             </div>
             <div className="rounded-xl bg-gradient-to-br from-brand-500 to-accent text-white p-5" data-testid="custom-totals">
               <div className="flex justify-between text-sm"><span>Subtotal</span><span>{money(subtotal, currency)}</span></div>
-              {commissionRate > 0 && <div className="flex justify-between text-sm mt-1"><span>Comisión canal ({(commissionRate * 100).toFixed(0)}%)</span><span>- {money(commission, currency)}</span></div>}
+              {commission > 0 && <div className="flex justify-between text-sm mt-1"><span>Comisión canal servicios ({(commissionRate * 100).toFixed(0)}%)</span><span>- {money(commission, currency)}</span></div>}
               <div className="border-t border-white/20 mt-3 pt-3 flex justify-between items-end">
                 <span className="text-sm uppercase tracking-widest opacity-80">Total</span>
                 <span className="font-display font-bold text-3xl" data-testid="custom-total-amount">{money(total, currency)}</span>
               </div>
+              {priceNote && <p className="text-xs opacity-80 mt-2" data-testid="custom-price-note">{priceNote}</p>}
             </div>
             <div className="flex justify-end">
               <button type="button" className="btn-ghost text-sm border border-amber-200 text-amber-700" onClick={() => { setTplName(form.custom_title || ''); setSaveTplOpen(true); }} disabled={form.custom_items.length === 0} data-testid="custom-save-template-btn">

@@ -135,6 +135,8 @@ async def public_company_catalog(slug: str):
     packs = await db.packages.find(
         {"tenant_id": company["id"], "status": {"$ne": "inactive"}}, {"_id": 0}
     ).sort("created_at", -1).to_list(500)
+    services_count = await db.services.count_documents(
+        {"tenant_id": company["id"], "status": {"$ne": "inactive"}})
     return {
         "company": {
             "name": company.get("name", ""), "slug": company.get("slug", ""),
@@ -143,13 +145,66 @@ async def public_company_catalog(slug: str):
             "contact_email": company.get("contact_email", ""),
             "contact_phone": company.get("contact_phone", ""),
             "address": company.get("address", ""),
+            "catalog_subtitle": company.get("catalog_subtitle", ""),
         },
+        "has_services": services_count > 0,
         "packages": [{
             "code": p["code"], "name": p["name"], "nights": p.get("nights"),
             "description": p.get("description", ""), "image_url": p.get("image_url", ""),
             "base_price": _base_price(p, _margin(company)), "currency": company.get("base_currency", "MXN"),
             "hotels_count": len(p.get("hotels") or []),
         } for p in packs],
+    }
+
+
+def _public_company_block(company: dict) -> dict:
+    return {
+        "name": company.get("name", ""), "slug": company.get("slug", ""),
+        "logo_url": company.get("logo_url", ""),
+        "primary_color": company.get("primary_color", "#185FA5"),
+        "contact_email": company.get("contact_email", ""),
+        "contact_phone": company.get("contact_phone", ""),
+        "address": company.get("address", ""),
+    }
+
+
+_SVC_CATEGORIES = [("tour", "Tours"), ("traslado", "Traslados"), ("acceso", "Accesos"), ("extra", "Extras")]
+
+
+@router.get("/public/company/{slug}/services")
+async def public_company_services(slug: str):
+    """Catálogo público de servicios por categoría (sin auth) — /c/:slug/servicios."""
+    db = get_db()
+    company = await db.companies.find_one({"slug": slug}, {"_id": 0})
+    if not company or company.get("status") == "suspended":
+        raise HTTPException(status_code=404, detail="Empresa no encontrada")
+    services = await db.services.find(
+        {"tenant_id": company["id"], "status": {"$ne": "inactive"}}, {"_id": 0}
+    ).sort("name", 1).to_list(1000)
+    cur = company.get("base_currency", "MXN")
+    groups = []
+    for key, label in _SVC_CATEGORIES:
+        items = [{
+            "name": s.get("name", ""), "description": s.get("description", ""),
+            "image_url": s.get("image_url", ""), "unit": s.get("unit", "per_group"),
+            "public_price": s.get("public_price", 0), "currency": cur,
+        } for s in services if s.get("category") == key]
+        if items:
+            groups.append({"key": key, "label": label, "items": items})
+    return {"company": _public_company_block(company), "groups": groups}
+
+
+@router.get("/public/company/{slug}/conditions")
+async def public_company_conditions(slug: str):
+    """Condiciones generales + políticas de cancelación (sin auth) — /c/:slug/condiciones."""
+    db = get_db()
+    company = await db.companies.find_one({"slug": slug}, {"_id": 0})
+    if not company or company.get("status") == "suspended":
+        raise HTTPException(status_code=404, detail="Empresa no encontrada")
+    return {
+        "company": _public_company_block(company),
+        "general_conditions": company.get("general_conditions", ""),
+        "cancellation_policy": company.get("cancellation_policy", ""),
     }
 
 

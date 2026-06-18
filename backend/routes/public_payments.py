@@ -32,7 +32,7 @@ async def get_public_quotation(token: str):
     expires = q.get("public_link", {}).get("expires_at")
     if expires and datetime.fromisoformat(expires) < datetime.now(timezone.utc):
         raise HTTPException(status_code=410, detail="Enlace expirado")
-    company = await db.companies.find_one({"id": q["tenant_id"]}, {"_id": 0, "pricing_config": 0})
+    company = await db.companies.find_one({"id": q["tenant_id"]}, {"_id": 0})
     pack = None
     if q.get("package_id"):
         pack = await db.packages.find_one({"id": q["package_id"]}, {"_id": 0})
@@ -43,6 +43,29 @@ async def get_public_quotation(token: str):
             "excludes": q.get("custom_excludes", []),
             "image_url": "",
         }
+    # Tabla de precios por ocupación (paquetes) — réplica de lo que muestra el PDF.
+    occupancy_prices = []
+    if q.get("type") == "paquete" and pack and q.get("hotel_selected"):
+        sel = next((h for h in (pack.get("hotels") or []) if h.get("name") == q.get("hotel_selected")), None)
+        if sel:
+            from pricing import channel_price
+            pcfg = company.get("pricing_config") or {}
+            divisor = float(pcfg.get("margin_divisor", 0.76) or 0.76)
+            commissions = pcfg.get("commissions", {}) or {}
+            channel = q.get("client_snapshot", {}).get("channel", "directo")
+            prices = sel.get("prices_by_occupancy", {}) or {}
+            for key, label in [("sencilla", "Sencilla"), ("doble", "Doble"), ("triple", "Triple"), ("cuadruple", "Cuádruple")]:
+                net = float(prices.get(key, 0) or 0)
+                if net <= 0:
+                    continue
+                occupancy_prices.append({"key": key, "label": label, "price": channel_price(net, channel, divisor, commissions)})
+            minor_net = float(sel.get("minor_price", 0) or 0)
+            if minor_net > 0:
+                occupancy_prices.append({"key": "menor", "label": "Menor", "price": channel_price(minor_net, channel, divisor, commissions)})
+    exec_name = ""
+    if q.get("assigned_to"):
+        exec_user = await db.users.find_one({"id": q["assigned_to"]}, {"_id": 0, "name": 1})
+        exec_name = (exec_user or {}).get("name", "")
     base_currency = company.get("base_currency", q.get("currency", "MXN"))
     final_total = q.get("final_total")
     if final_total is None:
@@ -75,10 +98,14 @@ async def get_public_quotation(token: str):
             "client_name": q.get("client_snapshot", {}).get("name", ""),
             "accepted_at": q.get("public_link", {}).get("accepted_at"),
             "presentation_text": q.get("presentation_text", ""),
+            "important_info": q.get("important_info", ""),
             "price_note": q.get("price_note", ""),
+            "exec_name": exec_name,
+            "occupancy_prices": occupancy_prices,
         },
         "company": {
             "name": company.get("name", ""), "logo_url": company.get("logo_url", ""),
+            "slug": company.get("slug", ""),
             "primary_color": company.get("primary_color", "#185FA5"),
             "contact_email": company.get("contact_email", ""),
             "contact_phone": company.get("contact_phone", ""),

@@ -230,6 +230,25 @@ export default function PublicQuotation() {
           </div>
         )}
 
+        {q.occupancy_prices?.length > 0 && (
+          <div className="card-surface p-6" data-testid="public-occupancy-table">
+            <h2 className="font-display text-xl font-semibold text-ink-900 mb-4">Precios por persona{q.hotel_selected ? ` — ${q.hotel_selected}` : ''}</h2>
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead><tr className="text-ink-500 border-b border-ink-100"><th className="text-left py-2">Ocupación</th><th className="text-right py-2">Precio por persona</th></tr></thead>
+                <tbody>
+                  {q.occupancy_prices.map((o) => (
+                    <tr key={o.key} className="border-b border-ink-50" data-testid={`occ-row-${o.key}`}>
+                      <td className="py-2 text-ink-800">{o.label}</td>
+                      <td className="py-2 text-right font-semibold">{money(o.price, q.currency)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        )}
+
         {/* Includes / Excludes */}
         {(includes?.length > 0 || excludes?.length > 0) && (
           <div className="grid sm:grid-cols-2 gap-4">
@@ -299,13 +318,19 @@ export default function PublicQuotation() {
           </div>
         )}
 
-        {/* Cancellation policy */}
-        {data.cancellation_policy && (
-          <div className="card-surface p-6" data-testid="public-policy">
-            <h2 className="font-display text-xl font-semibold text-ink-900 mb-3">Políticas de cancelación y cambios</h2>
-            <div className="policy-render text-sm text-ink-600" dangerouslySetInnerHTML={{ __html: data.cancellation_policy }} />
+        {/* Información importante + condiciones (réplica del PDF) */}
+        {q.important_info && (
+          <div className="card-surface p-6" data-testid="public-important-info">
+            <h2 className="font-display text-xl font-semibold text-ink-900 mb-3">Información importante</h2>
+            <p className="text-sm text-ink-600 whitespace-pre-line">{q.important_info}</p>
           </div>
         )}
+        <div className="text-center text-xs text-ink-400 italic px-4">
+          Todos los precios están sujetos a cambio y disponibilidad sin previo aviso.
+          {company.slug && (
+            <> · <a href={`/c/${company.slug}/condiciones`} target="_blank" rel="noreferrer" className="not-italic underline" style={{ color: primary }} data-testid="public-conditions-link">Consultar condiciones generales y políticas de cancelación</a></>
+          )}
+        </div>
 
         {/* Total + Accept */}
         <div className="card-surface p-6 sticky bottom-4" data-testid="public-total-card">
@@ -418,6 +443,7 @@ export default function PublicQuotation() {
         </div>
 
         <footer className="text-center text-xs text-ink-400 pt-6">
+          {q.exec_name && <p className="mb-2 text-ink-600">Tu ejecutivo: <b>{q.exec_name}</b></p>}
           Cotización generada por <b style={{ color: primary }}>{company.name}</b><br />
           {company.contact_email} · {company.contact_phone}
         </footer>

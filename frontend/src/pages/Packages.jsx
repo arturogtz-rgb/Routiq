@@ -296,7 +296,7 @@ export default function Packages() {
               <div>
                 <p className="font-semibold" data-testid="import-total">{report.total_imported} registro(s) procesado(s)</p>
                 <p className="text-sm" data-testid="import-breakdown">
-                  {report.imported.paquetes_nuevos ?? 0} paquete(s) nuevo(s) · {report.imported.paquetes_actualizados ?? 0} actualizado(s) · {report.imported.hoteles ?? 0} hotel(es) · {report.imported.tours_nuevos ?? 0} tour(s) nuevo(s) · {report.imported.tours_actualizados ?? 0} actualizado(s) · {report.imported.traslados_nuevos ?? 0} traslado(s) nuevo(s) · {report.imported.traslados_actualizados ?? 0} actualizado(s)
+                  {report.imported.paquetes_nuevos ?? 0} paquete(s) nuevo(s) · {report.imported.paquetes_actualizados ?? 0} actualizado(s) · {report.imported.hoteles ?? 0} hotel(es) · {report.imported.tours_nuevos ?? 0} tour(s) nuevo(s) / {report.imported.tours_actualizados ?? 0} act. · {report.imported.traslados_nuevos ?? 0} traslado(s) nuevo(s) / {report.imported.traslados_actualizados ?? 0} act. · {report.imported.accesos_nuevos ?? 0} acceso(s) nuevo(s) / {report.imported.accesos_actualizados ?? 0} act. · {report.imported.extras_nuevos ?? 0} extra(s) nuevo(s) / {report.imported.extras_actualizados ?? 0} act.
                 </p>
               </div>
             </div>

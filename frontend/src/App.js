@@ -19,6 +19,7 @@ import Clients from '@/pages/Clients';
 import CustomQuotationBuilder from '@/pages/CustomQuotationBuilder';
 import QuotationsList from '@/pages/QuotationsList';
 import QuotationDetail from '@/pages/QuotationDetail';
+import BookingConfirmation from '@/pages/BookingConfirmation';
 import AuditLog from '@/pages/AuditLog';
 import WhatsAppInbox from '@/pages/WhatsAppInbox';
 import Team from '@/pages/Team';
@@ -29,6 +30,8 @@ import MasterAI from '@/pages/MasterAI';
 import PublicQuotation from '@/pages/PublicQuotation';
 import PublicPackage from '@/pages/PublicPackage';
 import PublicCatalog from '@/pages/PublicCatalog';
+import PublicServices from '@/pages/PublicServices';
+import PublicConditions from '@/pages/PublicConditions';
 import Leads from '@/pages/Leads';
 import CatalogAnalytics from '@/pages/CatalogAnalytics';
 import SalesStats from '@/pages/SalesStats';
@@ -74,6 +77,8 @@ export default function App() {
           <Route path="/q/:token" element={<PublicQuotation />} />
           <Route path="/p/:slug/:code" element={<PublicPackage />} />
           <Route path="/c/:slug" element={<PublicCatalog />} />
+          <Route path="/c/:slug/servicios" element={<PublicServices />} />
+          <Route path="/c/:slug/condiciones" element={<PublicConditions />} />
 
           {/* Company app */}
           <Route path="/app/dashboard" element={<ProtectedRoute roles={['company_admin', 'executive']}><Dashboard /></ProtectedRoute>} />
@@ -91,6 +96,7 @@ export default function App() {
           <Route path="/app/quotations/new/custom" element={<ProtectedRoute roles={['company_admin', 'executive']}><CustomQuotationBuilder /></ProtectedRoute>} />
           <Route path="/app/quotations/custom/:id/edit" element={<ProtectedRoute roles={['company_admin', 'executive']}><CustomQuotationBuilder /></ProtectedRoute>} />
           <Route path="/app/quotations/:id/edit" element={<ProtectedRoute roles={['company_admin', 'executive']}><QuotationBuilder /></ProtectedRoute>} />
+          <Route path="/app/quotations/:id/confirmacion" element={<ProtectedRoute roles={['company_admin', 'executive']}><BookingConfirmation /></ProtectedRoute>} />
           <Route path="/app/quotations/:id" element={<ProtectedRoute roles={['company_admin', 'executive']}><QuotationDetail /></ProtectedRoute>} />
           <Route path="/app/audit" element={<ProtectedRoute roles={['company_admin']}><AuditLog /></ProtectedRoute>} />
           <Route path="/app/whatsapp" element={<ProtectedRoute roles={['company_admin', 'executive']}><WhatsAppInbox /></ProtectedRoute>} />

@@ -881,6 +881,7 @@ from routes import (
     ai_settings as ai_settings_routes,
     templates as templates_routes,
     stats as stats_routes,
+    booking as booking_routes,
 )
 
 api.include_router(quotations_routes.router)
@@ -897,6 +898,7 @@ api.include_router(account_routes.router)
 api.include_router(ai_settings_routes.router)
 api.include_router(templates_routes.router)
 api.include_router(stats_routes.router)
+api.include_router(booking_routes.router)
 
 app.include_router(api)
 

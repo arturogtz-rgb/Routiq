@@ -16,6 +16,8 @@ export const BankingSettings = ({ integ, setInteg }) => (
       <div><label className="label-text">Cuenta USD (internacional)</label><input className="input-field" value={integ.bank_usd_account || ''} onChange={(e) => setInteg((s) => ({ ...s, bank_usd_account: e.target.value }))} data-testid="bank-usd-input" /></div>
       <div><label className="label-text">SWIFT / BIC</label><input className="input-field" value={integ.bank_swift || ''} onChange={(e) => setInteg((s) => ({ ...s, bank_swift: e.target.value }))} data-testid="bank-swift-input" /></div>
       <div><label className="label-text">ABA / Routing</label><input className="input-field" value={integ.bank_aba || ''} onChange={(e) => setInteg((s) => ({ ...s, bank_aba: e.target.value }))} data-testid="bank-aba-input" /></div>
+      <div><label className="label-text">Sucursal</label><input className="input-field" value={integ.bank_branch || ''} onChange={(e) => setInteg((s) => ({ ...s, bank_branch: e.target.value }))} data-testid="bank-branch-input" /></div>
+      <div><label className="label-text">Referencia</label><input className="input-field" value={integ.bank_reference || ''} onChange={(e) => setInteg((s) => ({ ...s, bank_reference: e.target.value }))} data-testid="bank-reference-input" /></div>
       <div><label className="label-text">Domicilio del banco</label><input className="input-field" value={integ.bank_address || ''} onChange={(e) => setInteg((s) => ({ ...s, bank_address: e.target.value }))} data-testid="bank-address-input" /></div>
     </div>
   </div>

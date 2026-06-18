@@ -100,6 +100,8 @@ def _integrations_view(company: dict) -> dict:
         "bank_swift": (company.get("bank") or {}).get("swift", ""),
         "bank_aba": (company.get("bank") or {}).get("aba", ""),
         "bank_address": (company.get("bank") or {}).get("address", ""),
+        "bank_branch": (company.get("bank") or {}).get("branch", ""),
+        "bank_reference": (company.get("bank") or {}).get("reference", ""),
         # Payment permissions controlled by Master (per plan)
         "stripe_allowed": bool(company.get("stripe_allowed", True)),
         "transfer_allowed": bool(company.get("transfer_allowed", True)),

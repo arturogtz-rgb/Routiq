@@ -31,6 +31,7 @@ export default function PublicCatalog() {
   const { company, packages } = data;
   const brand = company.primary_color || '#185FA5';
   const logo = company.logo_url ? (company.logo_url.startsWith('http') ? company.logo_url : `${backend}${company.logo_url}`) : null;
+  const subtitle = company.catalog_subtitle || 'Explora nuestros paquetes y solicita tu cotización personalizada en segundos.';
 
   return (
     <div className="min-h-screen bg-cream" data-testid="public-catalog-page">
@@ -55,7 +56,12 @@ export default function PublicCatalog() {
             </div>
           )}
           <h1 className="font-display text-4xl sm:text-5xl font-bold tracking-tight">{company.name}</h1>
-          <p className="text-white/85 mt-3 max-w-2xl">Explora nuestros paquetes y solicita tu cotización personalizada en segundos.</p>
+          <p className="text-white/85 mt-3 max-w-2xl" data-testid="catalog-subtitle">{subtitle}</p>
+          {data.has_services && (
+            <Link to={`/c/${slug}/servicios`} className="mt-6 inline-flex items-center gap-2 rounded-full bg-white/15 hover:bg-white/25 transition-colors px-5 py-2.5 text-sm font-semibold backdrop-blur" data-testid="catalog-services-link">
+              Ver servicios <ArrowRight className="w-4 h-4" />
+            </Link>
+          )}
         </div>
       </div>
 
@@ -96,7 +102,7 @@ export default function PublicCatalog() {
         )}
       </main>
 
-      <footer className="border-t border-ink-100 py-6 text-center text-xs text-ink-400">{company.name} · Catálogo con Routiq</footer>
+      <footer className="border-t border-ink-100 py-6 text-center text-xs text-ink-400">{company.name} · <Link to={`/c/${slug}/condiciones`} className="hover:underline" data-testid="catalog-conditions-link">Condiciones generales</Link> · Catálogo con Routiq</footer>
     </div>
   );
 }

@@ -278,6 +278,11 @@ export default function QuotationDetail() {
           <button onClick={downloadPdf} className="btn-primary text-sm" data-testid="download-pdf-btn">
             <Download className="w-4 h-4" /> Descargar PDF
           </button>
+          {q.state === 'ganada' && (
+            <button onClick={() => navigate(`/app/quotations/${id}/confirmacion`)} className="btn-ghost text-sm border border-emerald-300 text-emerald-700 bg-mint-100" data-testid="booking-confirmation-btn">
+              <FileText className="w-4 h-4" /> Generar confirmación de reserva
+            </button>
+          )}
           <button onClick={archive} className="btn-ghost text-sm" data-testid="archive-quotation-btn">
             <Archive className="w-4 h-4" /> {q.archived ? 'Restaurar' : 'Archivar'}
           </button>

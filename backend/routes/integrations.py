@@ -105,6 +105,7 @@ async def update_my_integrations(payload: CompanyIntegrationsUpdate, user: dict 
         "bank_name": "bank.name", "bank_holder": "bank.holder", "bank_clabe": "bank.clabe",
         "bank_account": "bank.account", "bank_usd_account": "bank.usd_account",
         "bank_swift": "bank.swift", "bank_aba": "bank.aba", "bank_address": "bank.address",
+        "bank_branch": "bank.branch", "bank_reference": "bank.reference",
     }
     for key, path in _BANK_FIELDS.items():
         if key in data:
@@ -122,16 +123,30 @@ async def update_my_integrations(payload: CompanyIntegrationsUpdate, user: dict 
 @router.get("/companies/me/policy")
 async def get_my_policy(user: dict = Depends(require_roles("company_admin"))):
     db = get_db()
-    company = await db.companies.find_one({"id": user["tenant_id"]}, {"_id": 0, "cancellation_policy": 1})
-    return {"cancellation_policy": (company or {}).get("cancellation_policy", "")}
+    company = await db.companies.find_one(
+        {"id": user["tenant_id"]}, {"_id": 0, "cancellation_policy": 1, "general_conditions": 1})
+    return {
+        "cancellation_policy": (company or {}).get("cancellation_policy", ""),
+        "general_conditions": (company or {}).get("general_conditions", ""),
+    }
 
 
 @router.patch("/companies/me/policy")
 async def update_my_policy(payload: PolicyUpdate, user: dict = Depends(require_roles("company_admin"))):
     db = get_db()
-    clean = sanitize_richtext(payload.cancellation_policy or "")
-    await db.companies.update_one({"id": user["tenant_id"]}, {"$set": {"cancellation_policy": clean}})
-    return {"cancellation_policy": clean}
+    updates = {}
+    if payload.cancellation_policy is not None:
+        updates["cancellation_policy"] = sanitize_richtext(payload.cancellation_policy or "")
+    if payload.general_conditions is not None:
+        updates["general_conditions"] = sanitize_richtext(payload.general_conditions or "")
+    if updates:
+        await db.companies.update_one({"id": user["tenant_id"]}, {"$set": updates})
+    company = await db.companies.find_one(
+        {"id": user["tenant_id"]}, {"_id": 0, "cancellation_policy": 1, "general_conditions": 1})
+    return {
+        "cancellation_policy": (company or {}).get("cancellation_policy", ""),
+        "general_conditions": (company or {}).get("general_conditions", ""),
+    }
 
 
 @router.delete("/companies/me/integrations/stripe-secret")

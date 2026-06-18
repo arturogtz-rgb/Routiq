@@ -4,7 +4,7 @@ import io
 import logging
 from datetime import datetime, timezone
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import StreamingResponse
 
 from database import get_db, new_id, now_iso, DEFAULT_PRICING_CONFIG
@@ -152,6 +152,7 @@ async def create_quotation(payload: QuotationCreate, user: dict = Depends(requir
         "created_by": user["id"],
         "notes": payload.notes,
         "presentation_text": payload.presentation_text or "",
+        "important_info": payload.important_info or "",
         "from_request": payload.from_request or None,
         "history": [{
             "at": now_iso(), "user_id": user["id"], "user_name": user.get("name", ""),
@@ -332,7 +333,7 @@ async def delete_quotation(quotation_id: str, user: dict = Depends(require_tenan
 
 
 @router.get("/quotations/{quotation_id}/pdf")
-async def download_quotation_pdf(quotation_id: str, user: dict = Depends(require_tenant)):
+async def download_quotation_pdf(quotation_id: str, request: Request, user: dict = Depends(require_tenant)):
     db = get_db()
     q = await db.quotations.find_one({"id": quotation_id, "tenant_id": user["tenant_id"]}, {"_id": 0})
     if not q:
@@ -351,7 +352,13 @@ async def download_quotation_pdf(quotation_id: str, user: dict = Depends(require
             "excludes": q.get("custom_excludes", []),
         }
     client = await db.clients.find_one({"id": q["client_id"], "tenant_id": user["tenant_id"]}, {"_id": 0})
-    pdf = generate_quotation_pdf(company, q, pack or {}, client or {"name": q.get("client_snapshot", {}).get("name", "")})
+    exec_name = ""
+    if q.get("assigned_to"):
+        exec_user = await db.users.find_one({"id": q["assigned_to"]}, {"_id": 0, "name": 1})
+        exec_name = (exec_user or {}).get("name", "")
+    base_url = f"{request.url.scheme}://{request.headers.get('host', '')}"
+    pdf = generate_quotation_pdf(company, q, pack or {}, client or {"name": q.get("client_snapshot", {}).get("name", "")},
+                                 exec_name=exec_name, base_url=base_url)
     return StreamingResponse(
         io.BytesIO(pdf), media_type="application/pdf",
         headers={"Content-Disposition": f'attachment; filename="{q["code"]}.pdf"'},

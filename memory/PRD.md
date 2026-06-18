@@ -7,6 +7,21 @@ Plataforma SaaS PWA multi-tenant para **cotización y seguimiento turístico** p
 - **Producción: https://routiq.com.mx** ✅ (VPS Hostinger 177.7.36.75, Docker + Nginx + Let's Encrypt)
 - Iteración actual: **v2.4** (iter_24: registro de uso/costo de IA en Master + generar respaldo on-demand + revisión de seguridad pre-lanzamiento)
 
+## Iteración 34 (jun-2026) — FASE 1: Reescritura del Motor de Precios (PAQUETES = tarifas netas)
+- ✅ **Catálogo de PAQUETES guarda TARIFAS NETAS**. `pricing.py`: nuevas `public_from_net(net, divisor)` y `channel_price(net, channel, divisor, commissions)`. Precio Público = neto / `margin_divisor`. `compute_quotation` ahora aplica precio por canal SOLO a items de paquete (hospedaje, noche_extra):
+  - **directo / agencia** → Precio Público (sin comisión sobre el paquete).
+  - **mayorista** → Público × (1 − `commissions.mayorista`) (configurable). Leyenda "Precio neto no comisionable".
+  - **operador (UI: "Mayorista Preferencial")** → Tarifa Neta original. Leyenda "Precio neto no comisionable".
+- ✅ **Comisión por canal SOLO sobre servicios a la carta** (lógica de servicios intacta: precio catálogo ya público − comisión por canal). Los paquetes ya traen el precio canalizado y son no comisionables. `subtotal = paquete(canal) + servicios(público)`, `commission = servicios × rate`, `total = subtotal − commission`.
+- ✅ **Menores suman al total** (Issue 2): `minor_price` del hotel es neto; mismo cálculo que adultos (público=neto/divisor, luego canal). Habitación con neto 0 = "no disponible" → se omite (Issue 1 parcial — "precio 0 = no disponible").
+- ✅ **Catálogo público muestra PRECIO PÚBLICO** (Issue 1): `routes/public_package._base_price` = min(neto)/`margin_divisor` (antes exponía el neto crudo). Aplica a `/c/:slug` y `/p/:slug/:code`.
+- ✅ **Builder muestra Neto + Público** (Issue 3): `QuotationBuilder.jsx` fetchea `/companies/me` (divisor+comisiones), `channelPrice`/`publicPrice`; filas de habitación muestran "Neto $X · Público $Y", tarjetas de hotel muestran neto + "Púb $...", totales reflejan lógica por canal + leyenda `builder-price-note`. `price_note` propagado a PDF (`pdf_generator`), detalle (`QuotationDetail` `detail-price-note`) y enlace público (`PublicQuotation` `public-price-note`).
+- ✅ **Rename UI "Operador" → "Mayorista Preferencial"** (valor interno `operador` sin migración) en QuotationBuilder, CustomQuotationBuilder, Clients y Ajustes→Precios. **Fix UI selector de Tono** (clases `h-8 py-0` → `text-xs py-1.5`, ya no se recorta) en ambos constructores (Issue 4).
+- ⚠️ **Alcance**: el cambio aplica SOLO a paquetes. `compute_custom_quotation` (programa personalizado) y servicios NO se modificaron (siguen público − comisión por canal).
+- 🔧 Dato demo: se restauró `margin_divisor` del tenant demo a 0.76 (estaba en 1.25, inválido para el nuevo modelo neto→público).
+- Tests: `/app/test_reports/iteration_34.json` (backend 17/17 PASS, frontend labels+leyendas+Revisión verificados) + `backend/tests/test_iteration34_pricing_paquetes.py`.
+- ⏳ **Pendiente (próximas fases / P0)**: ocultar paquetes no seleccionados en el constructor; itinerario día a día en plantilla Excel de importación; ¿aplicar la lógica por canal también a "programa personalizado"? (a confirmar con usuario).
+
 ## Iteración 33 (jun-2026) — Comparativa vs período anterior + Zona horaria configurable + Limpieza/auditoría
 - ✅ **(1) Comparativa vs período anterior** — `routes/stats._compute` ahora consulta 2× el período y devuelve bloques `previous` (revenue/collected/conversion) y `deltas` (% cambio en revenue, collected, created, won, rate; `null`='nuevo' cuando el período previo fue 0, `0.0` cuando ambos 0). En **/app/stats** cada KPI muestra un badge ▲verde/▼rojo con el % (o "nuevo"/"0%"), subtítulo "vs. período anterior". En el **correo automático** cada KPI incluye el mismo indicador (`reports._kpi_html`/`_delta_badge`).
 - ✅ **(2) Zona horaria configurable por empresa** — `report_timezone` (default `America/Mexico_City`) en config de Ajustes→Correo (`report-timezone-input`, 10 zonas LatAm/US/ES). `routes/integrations` valida con `ZoneInfo` (ignora inválidas) y persiste `sales_report.timezone`; `reports.run_sales_reports` evalúa cada empresa en su propia zona horaria. Expuesto en `_integrations_view`.

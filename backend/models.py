@@ -79,11 +79,14 @@ class CompanyPublic(BaseModel):
     transfer_allowed: bool = True
     email_provider: str = "resend"
     cancellation_policy: str = ""  # rich-text HTML, inyectado en PDFs y enlaces públicos
+    general_conditions: str = ""   # rich-text HTML — condiciones generales (página pública /c/:slug/condiciones)
+    catalog_subtitle: str = ""     # subtítulo editable del catálogo público /c/:slug
     created_at: Optional[str] = None
 
 
 class PolicyUpdate(BaseModel):
-    cancellation_policy: str = ""
+    cancellation_policy: Optional[str] = None
+    general_conditions: Optional[str] = None
 
 
 class CompanyPlanUpdate(BaseModel):
@@ -123,6 +126,7 @@ class CompanyUpdate(BaseModel):
     contact_email: Optional[EmailStr] = None
     contact_phone: Optional[str] = None
     address: Optional[str] = None
+    catalog_subtitle: Optional[str] = None
     pricing_config: Optional[PricingConfig] = None
 
 
@@ -147,6 +151,8 @@ class CompanyIntegrationsUpdate(BaseModel):
     bank_swift: Optional[str] = None
     bank_aba: Optional[str] = None
     bank_address: Optional[str] = None
+    bank_branch: Optional[str] = None
+    bank_reference: Optional[str] = None
     # Per-company outbound email (SMTP/IMAP o Gmail OAuth)
     email_provider: Optional[Literal["resend", "smtp", "gmail"]] = None
     smtp_host: Optional[str] = None
@@ -290,6 +296,7 @@ class ServiceCreate(BaseModel):
     public_price: float = 0.0  # if 0, server auto-computes from net via margin_divisor
     unit: ServiceUnit = "per_group"
     per_person: bool = False  # legacy, kept for back-compat
+    image_url: str = ""
     status: str = "active"
 
 
@@ -301,6 +308,7 @@ class ServiceUpdate(BaseModel):
     public_price: Optional[float] = None
     unit: Optional[ServiceUnit] = None
     per_person: Optional[bool] = None
+    image_url: Optional[str] = None
     status: Optional[str] = None
 
 
@@ -385,7 +393,8 @@ class CustomItem(BaseModel):
     category: CustomCategory = "extra"
     name: str = ""
     description: str = ""
-    net_price: float = Field(default=0.0, ge=0)
+    net_price: float = Field(default=0.0, ge=0)  # monto ingresado (neto si price_type=neto; público si price_type=publico)
+    price_type: Literal["neto", "publico"] = "neto"
     unit: CustomUnit = "per_group"
     qty: int = Field(default=0, ge=0)  # 0 => server computes default by unit
     service_date: str = ""   # fecha del servicio (opcional, ISO YYYY-MM-DD)
@@ -412,6 +421,7 @@ class QuotationCreate(BaseModel):
     notes: str = ""
     assigned_to: Optional[str] = None
     presentation_text: str = ""
+    important_info: str = ""  # "Información importante" — texto libre por cotización (cliente lo ve)
     from_request: Optional[str] = None  # lead id when created from a public catalog request
     # Custom / programa personalizado
     custom_title: str = ""
@@ -428,6 +438,45 @@ class QuotationStateUpdate(BaseModel):
     reason: Optional[str] = Field(default=None, max_length=500)  # optional loss reason when state == 'perdida'
 
 
+class BookingService(BaseModel):
+    date: str = ""
+    service: str = ""
+    details: str = ""
+    persons: str = ""
+    observations: str = ""
+
+
+class BookingLodging(BaseModel):
+    hotel: str = ""
+    plan: str = ""
+    checkin: str = ""
+    checkout: str = ""
+    nights: str = ""
+    room_type: str = ""
+    confirmation_number: str = ""
+    guest_name: str = ""
+
+
+class BookingConfirmationSave(BaseModel):
+    agent_name: str = ""
+    agent_phone: str = ""
+    agent_company: str = ""
+    reservation_date: str = ""
+    passenger_name: str = ""
+    passenger_phone: str = ""
+    num_persons: str = ""
+    services: List[BookingService] = Field(default_factory=list)
+    lodging: List[BookingLodging] = Field(default_factory=list)
+    general_observations: str = ""
+    price_per_person: float = 0.0
+    total_amount: float = 0.0
+
+
+class BookingSendRequest(BaseModel):
+    channel: Literal["email", "whatsapp"]
+    to: str = ""
+
+
 class QuotationArchive(BaseModel):
     archived: bool = True
 
@@ -442,6 +491,7 @@ class QuotationUpdate(BaseModel):
     notes: Optional[str] = None
     assigned_to: Optional[str] = None
     presentation_text: Optional[str] = None
+    important_info: Optional[str] = None
     # Custom / programa personalizado
     custom_title: Optional[str] = None
     custom_items: Optional[List[CustomItem]] = None

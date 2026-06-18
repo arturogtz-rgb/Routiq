@@ -155,7 +155,8 @@ def _fmt_service_datetime(it: dict) -> str:
     return " · ".join(parts)
 
 
-def generate_quotation_pdf(company: dict, quotation: dict, package: dict, client: dict) -> bytes:
+def generate_quotation_pdf(company: dict, quotation: dict, package: dict, client: dict,
+                           exec_name: str = "", base_url: str = "") -> bytes:
     buf = io.BytesIO()
     doc = SimpleDocTemplate(buf, pagesize=letter,
                             leftMargin=1.4 * cm, rightMargin=1.4 * cm,
@@ -177,13 +178,14 @@ def generate_quotation_pdf(company: dict, quotation: dict, package: dict, client
         for logo_path in candidates:
             if logo_path.exists() and logo_path.suffix.lower() in (".png", ".jpg", ".jpeg", ".webp"):
                 try:
-                    logo_cell = RLImage(str(logo_path), width=3.5 * cm, height=3.5 * cm, kind="proportional")
+                    logo_cell = RLImage(str(logo_path), width=4.6 * cm, height=4.6 * cm, kind="proportional")
                     break
                 except Exception:
                     logo_cell = ""
 
     company_text = Paragraph(
-        f"<b>{company['name']}</b><br/><font size=9 color='#475569'>{company.get('contact_email','')}<br/>{company.get('contact_phone','')}<br/>{company.get('address','')}</font>",
+        f"<b><font size=12>{company['name']}</font></b><br/><font size=9 color='#475569'>"
+        f"{company.get('contact_phone','')}<br/>{company.get('contact_email','')}<br/>{company.get('address','')}</font>",
         s["body"],
     )
     cot_text = Paragraph(
@@ -192,10 +194,10 @@ def generate_quotation_pdf(company: dict, quotation: dict, package: dict, client
     )
     if logo_cell:
         header_data = [[logo_cell, company_text, cot_text]]
-        col_widths = [4 * cm, 8 * cm, 5 * cm]
+        col_widths = [5 * cm, 7 * cm, 5 * cm]
     else:
         header_data = [[company_text, cot_text]]
-        col_widths = [10 * cm, 7 * cm]
+        col_widths = [11 * cm, 6 * cm]
     header = Table(header_data, colWidths=col_widths)
     header.setStyle(TableStyle([
         ("VALIGN", (0, 0), (-1, -1), "TOP"),
@@ -204,7 +206,15 @@ def generate_quotation_pdf(company: dict, quotation: dict, package: dict, client
         ("BOTTOMPADDING", (0, 0), (-1, -1), 14),
     ]))
     story.append(header)
-    story.append(Spacer(1, 12))
+    story.append(Spacer(1, 8))
+
+    # Ciudad y fecha de emisión
+    ciudad = (company.get("address", "") or "").strip()
+    emision = _fmt_date(quotation.get("created_at", ""))
+    emision_txt = (f"{ciudad}, a {emision}" if ciudad else (f"Fecha de emisión: {emision}" if emision else ""))
+    if emision_txt:
+        story.append(Paragraph(f"<font color='#475569'>{_xml_escape(emision_txt)}</font>", s["soft"]))
+        story.append(Spacer(1, 6))
 
     # Presentation text (carta al cliente) — opens the document before any content
     presentation = (quotation.get("presentation_text") or "").strip()
@@ -315,6 +325,45 @@ def generate_quotation_pdf(company: dict, quotation: dict, package: dict, client
             if day.get("description"):
                 story.append(Paragraph(day["description"], s["body"]))
 
+    # Tabla de precios por ocupación (solo paquetes) — precio por persona según el canal del cliente.
+    if not is_services and not is_custom and quotation.get("hotel_selected"):
+        sel_hotel = next((h for h in (package.get("hotels") or [])
+                          if h.get("name") == quotation.get("hotel_selected")), None)
+        if sel_hotel:
+            from pricing import channel_price
+            cur_occ = quotation.get("currency", "MXN")
+            pc = company.get("pricing_config") or {}
+            divisor = float(pc.get("margin_divisor", 0.76) or 0.76)
+            commissions = pc.get("commissions", {}) or {}
+            channel = (client or {}).get("channel", "directo")
+            prices = sel_hotel.get("prices_by_occupancy", {}) or {}
+            occ_rows = [["Ocupación", "Precio por persona"]]
+            for key, label, paxlbl in [("sencilla", "Sencilla", "1 pax"), ("doble", "Doble", "2 pax"),
+                                       ("triple", "Triple", "3 pax"), ("cuadruple", "Cuádruple", "4 pax")]:
+                net = float(prices.get(key, 0) or 0)
+                if net <= 0:
+                    continue  # precio 0 = no disponible
+                occ_rows.append([f"{label} ({paxlbl})", _money(channel_price(net, channel, divisor, commissions), cur_occ)])
+            minor_net = float(sel_hotel.get("minor_price", 0) or 0)
+            if minor_net > 0:
+                occ_rows.append(["Menor", _money(channel_price(minor_net, channel, divisor, commissions), cur_occ)])
+            if len(occ_rows) > 1:
+                story.append(Spacer(1, 8))
+                story.append(Paragraph(f"Precios por persona — {sel_hotel.get('name','')}", s["h2"]))
+                ot = Table(occ_rows, colWidths=[10 * cm, 6.5 * cm])
+                ot.setStyle(TableStyle([
+                    ("BACKGROUND", (0, 0), (-1, 0), PRIMARY),
+                    ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
+                    ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
+                    ("ALIGN", (1, 0), (1, -1), "RIGHT"),
+                    ("FONTSIZE", (0, 0), (-1, -1), 9),
+                    ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.white, colors.HexColor("#F8F9FA")]),
+                    ("GRID", (0, 0), (-1, -1), 0.3, colors.HexColor("#E2E8F0")),
+                    ("LEFTPADDING", (0, 0), (-1, -1), 6), ("RIGHTPADDING", (0, 0), (-1, -1), 6),
+                    ("TOPPADDING", (0, 0), (-1, -1), 6), ("BOTTOMPADDING", (0, 0), (-1, -1), 6),
+                ]))
+                story.append(ot)
+
     # Price items
     # Salto de página automático cuando el contenido es extenso (presentación + itinerario
     # en la 1ª hoja, desglose de precios en la 2ª).
@@ -403,21 +452,40 @@ def generate_quotation_pdf(company: dict, quotation: dict, package: dict, client
             story.append(Spacer(1, 6))
             story.append(t)
 
+    # "Información importante" — texto libre por cotización (lo ve el cliente)
+    important = (quotation.get("important_info") or "").strip()
+    if important:
+        story.append(Spacer(1, 10))
+        story.append(Paragraph("Información importante", s["h2"]))
+        for para in important.split("\n"):
+            para = para.strip()
+            if para:
+                story.append(Paragraph(_xml_escape(para), s["body"]))
+
+    # Texto fijo al pie
     story.append(Spacer(1, 10))
     story.append(Paragraph(
-        "<b>Condiciones generales:</b> Todos los precios están sujetos a cambio y disponibilidad sin previo aviso. "
-        "Cotización válida por 7 días. Precios sujetos a disponibilidad al momento de la reservación. "
-        "Precios en MXN salvo que se indique lo contrario.",
+        "<i>Todos los precios están sujetos a cambio y disponibilidad sin previo aviso.</i>",
         s["soft"],
     ))
 
-    # Cancellation & change policy (rich text authored per company in Ajustes)
-    policy_html = (company.get("cancellation_policy") or "").strip()
-    if policy_html:
-        story.append(Spacer(1, 10))
-        story.append(Paragraph("Políticas de cancelación y cambios", s["h2"]))
-        for fl in _richtext_flowables(policy_html, s):
-            story.append(fl)
+    # Enlace clickeable a condiciones generales y políticas de cancelación
+    slug = company.get("slug", "")
+    if slug:
+        cond_url = f"{base_url}/c/{slug}/condiciones" if base_url else f"https://routiq.com.mx/c/{slug}/condiciones"
+        story.append(Spacer(1, 4))
+        story.append(Paragraph(
+            f'<a href="{cond_url}"><font color="#185FA5"><u>Consultar condiciones generales y políticas de cancelación</u></font></a>',
+            s["soft"],
+        ))
+
+    # Nombre del ejecutivo
+    if exec_name:
+        story.append(Spacer(1, 16))
+        story.append(Paragraph(
+            f"<b>{_xml_escape(exec_name)}</b><br/><font size=8 color='#475569'>{_xml_escape(company.get('name',''))}</font>",
+            s["soft"],
+        ))
 
     if not company.get("white_label"):
         story.append(Spacer(1, 16))
@@ -425,6 +493,177 @@ def generate_quotation_pdf(company: dict, quotation: dict, package: dict, client
             "<font color='#94A3B8' size=8>Generado con Routiq · routiq.com.mx</font>",
             s["soft"],
         ))
+
+    doc.build(story)
+    return buf.getvalue()
+
+
+
+def _load_logo(company: dict, size_cm: float = 4.0):
+    from reportlab.platypus import Image as RLImage
+    from pathlib import Path as _P
+    logo_url = company.get("logo_url") or ""
+    rel = logo_url.replace("/api/uploads/", "").replace("/uploads/", "")
+    if not rel:
+        return ""
+    for logo_path in [_P("/app/uploads") / rel, _P(__file__).parent / "uploads" / rel]:
+        if logo_path.exists() and logo_path.suffix.lower() in (".png", ".jpg", ".jpeg", ".webp"):
+            try:
+                return RLImage(str(logo_path), width=size_cm * cm, height=size_cm * cm, kind="proportional")
+            except Exception:
+                return ""
+    return ""
+
+
+def _kv_table(rows, label_w=4.5, val_w=12.0):
+    data = [[Paragraph(f"<b>{_xml_escape(k)}</b>", _styles()["soft"]), Paragraph(_xml_escape(str(v or "—")), _styles()["body"])] for k, v in rows]
+    t = Table(data, colWidths=[label_w * cm, val_w * cm])
+    t.setStyle(TableStyle([
+        ("VALIGN", (0, 0), (-1, -1), "TOP"),
+        ("ROWBACKGROUNDS", (0, 0), (-1, -1), [colors.white, colors.HexColor("#F8F9FA")]),
+        ("GRID", (0, 0), (-1, -1), 0.3, colors.HexColor("#E2E8F0")),
+        ("LEFTPADDING", (0, 0), (-1, -1), 6), ("RIGHTPADDING", (0, 0), (-1, -1), 6),
+        ("TOPPADDING", (0, 0), (-1, -1), 5), ("BOTTOMPADDING", (0, 0), (-1, -1), 5),
+    ]))
+    return t
+
+
+def _grid_table(header, rows, col_widths):
+    s = _styles()
+    data = [[Paragraph(f"<b>{_xml_escape(h)}</b>", s["soft"]) for h in header]]
+    for r in rows:
+        data.append([Paragraph(_xml_escape(str(c or "")), s["body"]) for c in r])
+    t = Table(data, colWidths=[w * cm for w in col_widths], repeatRows=1)
+    t.setStyle(TableStyle([
+        ("BACKGROUND", (0, 0), (-1, 0), PRIMARY),
+        ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
+        ("VALIGN", (0, 0), (-1, -1), "TOP"),
+        ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.white, colors.HexColor("#F8F9FA")]),
+        ("GRID", (0, 0), (-1, -1), 0.3, colors.HexColor("#E2E8F0")),
+        ("LEFTPADDING", (0, 0), (-1, -1), 5), ("RIGHTPADDING", (0, 0), (-1, -1), 5),
+        ("TOPPADDING", (0, 0), (-1, -1), 5), ("BOTTOMPADDING", (0, 0), (-1, -1), 5),
+    ]))
+    return t
+
+
+def generate_booking_confirmation_pdf(company: dict, quotation: dict, confirmation: dict,
+                                      client: dict, base_url: str = "") -> bytes:
+    """PDF de Confirmación de Reserva — generado por el ejecutivo desde una cotización ganada."""
+    buf = io.BytesIO()
+    doc = SimpleDocTemplate(buf, pagesize=letter, leftMargin=1.4 * cm, rightMargin=1.4 * cm,
+                            topMargin=1.3 * cm, bottomMargin=1.3 * cm,
+                            title=f"Confirmación {confirmation.get('code', '')}")
+    s = _styles()
+    story = []
+    ccy = quotation.get("currency", "MXN")
+
+    logo_cell = _load_logo(company, 4.0)
+    company_text = Paragraph(
+        f"<b><font size=12>{_xml_escape(company.get('name',''))}</font></b><br/><font size=9 color='#475569'>"
+        f"{_xml_escape(company.get('contact_phone',''))}<br/>{_xml_escape(company.get('contact_email',''))}<br/>{_xml_escape(company.get('address',''))}</font>",
+        s["body"])
+    title_text = Paragraph(
+        f"<b><font color='#185FA5' size=15>CONFIRMACIÓN DE RESERVA</font></b><br/><font size=10>{_xml_escape(confirmation.get('code',''))}</font>"
+        f"<br/><font size=9 color='#475569'>{_fmt_date(confirmation.get('created_at',''))}</font>",
+        s["body"])
+    if logo_cell:
+        header = Table([[logo_cell, company_text, title_text]], colWidths=[4.5 * cm, 6.5 * cm, 6 * cm])
+    else:
+        header = Table([[company_text, title_text]], colWidths=[10 * cm, 7 * cm])
+    header.setStyle(TableStyle([
+        ("VALIGN", (0, 0), (-1, -1), "TOP"),
+        ("ALIGN", (-1, 0), (-1, 0), "RIGHT"),
+        ("LINEBELOW", (0, 0), (-1, -1), 2, PRIMARY),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 14),
+    ]))
+    story.append(header)
+    story.append(Spacer(1, 10))
+
+    # Header table (datos del agente/pasajero)
+    story.append(_kv_table([
+        ("Agente / Cliente", confirmation.get("agent_name") or client.get("name", "")),
+        ("Teléfono", confirmation.get("agent_phone", "")),
+        ("Empresa", confirmation.get("agent_company", "")),
+        ("Fecha de reservación", confirmation.get("reservation_date", "")),
+        ("Pasajero final", confirmation.get("passenger_name", "")),
+        ("Teléfono del pasajero", confirmation.get("passenger_phone", "")),
+        ("Número de personas", confirmation.get("num_persons", "")),
+    ]))
+    story.append(Spacer(1, 10))
+
+    services = confirmation.get("services") or []
+    if services:
+        story.append(Paragraph("Servicios confirmados", s["h2"]))
+        rows = [[x.get("date", ""), x.get("service", ""), x.get("details", ""), x.get("persons", ""), x.get("observations", "")] for x in services]
+        story.append(_grid_table(["Fecha", "Servicio", "Detalles", "Pers.", "Observaciones"], rows, [2.3, 3.5, 4.2, 1.4, 5.0]))
+        story.append(Spacer(1, 10))
+
+    lodging = confirmation.get("lodging") or []
+    if lodging:
+        story.append(Paragraph("Hospedaje", s["h2"]))
+        rows = [[x.get("hotel", ""), x.get("plan", ""), x.get("checkin", ""), x.get("checkout", ""),
+                 x.get("nights", ""), x.get("room_type", ""), x.get("confirmation_number", ""), x.get("guest_name", "")] for x in lodging]
+        story.append(_grid_table(["Hotel", "Plan", "Check-in", "Check-out", "Noches", "Habitación", "N° Conf.", "Huésped"],
+                                 rows, [2.6, 1.9, 1.8, 1.8, 1.1, 2.1, 2.2, 2.9]))
+        story.append(Spacer(1, 10))
+
+    if (confirmation.get("general_observations") or "").strip():
+        story.append(Paragraph("Observaciones generales", s["h2"]))
+        for para in confirmation["general_observations"].split("\n"):
+            if para.strip():
+                story.append(Paragraph(_xml_escape(para.strip()), s["body"]))
+        story.append(Spacer(1, 8))
+
+    # Precio por persona + total
+    pp = float(confirmation.get("price_per_person", 0) or 0)
+    tot = float(confirmation.get("total_amount", 0) or 0)
+    price_rows = []
+    if pp > 0:
+        price_rows.append(["Precio por persona", _money(pp, ccy)])
+    price_rows.append(["Total a pagar", _money(tot, ccy)])
+    pt = Table(price_rows, colWidths=[12.5 * cm, 4 * cm])
+    pt.setStyle(TableStyle([
+        ("ALIGN", (1, 0), (1, -1), "RIGHT"),
+        ("FONTNAME", (0, -1), (-1, -1), "Helvetica-Bold"),
+        ("TEXTCOLOR", (0, -1), (-1, -1), PRIMARY),
+        ("FONTSIZE", (0, -1), (-1, -1), 12),
+        ("LINEABOVE", (0, -1), (-1, -1), 1, PRIMARY),
+        ("TOPPADDING", (0, 0), (-1, -1), 6), ("BOTTOMPADDING", (0, 0), (-1, -1), 6),
+    ]))
+    story.append(pt)
+    story.append(Spacer(1, 12))
+
+    # Datos bancarios
+    bank = company.get("bank") or {}
+    if any(bank.get(k) for k in ("name", "clabe", "account", "holder")):
+        story.append(Paragraph("Datos para transferencia bancaria", s["h2"]))
+        story.append(_kv_table([
+            ("Banco", bank.get("name", "")), ("Beneficiario", bank.get("holder", "")),
+            ("Cuenta", bank.get("account", "")), ("Sucursal", bank.get("branch", "")),
+            ("CLABE", bank.get("clabe", "")), ("SWIFT/BIC", bank.get("swift", "")),
+            ("Referencia", bank.get("reference", "")),
+        ]))
+        story.append(Spacer(1, 8))
+
+    if bool(company.get("stripe_allowed", True)) and ((company.get("stripe") or {}).get("secret_key") or False):
+        story.append(Paragraph("<i>También puedes pagar con tarjeta de crédito/débito de forma segura; solicita el enlace de pago a tu ejecutivo.</i>", s["soft"]))
+        story.append(Spacer(1, 8))
+
+    # Políticas de cancelación + condiciones generales (completas)
+    gen = (company.get("general_conditions") or "").strip()
+    pol = (company.get("cancellation_policy") or "").strip()
+    if gen:
+        story.append(Paragraph("Condiciones generales", s["h2"]))
+        for fl in _richtext_flowables(gen, s):
+            story.append(fl)
+    if pol:
+        story.append(Paragraph("Políticas de cancelación", s["h2"]))
+        for fl in _richtext_flowables(pol, s):
+            story.append(fl)
+
+    if not company.get("white_label"):
+        story.append(Spacer(1, 14))
+        story.append(Paragraph("<font color='#94A3B8' size=8>Generado con Routiq · routiq.com.mx</font>", s["soft"]))
 
     doc.build(story)
     return buf.getvalue()

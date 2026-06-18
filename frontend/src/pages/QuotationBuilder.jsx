@@ -41,6 +41,7 @@ export default function QuotationBuilder() {
     contacts: JSON.parse(JSON.stringify(EMPTY_CONTACTS)),
     notes: '',
     presentation_text: '',
+    important_info: '',
   });
 
   useEffect(() => {
@@ -62,6 +63,7 @@ export default function QuotationBuilder() {
             contacts: { ...JSON.parse(JSON.stringify(EMPTY_CONTACTS)), ...(q.contacts || {}) },
             notes: q.notes || '',
             presentation_text: q.presentation_text || '',
+            important_info: q.important_info || '',
           });
         } catch (e) { setError(formatApiError(e)); }
         return;
@@ -274,6 +276,7 @@ export default function QuotationBuilder() {
           contacts,
           notes: form.notes,
           presentation_text: form.presentation_text || '',
+          important_info: form.important_info || '',
         };
         if (!isServices) patch.hotel_name = form.hotel_name;
         await api.patch(`/quotations/${id}`, patch);
@@ -287,6 +290,7 @@ export default function QuotationBuilder() {
         notes: form.notes,
         contacts,
         presentation_text: form.presentation_text || '',
+        important_info: form.important_info || '',
         from_request: search.get('lead') || undefined,
       };
       if (isServices) {
@@ -473,11 +477,18 @@ export default function QuotationBuilder() {
         {/* Step: Package */}
         {cur === 'package' && (
           <div className="space-y-4" data-testid="step-package-panel">
-            <h2 className="font-display text-xl font-semibold text-ink-900">Selecciona paquete y hotel</h2>
+            <div className="flex items-center justify-between">
+              <h2 className="font-display text-xl font-semibold text-ink-900">Selecciona paquete y hotel</h2>
+              {!editing && form.package_id && (
+                <button type="button" className="btn-ghost text-sm" onClick={() => setForm((f) => ({ ...f, package_id: '', hotel_name: '' }))} data-testid="change-package-btn">
+                  <ArrowLeft className="w-4 h-4" /> Cambiar paquete
+                </button>
+              )}
+            </div>
             <div className="grid md:grid-cols-2 gap-3">
-              {packages.map((p) => (
+              {packages.filter((p) => !form.package_id || p.id === form.package_id).map((p) => (
                 <button key={p.id} onClick={() => !editing && setForm((f) => ({ ...f, package_id: p.id, hotel_name: p.hotels?.[0]?.name || '' }))} disabled={editing}
-                  className={`text-left rounded-xl border p-4 transition-all ${form.package_id === p.id ? 'border-brand-500 bg-brand-50' : 'border-ink-100 hover:border-brand-300'} ${editing && form.package_id !== p.id ? 'hidden' : ''}`}
+                  className={`text-left rounded-xl border p-4 transition-all ${form.package_id === p.id ? 'border-brand-500 bg-brand-50' : 'border-ink-100 hover:border-brand-300'}`}
                   data-testid={`package-option-${p.code}`}>
                   <p className="font-mono text-xs text-brand-500">{p.code}</p>
                   <p className="font-semibold text-ink-900 mt-1">{p.name}</p>
@@ -496,11 +507,11 @@ export default function QuotationBuilder() {
                       <p className="font-semibold text-ink-900">{h.name}</p>
                       <p className="text-xs text-ink-400 mt-0.5">{h.category}</p>
                       <div className="grid grid-cols-2 gap-x-2 gap-y-1 mt-3 text-sm">
-                        {Object.entries(h.prices_by_occupancy).map(([k, v]) => (
+                        {Object.entries(h.prices_by_occupancy).filter(([, v]) => Number(v) > 0).map(([k, v]) => (
                           <div key={k}>
                             <span className="text-ink-400 text-xs uppercase tracking-wider">{k}</span>{' '}
                             <span className="font-semibold">${Number(v).toLocaleString('es-MX')}</span>
-                            {Number(v) > 0 && <span className="text-[10px] text-emerald-600 ml-1">Púb ${Number(publicPrice(v)).toLocaleString('es-MX', { maximumFractionDigits: 0 })}</span>}
+                            <span className="text-[10px] text-emerald-600 ml-1">Púb ${Number(publicPrice(v)).toLocaleString('es-MX', { maximumFractionDigits: 0 })}</span>
                           </div>
                         ))}
                       </div>
@@ -573,7 +584,7 @@ export default function QuotationBuilder() {
               <div className="flex items-center justify-between mb-2">
                 <label className="label-text mb-0">Habitaciones del grupo</label>
                 <div className="flex gap-2">
-                  {['sencilla', 'doble', 'triple', 'cuadruple'].map((o) => (
+                  {['sencilla', 'doble', 'triple', 'cuadruple'].filter((o) => !hotel || priceFor(o) > 0).map((o) => (
                     <button key={o} type="button" onClick={() => addRoom(o)} className="btn-ghost text-xs"
                       data-testid={`add-room-${o}`}>+ {o}</button>
                   ))}
@@ -590,10 +601,9 @@ export default function QuotationBuilder() {
                       <div className="col-span-4">
                         <select className="input-field" value={r.ocupacion}
                           onChange={(e) => updateRoom(idx, { ocupacion: e.target.value })} data-testid={`room-occ-${idx}`}>
-                          <option value="sencilla">Sencilla (1 pax)</option>
-                          <option value="doble">Doble (2 pax)</option>
-                          <option value="triple">Triple (3 pax)</option>
-                          <option value="cuadruple">Cuádruple (4 pax)</option>
+                          {[['sencilla', 'Sencilla (1 pax)'], ['doble', 'Doble (2 pax)'], ['triple', 'Triple (3 pax)'], ['cuadruple', 'Cuádruple (4 pax)']]
+                            .filter(([o]) => !hotel || priceFor(o) > 0 || o === r.ocupacion)
+                            .map(([o, lbl]) => <option key={o} value={o}>{lbl}</option>)}
                         </select>
                       </div>
                       <div className="col-span-3">
@@ -705,6 +715,12 @@ export default function QuotationBuilder() {
               </div>
               <textarea rows="4" className="input-field" value={form.presentation_text} placeholder="Estimada/o [nombre], a continuación le presento la cotización para su viaje…"
                 onChange={(e) => setForm((f) => ({ ...f, presentation_text: e.target.value }))} data-testid="presentation-input" />
+            </div>
+            <div className="card-surface p-5">
+              <label className="label-text">Información importante (opcional)</label>
+              <p className="text-xs text-ink-400 mb-2">Condiciones específicas de esta cotización. Aparece en el PDF y en el enlace del cliente.</p>
+              <textarea rows="3" className="input-field" value={form.important_info || ''} placeholder="Ej. Tarifas vigentes solo para las fechas indicadas. Anticipo del 50% para confirmar…"
+                onChange={(e) => setForm((f) => ({ ...f, important_info: e.target.value }))} data-testid="important-info-input" />
             </div>
             <div className="grid md:grid-cols-2 gap-4 text-sm">
               <div className="rounded-xl border border-ink-100 p-4">

@@ -1,9 +1,9 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import AppShell from '@/components/AppShell';
 import api, { formatApiError } from '@/lib/api';
 import { useConfirm } from '@/components/ConfirmDialog';
 import { useAuth } from '@/context/AuthContext';
-import { Plus, Pencil, Trash2, X, Save, Sparkles, Bus, Ticket, Map } from 'lucide-react';
+import { Plus, Pencil, Trash2, X, Save, Sparkles, Bus, Ticket, Map, FileSpreadsheet, Upload, Download, CheckCircle2, AlertTriangle } from 'lucide-react';
 
 const CATEGORIES = [
   { key: 'tour', label: 'Tour', icon: Map },
@@ -20,7 +20,7 @@ const UNITS = [
 ];
 const UNIT_ES = { per_person: 'por persona', per_group: 'por grupo', per_day: 'por día', per_access: 'por acceso' };
 
-const EMPTY = { name: '', category: 'tour', description: '', net_price: 0, public_price: 0, unit: 'per_group', status: 'active' };
+const EMPTY = { name: '', category: 'tour', description: '', net_price: 0, public_price: 0, unit: 'per_group', image_url: '', status: 'active' };
 
 function money(v) { return `$${Number(v || 0).toLocaleString('es-MX', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`; }
 
@@ -35,6 +35,48 @@ export default function Services() {
   const [editing, setEditing] = useState(null);
   const [form, setForm] = useState(EMPTY);
   const [saving, setSaving] = useState(false);
+  const [importing, setImporting] = useState(false);
+  const [report, setReport] = useState(null);
+  const fileRef = useRef(null);
+
+  const downloadTemplate = async () => {
+    try {
+      const res = await api.get('/catalog/template', { responseType: 'blob' });
+      const url = window.URL.createObjectURL(new Blob([res.data]));
+      const a = document.createElement('a');
+      a.href = url; a.download = 'routiq-catalogo-template.xlsx';
+      document.body.appendChild(a); a.click(); a.remove();
+      window.URL.revokeObjectURL(url);
+    } catch (e) { setError(formatApiError(e)); }
+  };
+
+  const exportCatalog = async () => {
+    try {
+      const res = await api.get('/catalog/export', { responseType: 'blob' });
+      const cd = res.headers['content-disposition'] || '';
+      const m = cd.match(/filename="?([^"]+)"?/);
+      const url = window.URL.createObjectURL(new Blob([res.data]));
+      const a = document.createElement('a');
+      a.href = url; a.download = m ? m[1] : 'routiq-catalogo.xlsx';
+      document.body.appendChild(a); a.click(); a.remove();
+      window.URL.revokeObjectURL(url);
+    } catch (e) { setError(formatApiError(e)); }
+  };
+
+  const handleImport = async (e) => {
+    const file = e.target.files?.[0];
+    if (file) e.target.value = '';
+    if (!file) return;
+    setError(''); setImporting(true); setReport(null);
+    try {
+      const fd = new FormData();
+      fd.append('file', file);
+      const { data } = await api.post('/catalog/import', fd, { headers: { 'Content-Type': 'multipart/form-data' } });
+      setReport(data);
+      await load();
+    } catch (err) { setError(formatApiError(err)); }
+    finally { setImporting(false); }
+  };
 
   const load = async () => {
     try {
@@ -76,9 +118,21 @@ export default function Services() {
           <p className="text-ink-500 mt-1">Tours, traslados, accesos y extras opcionales agregables a cualquier cotización.</p>
         </div>
         {isAdmin && (
-          <button className="btn-primary text-sm" onClick={openNew} data-testid="new-service-btn">
-            <Plus className="w-4 h-4" /> Nuevo servicio
-          </button>
+          <div className="flex flex-wrap items-center gap-2">
+            <button className="btn-ghost text-sm" onClick={downloadTemplate} data-testid="svc-download-template-btn">
+              <FileSpreadsheet className="w-4 h-4" /> Plantilla Excel
+            </button>
+            <button className="btn-ghost text-sm" onClick={exportCatalog} data-testid="svc-export-btn">
+              <Download className="w-4 h-4" /> Exportar Excel
+            </button>
+            <button className="btn-ghost text-sm" onClick={() => fileRef.current?.click()} disabled={importing} data-testid="svc-import-btn">
+              <Upload className="w-4 h-4" /> {importing ? 'Importando…' : 'Importar Excel'}
+            </button>
+            <input ref={fileRef} type="file" accept=".xlsx" className="hidden" onChange={handleImport} data-testid="svc-import-input" />
+            <button className="btn-primary text-sm" onClick={openNew} data-testid="new-service-btn">
+              <Plus className="w-4 h-4" /> Nuevo servicio
+            </button>
+          </div>
         )}
       </div>
 
@@ -90,6 +144,7 @@ export default function Services() {
           const Icon = cat.icon;
           return (
             <div key={svc.id} className="card-surface p-5 flex flex-col" data-testid={`service-card-${svc.id}`}>
+              {svc.image_url ? <img src={svc.image_url} alt={svc.name} className="h-32 w-full object-cover rounded-lg mb-3 border border-ink-100" onError={(e) => { e.currentTarget.style.display = 'none'; }} /> : null}
               <div className="flex items-start justify-between">
                 <span className="pill bg-brand-50 text-brand-500 inline-flex items-center gap-1.5"><Icon className="w-3.5 h-3.5" /> {cat.label}</span>
                 {isAdmin && (
@@ -146,6 +201,10 @@ export default function Services() {
               </div>
               <div><label className="label-text">Descripción</label>
                 <textarea rows="2" className="input-field" value={form.description} onChange={(e) => setForm((f) => ({ ...f, description: e.target.value }))} data-testid="service-desc-input" /></div>
+              <div><label className="label-text">URL de imagen (opcional)</label>
+                <input className="input-field" placeholder="https://..." value={form.image_url || ''} onChange={(e) => setForm((f) => ({ ...f, image_url: e.target.value }))} data-testid="service-image-input" />
+                {form.image_url ? <img src={form.image_url} alt="" className="mt-2 h-24 w-full object-cover rounded-lg border border-ink-100" onError={(e) => { e.currentTarget.style.display = 'none'; }} /> : null}
+              </div>
               <div className="grid grid-cols-2 gap-3">
                 <div><label className="label-text">Precio neto (costo)</label>
                   <input type="number" step="0.01" className="input-field" value={form.net_price} onChange={(e) => setForm((f) => ({ ...f, net_price: e.target.value }))} data-testid="service-net-input" /></div>
@@ -162,6 +221,44 @@ export default function Services() {
               <button className="btn-primary" onClick={save} disabled={saving || !form.name} data-testid="save-service-btn">
                 <Save className="w-4 h-4" /> {saving ? 'Guardando…' : 'Guardar'}
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+      {report && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4" role="dialog">
+          <div className="absolute inset-0 bg-ink-900/40" onClick={() => setReport(null)} />
+          <div className="relative card-surface p-6 w-full max-w-lg animate-fade-up" data-testid="svc-import-report-modal">
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="font-display text-xl font-semibold text-ink-900">Resultado de la importación</h2>
+              <button onClick={() => setReport(null)} className="p-2 rounded-lg hover:bg-brand-50" data-testid="svc-import-report-close"><X className="w-5 h-5" /></button>
+            </div>
+            <div className="rounded-xl bg-mint-100 text-emerald-800 p-4 flex items-center gap-3 mb-4">
+              <CheckCircle2 className="w-6 h-6 shrink-0" />
+              <div>
+                <p className="font-semibold" data-testid="svc-import-total">{report.total_imported} registro(s) procesado(s)</p>
+                <p className="text-sm">
+                  {report.imported.tours_nuevos ?? 0} tour(s) nuevo(s) / {report.imported.tours_actualizados ?? 0} act. · {report.imported.traslados_nuevos ?? 0} traslado(s) / {report.imported.traslados_actualizados ?? 0} act. · {report.imported.accesos_nuevos ?? 0} acceso(s) / {report.imported.accesos_actualizados ?? 0} act. · {report.imported.extras_nuevos ?? 0} extra(s) / {report.imported.extras_actualizados ?? 0} act.
+                </p>
+              </div>
+            </div>
+            {report.error_count > 0 ? (
+              <div data-testid="svc-import-errors">
+                <p className="text-sm font-semibold text-red-700 flex items-center gap-1.5 mb-2"><AlertTriangle className="w-4 h-4" /> {report.error_count} fila(s) con error</p>
+                <div className="max-h-60 overflow-y-auto rounded-xl border border-ink-100 divide-y divide-ink-100">
+                  {report.errors.map((er, i) => (
+                    <div key={i} className="px-3 py-2 text-sm flex gap-3">
+                      <span className="pill bg-red-100 text-red-700 text-xs shrink-0">{er.sheet} · fila {er.row}</span>
+                      <span className="text-ink-700">{er.message}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ) : (
+              <p className="text-sm text-emerald-700">✓ Sin errores. Todo se importó correctamente.</p>
+            )}
+            <div className="flex justify-end mt-6">
+              <button className="btn-primary" onClick={() => setReport(null)} data-testid="svc-import-report-done">Listo</button>
             </div>
           </div>
         </div>
