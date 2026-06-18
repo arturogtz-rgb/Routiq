@@ -7,6 +7,17 @@ Plataforma SaaS PWA multi-tenant para **cotización y seguimiento turístico** p
 - **Producción: https://routiq.com.mx** ✅ (VPS Hostinger 177.7.36.75, Docker + Nginx + Let's Encrypt)
 - Iteración actual: **v2.4** (iter_24: registro de uso/costo de IA en Master + generar respaldo on-demand + revisión de seguridad pre-lanzamiento)
 
+## Iteración 35 (jun-2026) — Fases 2-5 + PDF profesional + Confirmación de Reserva
+**Fase 2 (constructor):** al elegir paquete se ocultan los demás (+ "Cambiar paquete"); ocupaciones con precio neto 0 = "no disponible" (ocultas en selects/tarjetas/PDF/enlace); fix selector de Tono.
+**Fase 3 (Excel):** plantilla/import/export con itinerario día a día (`dia_1..dia_10`), hojas de servicios por categoría (Tours/Traslados/Accesos/Extras) con `image_url`; importación upsert idempotente e independiente por categoría. Servicios con imagen + import/export desde `/app/services`.
+**Fase 4 (público):** catálogo público de servicios `/c/:slug/servicios` por categorías (endpoint `/api/public/company/{slug}/services`); página de condiciones `/c/:slug/condiciones`.
+**Fase 5 (textos):** subtítulo del catálogo editable en Ajustes (`catalog_subtitle`).
+**Item 9:** Programa Personalizado con toggle por concepto 🔒 Tarifa neta (canal, no comisionable) / 💰 Precio público (comisionable). Mezcla en la misma cotización.
+**Item 10/11 (PDF + enlace + condiciones):** PDF rediseñado para los 3 tipos — logo grande, ciudad/fecha de emisión, dirigido a, saludo, itinerario, **tabla de precios por ocupación** (paquetes), Incluye/No incluye, **"Información importante"** (campo libre por cotización), texto fijo de precios, **enlace clickeable a `/c/:slug/condiciones`**, nombre del ejecutivo. TODO replicado en el enlace `/q/:token` (tabla ocupación, información importante, enlace condiciones, ejecutivo). Condiciones separadas en 2 campos (`general_conditions` + `cancellation_policy`) editables en Ajustes.
+**Item 12 (Confirmación de Reserva):** documento nuevo desde cotización "Ganada" (`routes/booking.py`): formulario (encabezado, servicios confirmados, hospedaje con N° de confirmación, observaciones, precio/total), PDF dedicado con datos bancarios (banco/beneficiario/cuenta/sucursal/CLABE/SWIFT/referencia), nota Stripe y condiciones completas; envío por correo (PDF adjunto) y WhatsApp (link público por token). Bancarios `sucursal`+`referencia` añadidos en Ajustes→Pagos.
+- Tests: `/app/test_reports/iteration_35.json` (backend 17/17 PASS) + `backend/tests/test_iteration35_phases.py`. Regla "PDF == enlace cliente" verificada.
+- ⏳ Backlog: % de comisión por cliente; modo vista previa (dry-run) en importación Excel.
+
 ## Iteración 34 (jun-2026) — FASE 1: Reescritura del Motor de Precios (PAQUETES = tarifas netas)
 - ✅ **Catálogo de PAQUETES guarda TARIFAS NETAS**. `pricing.py`: nuevas `public_from_net(net, divisor)` y `channel_price(net, channel, divisor, commissions)`. Precio Público = neto / `margin_divisor`. `compute_quotation` ahora aplica precio por canal SOLO a items de paquete (hospedaje, noche_extra):
   - **directo / agencia** → Precio Público (sin comisión sobre el paquete).
