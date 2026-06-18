@@ -4,7 +4,7 @@ const CHANNELS = [
   { k: 'directo', label: 'Directo' },
   { k: 'agencia', label: 'Agencia' },
   { k: 'mayorista', label: 'Mayorista' },
-  { k: 'operador', label: 'Operador' },
+  { k: 'operador', label: 'Mayorista Preferencial' },
 ];
 
 export const PricingSettings = ({ pricing, setPricing, save, marginPct }) => (

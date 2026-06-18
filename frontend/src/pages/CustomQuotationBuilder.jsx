@@ -311,7 +311,7 @@ export default function CustomQuotationBuilder() {
                   <div><label className="label-text">Nombre</label><input className="input-field" value={newClient.name} onChange={(e) => setNewClient((x) => ({ ...x, name: e.target.value }))} data-testid="custom-newclient-name" /></div>
                   <div><label className="label-text">Canal</label>
                     <select className="input-field" value={newClient.channel} onChange={(e) => setNewClient((x) => ({ ...x, channel: e.target.value }))} data-testid="custom-newclient-channel">
-                      <option value="directo">Directo</option><option value="agencia">Agencia (10%)</option><option value="mayorista">Mayorista (15%)</option><option value="operador">Operador (20%)</option>
+                      <option value="directo">Directo</option><option value="agencia">Agencia</option><option value="mayorista">Mayorista</option><option value="operador">Mayorista Preferencial</option>
                     </select>
                   </div>
                   <div><label className="label-text">Teléfono</label><input className="input-field" value={newClient.phone} onChange={(e) => setNewClient((x) => ({ ...x, phone: e.target.value }))} data-testid="custom-newclient-phone" /></div>
@@ -488,7 +488,7 @@ export default function CustomQuotationBuilder() {
               <div className="flex items-center justify-between mb-2">
                 <label className="label-text mb-0">Texto de presentación (aparece al inicio del PDF y del enlace)</label>
                 <div className="flex items-center gap-2">
-                  <select className="input-field h-8 py-0 text-xs w-auto" value={presTone} onChange={(e) => setPresTone(e.target.value)} data-testid="custom-tone-select">
+                  <select className="input-field text-xs w-auto py-1.5" value={presTone} onChange={(e) => setPresTone(e.target.value)} data-testid="custom-tone-select">
                     <option value="formal">Tono: Formal</option>
                     <option value="cercano">Tono: Cercano</option>
                     <option value="premium">Tono: Premium</option>

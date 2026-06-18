@@ -83,6 +83,26 @@ def resolve_hotel_prices(pack: dict, hotel: dict, checkin: str | None):
     return base_prices, base_minor, season_name
 
 
+def public_from_net(net: float, margin_divisor: float) -> float:
+    """Precio público = tarifa neta / divisor de margen."""
+    return round(net / margin_divisor, 2) if margin_divisor and margin_divisor > 0 else round(net, 2)
+
+
+def channel_price(net: float, channel: str, margin_divisor: float, commissions: dict) -> float:
+    """Precio que VE el cliente para un concepto NETO de paquete, según su canal:
+      - directo / agencia  -> Precio Público (neto / divisor), sin comisión.
+      - mayorista          -> Precio Público - comisión mayorista (configurable). No comisionable.
+      - operador (Mayorista Preferencial) -> Tarifa Neta original. No comisionable.
+    """
+    pub = public_from_net(net, margin_divisor)
+    if channel == "operador":
+        return round(net, 2)
+    if channel == "mayorista":
+        rate = float((commissions or {}).get("mayorista", 0.0) or 0.0)
+        return round(pub * (1 - rate), 2)
+    return pub  # directo, agencia y cualquier otro
+
+
 def compute_quotation(pack: dict | None, hotel_name: str, pax: dict, nights: int,
                       client_channel: str, pricing_config: dict,
                       services_catalog: dict | None = None,
@@ -98,6 +118,13 @@ def compute_quotation(pack: dict | None, hotel_name: str, pax: dict, nights: int
     items: List[dict] = []
     num_rooms = sum(int(r.get("count", 1)) for r in rooms) if rooms else 1
     season_name = None
+
+    # --- Channel pricing (PAQUETES): catálogo guarda TARIFAS NETAS ---
+    margin_divisor = float(pricing_config.get("margin_divisor", 0.76) or 0.76)
+    commissions = pricing_config.get("commissions", {}) or {}
+
+    def _chan(net: float) -> float:
+        return channel_price(net, client_channel, margin_divisor, commissions)
 
     total_pax = (sum(OCCUPANCY_COUNT[r["ocupacion"]] * int(r.get("count", 1)) for r in rooms)
                  if rooms else int(pax.get("adultos", 0))) + menores
@@ -120,43 +147,54 @@ def compute_quotation(pack: dict | None, hotel_name: str, pax: dict, nights: int
                 ocupacion = room["ocupacion"]
                 count = int(room.get("count", 1))
                 occ_count = OCCUPANCY_COUNT[ocupacion]
-                price_per_pax = float(eff_prices.get(ocupacion, 0))
+                net_per_pax = float(eff_prices.get(ocupacion, 0) or 0)
+                if net_per_pax <= 0:
+                    continue  # precio 0 = no disponible -> se omite
+                price_per_pax = _chan(net_per_pax)
                 pax_in_rooms = occ_count * count
                 items.append({
                     "label": f"{count} hab {ocupacion} × {occ_count} pax — {hotel['name']}",
                     "unit_price": price_per_pax, "qty": pax_in_rooms,
+                    "net_price": net_per_pax, "public_price": public_from_net(net_per_pax, margin_divisor),
                     "rooms_count": count, "ocupacion": ocupacion, "kind": "hospedaje",
-                    "subtotal": price_per_pax * pax_in_rooms,
+                    "subtotal": round(price_per_pax * pax_in_rooms, 2),
                 })
         else:
             ocupacion = pax.get("ocupacion", "doble")
             adultos = int(pax.get("adultos", 2))
-            price_adult = float(eff_prices.get(ocupacion, 0))
-            if adultos > 0:
+            net_adult = float(eff_prices.get(ocupacion, 0) or 0)
+            if adultos > 0 and net_adult > 0:
+                price_adult = _chan(net_adult)
                 items.append({
                     "label": f"{pack['name']} - {hotel['name']} ({ocupacion}) - Adulto",
-                    "unit_price": price_adult, "qty": adultos, "subtotal": price_adult * adultos,
+                    "unit_price": price_adult, "qty": adultos, "subtotal": round(price_adult * adultos, 2),
+                    "net_price": net_adult, "public_price": public_from_net(net_adult, margin_divisor),
                     "kind": "hospedaje",
                 })
 
         if menores > 0:
-            price_minor = float(eff_minor or 0)
-            items.append({
-                "label": f"{hotel['name']} - Menor",
-                "unit_price": price_minor, "qty": menores, "subtotal": price_minor * menores,
-                "kind": "hospedaje",
-            })
+            net_minor = float(eff_minor or 0)
+            if net_minor > 0:
+                price_minor = _chan(net_minor)
+                items.append({
+                    "label": f"{hotel['name']} - Menor",
+                    "unit_price": price_minor, "qty": menores, "subtotal": round(price_minor * menores, 2),
+                    "net_price": net_minor, "public_price": public_from_net(net_minor, margin_divisor),
+                    "kind": "hospedaje",
+                })
 
         # ---- Extra nights (beyond package duration) ----
         extra_nights = max(0, nights_total - int(nights or 0))
         if extra_nights > 0 and extra_nights_cfg and float(extra_nights_cfg.get("cost_per_night", 0) or 0) > 0:
-            cost = float(extra_nights_cfg["cost_per_night"])
+            cost_net = float(extra_nights_cfg["cost_per_night"])
+            cost = _chan(cost_net)
             unit = extra_nights_cfg.get("unit", "per_reservation")
             mult = total_pax if unit == "per_person" else (num_rooms if unit == "per_room" else 1)
             qty = extra_nights * mult
             items.append({
                 "label": f"Noche extra × {extra_nights} ({EXTRA_UNIT_ES.get(unit, unit)})",
                 "unit_price": cost, "qty": qty, "subtotal": round(cost * qty, 2),
+                "net_price": cost_net, "public_price": public_from_net(cost_net, margin_divisor),
                 "kind": "noche_extra", "extra_nights": extra_nights, "unit": unit,
             })
 
@@ -179,14 +217,21 @@ def compute_quotation(pack: dict | None, hotel_name: str, pax: dict, nights: int
             "service_id": svc["id"], "subtotal": round(price * qty, 2),
         })
 
-    subtotal = sum(it["subtotal"] for it in items)
-    commission_rate = float(pricing_config.get("commissions", {}).get(client_channel, 0.0))
-    commission = round(subtotal * commission_rate, 2)
+    # Comisión por canal SOLO sobre servicios a la carta (los paquetes ya traen
+    # el precio por canal incorporado y son "neto no comisionable").
+    package_subtotal = sum(it["subtotal"] for it in items if it.get("kind") in ("hospedaje", "noche_extra"))
+    service_subtotal = sum(it["subtotal"] for it in items if it.get("kind") == "servicio")
+    commission_rate = float(commissions.get(client_channel, 0.0) or 0.0)
+    commission = round(service_subtotal * commission_rate, 2)
+    subtotal = round(package_subtotal + service_subtotal, 2)
     total = round(subtotal - commission, 2)
+
+    has_package = pack is not None
+    price_note = "Precio neto no comisionable" if (has_package and client_channel in ("mayorista", "operador")) else ""
 
     return {
         "items": items,
-        "subtotal": round(subtotal, 2),
+        "subtotal": subtotal,
         "commission": commission,
         "commission_rate": commission_rate,
         "total": total,
@@ -194,6 +239,7 @@ def compute_quotation(pack: dict | None, hotel_name: str, pax: dict, nights: int
         "nights_total": nights_total,
         "extra_nights": extra_nights,
         "season_applied": season_name,
+        "price_note": price_note,
     }
 
 
@@ -257,4 +303,5 @@ def compute_custom_quotation(custom_items: list, pax: dict, custom_nights: int,
         "nights_total": nights_total,
         "extra_nights": 0,
         "season_applied": None,
+        "price_note": "",
     }

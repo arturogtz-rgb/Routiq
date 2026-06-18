@@ -316,6 +316,9 @@ export default function PublicQuotation() {
           {payment?.equivalent_amount && payment?.equivalent_currency && (
             <p className="text-right text-xs text-ink-400 mb-4" data-testid="usd-equivalent">≈ ${Number(payment.equivalent_amount).toLocaleString(payment.equivalent_currency === 'USD' ? 'en-US' : 'es-MX')} {payment.equivalent_currency} (TC {payment.rate_mxn_per_usd})</p>
           )}
+          {q.price_note && (
+            <p className="text-right text-xs text-ink-400 mb-4 italic" data-testid="public-price-note">{q.price_note}</p>
+          )}
           {q.amount_paid > 0 && !isPaid && (
             <p className="text-right text-xs text-emerald-700 mb-3">Pagado: {money(q.amount_paid, q.currency)} · Resta: {money(amountDue, q.currency)}</p>
           )}

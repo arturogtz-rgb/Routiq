@@ -18,10 +18,18 @@ log = logging.getLogger("routiq.public_package")
 router = APIRouter()
 
 
-def _base_price(pack: dict):
-    prices = [v for h in (pack.get("hotels") or [])
-              for v in (h.get("prices_by_occupancy") or {}).values() if v and v > 0]
-    return min(prices) if prices else None
+def _base_price(pack: dict, margin_divisor: float = 0.76):
+    """Precio público "Desde": tarifa neta mínima del catálogo / divisor de margen."""
+    nets = [v for h in (pack.get("hotels") or [])
+            for v in (h.get("prices_by_occupancy") or {}).values() if v and v > 0]
+    if not nets:
+        return None
+    net = min(nets)
+    return round(net / margin_divisor, 2) if margin_divisor and margin_divisor > 0 else round(net, 2)
+
+
+def _margin(company: dict) -> float:
+    return float((company.get("pricing_config") or {}).get("margin_divisor", 0.76) or 0.76)
 
 
 @router.get("/public/package/{slug}/{code}")
@@ -50,7 +58,7 @@ async def public_package(slug: str, code: str):
             "includes": pack.get("includes", []), "excludes": pack.get("excludes", []),
             "hotels": [{"name": h.get("name", ""), "category": h.get("category", "")}
                        for h in (pack.get("hotels") or [])],
-            "base_price": _base_price(pack),
+            "base_price": _base_price(pack, _margin(company)),
             "currency": company.get("base_currency", "MXN"),
         },
         "company": {
@@ -139,7 +147,7 @@ async def public_company_catalog(slug: str):
         "packages": [{
             "code": p["code"], "name": p["name"], "nights": p.get("nights"),
             "description": p.get("description", ""), "image_url": p.get("image_url", ""),
-            "base_price": _base_price(p), "currency": company.get("base_currency", "MXN"),
+            "base_price": _base_price(p, _margin(company)), "currency": company.get("base_currency", "MXN"),
             "hotels_count": len(p.get("hotels") or []),
         } for p in packs],
     }

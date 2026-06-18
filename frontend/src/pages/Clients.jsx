@@ -8,7 +8,7 @@ const CHANNELS = [
   { v: 'directo', label: 'Directo' },
   { v: 'agencia', label: 'Agencia' },
   { v: 'mayorista', label: 'Mayorista' },
-  { v: 'operador', label: 'Operador' },
+  { v: 'operador', label: 'Mayorista Preferencial' },
 ];
 const CHANNEL_LABEL = Object.fromEntries(CHANNELS.map((c) => [c.v, c.label]));
 const PAGE_SIZE = 10;

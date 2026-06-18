@@ -144,6 +144,7 @@ async def create_quotation(payload: QuotationCreate, user: dict = Depends(requir
         "commission_rate": calc["commission_rate"],
         "total": calc["total"],
         "currency": calc["currency"],
+        "price_note": calc.get("price_note", ""),
         "state": "nueva_consulta",
         "archived": False,
         "deleted": False,
@@ -239,7 +240,7 @@ async def update_quotation(quotation_id: str, payload: QuotationUpdate, user: di
                 "nights_total": calc["nights_total"], "extra_nights": 0,
                 "items": calc["items"], "subtotal": calc["subtotal"],
                 "commission": calc["commission"], "commission_rate": calc["commission_rate"],
-                "total": calc["total"],
+                "total": calc["total"], "price_note": calc.get("price_note", ""),
             })
             if q.get("discount") and q["discount"].get("type") != "none":
                 final_total, amount = _apply_discount(calc["total"], q["discount"])
@@ -280,7 +281,7 @@ async def update_quotation(quotation_id: str, payload: QuotationUpdate, user: di
             "season_applied": calc.get("season_applied"),
             "items": calc["items"], "subtotal": calc["subtotal"],
             "commission": calc["commission"], "commission_rate": calc["commission_rate"],
-            "total": calc["total"],
+            "total": calc["total"], "price_note": calc.get("price_note", ""),
         })
         updates.pop("hotel_name", None)
         if q.get("discount") and q["discount"].get("type") != "none":

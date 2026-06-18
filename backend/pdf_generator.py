@@ -375,7 +375,13 @@ def generate_quotation_pdf(company: dict, quotation: dict, package: dict, client
     ]))
     story.append(tot)
 
-    # Includes / Excludes (flow naturally — no forced page break, deja a reportlab decidir)
+    price_note = (quotation.get("price_note") or "").strip()
+    if price_note:
+        story.append(Spacer(1, 4))
+        story.append(Paragraph(
+            f"<font color='#475569'><i>{_xml_escape(price_note)}</i></font>",
+            ParagraphStyle("note", parent=s["soft"], alignment=TA_LEFT),
+        ))
     if package.get("includes") or package.get("excludes"):
         inc_exc_data = []
         if package.get("includes"):

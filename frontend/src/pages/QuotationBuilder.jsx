@@ -27,6 +27,7 @@ export default function QuotationBuilder() {
   const [newClient, setNewClient] = useState({ name: '', phone: '', email: '', channel: 'directo' });
   const [aiPresLoading, setAiPresLoading] = useState(false);
   const [presTone, setPresTone] = useState('formal');
+  const [company, setCompany] = useState(null);
 
   const [form, setForm] = useState({
     type: 'paquete',
@@ -44,8 +45,8 @@ export default function QuotationBuilder() {
 
   useEffect(() => {
     (async () => {
-      const [c, p, s] = await Promise.all([api.get('/clients'), api.get('/packages'), api.get('/services')]);
-      setClients(c.data); setPackages(p.data); setServices(s.data);
+      const [c, p, s, comp] = await Promise.all([api.get('/clients'), api.get('/packages'), api.get('/services'), api.get('/companies/me')]);
+      setClients(c.data); setPackages(p.data); setServices(s.data); setCompany(comp.data);
       if (editing) {
         try {
           const { data: q } = await api.get(`/quotations/${id}`);
@@ -93,11 +94,22 @@ export default function QuotationBuilder() {
       ];
   const cur = STEPS[Math.min(step, STEPS.length - 1)].key;
 
-  const commissionRate = (() => {
-    if (!client) return 0;
-    const rates = { directo: 0, agencia: 0.10, mayorista: 0.15, operador: 0.20 };
-    return rates[client.channel] ?? 0;
-  })();
+  const margin = Number(company?.pricing_config?.margin_divisor) || 0.76;
+  const commissions = company?.pricing_config?.commissions || {};
+  const channel = client?.channel || 'directo';
+  const commissionRate = client ? Number(commissions[channel] ?? 0) : 0;
+  // Paquetes: catálogo guarda TARIFA NETA. Público = neto / divisor; el precio por
+  // canal define lo que VE el cliente (directo/agencia=público, mayorista=público-comisión,
+  // operador/Mayorista Preferencial=neto). No comisionable para mayorista/operador.
+  const publicPrice = (net) => (margin > 0 ? (Number(net) || 0) / margin : (Number(net) || 0));
+  const channelPrice = (net) => {
+    const n = Number(net) || 0;
+    if (n <= 0) return 0;
+    const pub = publicPrice(n);
+    if (channel === 'operador') return n;
+    if (channel === 'mayorista') return pub * (1 - (Number(commissions.mayorista) || 0));
+    return pub;
+  };
 
   const rooms = form.pax.rooms || [];
   const roomsAdults = rooms.reduce((s, r) => s + OCC_COUNT[r.ocupacion] * (r.count || 0), 0);
@@ -110,7 +122,7 @@ export default function QuotationBuilder() {
   const extraNights = isServices ? 0 : Math.max(0, tripNights - packNights);
   const extraCfg = form.extra_nights || { cost_per_night: 0, unit: 'per_reservation' };
   const extraMult = extraCfg.unit === 'per_person' ? totalPax : extraCfg.unit === 'per_room' ? numRooms : 1;
-  const extraNightsSubtotal = extraNights > 0 ? (Number(extraCfg.cost_per_night) || 0) * extraNights * extraMult : 0;
+  const extraNightsSubtotal = extraNights > 0 ? channelPrice(Number(extraCfg.cost_per_night) || 0) * extraNights * extraMult : 0;
 
   const allowedDays = pack?.allowed_start_days || [];
   const specialDates = pack?.special_departure_dates || [];
@@ -147,29 +159,34 @@ export default function QuotationBuilder() {
     }
     return { seasonId: null, seasonName: null };
   })();
-  const priceFor = (occ) => {
+  const priceFor = (occ) => {  // tarifa NETA del catálogo (con temporada si aplica)
     if (!hotel) return 0;
     const sp = effectiveSeason.seasonId ? (hotel.season_prices || {})[effectiveSeason.seasonId] : null;
     const v = sp ? sp[occ] : undefined;
     return (v !== undefined && v !== null && v !== '') ? Number(v) : Number(hotel.prices_by_occupancy?.[occ] || 0);
   };
-  const minorPrice = (() => {
+  const minorNet = (() => {
     if (!hotel) return 0;
     const sp = effectiveSeason.seasonId ? (hotel.season_prices || {})[effectiveSeason.seasonId] : null;
     const v = sp ? sp.minor_price : undefined;
     return (v !== undefined && v !== null && v !== '') ? Number(v) : Number(hotel.minor_price || 0);
   })();
 
-  const subtotal = (() => {
-    if (isServices) return servicesSubtotal;
-    let s = servicesSubtotal + extraNightsSubtotal;
-    if (!hotel) return s;
-    for (const r of rooms) s += priceFor(r.ocupacion) * OCC_COUNT[r.ocupacion] * (r.count || 0);
-    s += minorPrice * (form.pax.menores || 0);
+  const packageSubtotal = (() => {
+    if (isServices || !hotel) return 0;
+    let s = extraNightsSubtotal;
+    for (const r of rooms) {
+      const net = priceFor(r.ocupacion);
+      if (net <= 0) continue;  // precio 0 = no disponible
+      s += channelPrice(net) * OCC_COUNT[r.ocupacion] * (r.count || 0);
+    }
+    if (minorNet > 0) s += channelPrice(minorNet) * (form.pax.menores || 0);
     return s;
   })();
-  const commission = Math.round(subtotal * commissionRate * 100) / 100;
+  const subtotal = isServices ? servicesSubtotal : (packageSubtotal + servicesSubtotal);
+  const commission = Math.round(servicesSubtotal * commissionRate * 100) / 100;  // sólo servicios
   const total = subtotal - commission;
+  const priceNote = (!isServices && hotel && (channel === 'mayorista' || channel === 'operador')) ? 'Precio neto no comisionable' : '';
 
   const isServiceSelected = (id) => (form.services || []).some((s) => s.service_id === id);
   const toggleService = (svc) => setForm((f) => {
@@ -409,9 +426,9 @@ export default function QuotationBuilder() {
                   <div><label className="label-text">Canal</label>
                     <select className="input-field" value={newClient.channel} onChange={(e) => setNewClient((x) => ({ ...x, channel: e.target.value }))} data-testid="newclient-channel">
                       <option value="directo">Directo</option>
-                      <option value="agencia">Agencia (10%)</option>
-                      <option value="mayorista">Mayorista (15%)</option>
-                      <option value="operador">Operador (20%)</option>
+                      <option value="agencia">Agencia</option>
+                      <option value="mayorista">Mayorista</option>
+                      <option value="operador">Mayorista Preferencial</option>
                     </select>
                   </div>
                   <div><label className="label-text">Teléfono</label><input className="input-field" value={newClient.phone} onChange={(e) => setNewClient((x) => ({ ...x, phone: e.target.value }))} data-testid="newclient-phone" /></div>
@@ -480,9 +497,14 @@ export default function QuotationBuilder() {
                       <p className="text-xs text-ink-400 mt-0.5">{h.category}</p>
                       <div className="grid grid-cols-2 gap-x-2 gap-y-1 mt-3 text-sm">
                         {Object.entries(h.prices_by_occupancy).map(([k, v]) => (
-                          <div key={k}><span className="text-ink-400 text-xs uppercase tracking-wider">{k}</span> <span className="font-semibold">${v.toLocaleString('es-MX')}</span></div>
+                          <div key={k}>
+                            <span className="text-ink-400 text-xs uppercase tracking-wider">{k}</span>{' '}
+                            <span className="font-semibold">${Number(v).toLocaleString('es-MX')}</span>
+                            {Number(v) > 0 && <span className="text-[10px] text-emerald-600 ml-1">Púb ${Number(publicPrice(v)).toLocaleString('es-MX', { maximumFractionDigits: 0 })}</span>}
+                          </div>
                         ))}
                       </div>
+                      <p className="text-[10px] text-ink-400 mt-1.5">Tarifa neta · Público = neto / {margin}</p>
                     </button>
                   ))}
                 </div>
@@ -559,7 +581,8 @@ export default function QuotationBuilder() {
               </div>
               <div className="space-y-2">
                 {rooms.map((r, idx) => {
-                  const price = hotel ? Number(hotel.prices_by_occupancy?.[r.ocupacion] || 0) : 0;
+                  const net = priceFor(r.ocupacion);
+                  const pub = publicPrice(net);
                   const pax = OCC_COUNT[r.ocupacion] * (r.count || 0);
                   return (
                     <div key={idx} className="grid grid-cols-12 gap-2 items-center rounded-xl border border-ink-100 p-3 bg-cream"
@@ -582,8 +605,11 @@ export default function QuotationBuilder() {
                             onClick={() => updateRoom(idx, { count: (r.count || 1) + 1 })} data-testid={`room-inc-${idx}`}>+</button>
                         </div>
                       </div>
-                      <div className="col-span-4 text-xs text-ink-500">
-                        {pax} pax · {price > 0 ? `$${(price * pax).toLocaleString('es-MX')} MXN` : ''}
+                      <div className="col-span-4 text-xs text-ink-500" data-testid={`room-price-${idx}`}>
+                        {pax} pax
+                        {net > 0
+                          ? <> · <span className="text-ink-400">Neto</span> ${(net * pax).toLocaleString('es-MX')} · <span className="text-emerald-700 font-medium">Público</span> ${(pub * pax).toLocaleString('es-MX', { maximumFractionDigits: 0 })}</>
+                          : <span className="text-amber-600"> · no disponible</span>}
                       </div>
                       <div className="col-span-1 text-right">
                         <button type="button" className="text-red-600 hover:text-red-800 text-xs"
@@ -667,7 +693,7 @@ export default function QuotationBuilder() {
               <div className="flex items-center justify-between mb-2">
                 <label className="label-text mb-0">Texto de presentación (aparece al inicio del PDF y del enlace)</label>
                 <div className="flex items-center gap-2">
-                  <select className="input-field h-8 py-0 text-xs w-auto" value={presTone} onChange={(e) => setPresTone(e.target.value)} data-testid="tone-select">
+                  <select className="input-field text-xs w-auto py-1.5" value={presTone} onChange={(e) => setPresTone(e.target.value)} data-testid="tone-select">
                     <option value="formal">Tono: Formal</option>
                     <option value="cercano">Tono: Cercano</option>
                     <option value="premium">Tono: Premium</option>
@@ -729,11 +755,12 @@ export default function QuotationBuilder() {
                 <div className="flex justify-between text-sm mb-1 opacity-90"><span>Servicios a la carta</span><span>{money(servicesSubtotal)}</span></div>
               )}
               <div className="flex justify-between text-sm"><span>Subtotal</span><span>{money(subtotal)}</span></div>
-              {commissionRate > 0 && <div className="flex justify-between text-sm mt-1"><span>Comisión canal ({(commissionRate * 100).toFixed(0)}%)</span><span>- {money(commission)}</span></div>}
+              {commission > 0 && <div className="flex justify-between text-sm mt-1"><span>Comisión canal servicios ({(commissionRate * 100).toFixed(0)}%)</span><span>- {money(commission)}</span></div>}
               <div className="border-t border-white/20 mt-3 pt-3 flex justify-between items-end">
                 <span className="text-sm uppercase tracking-widest opacity-80">Total</span>
                 <span className="font-display font-bold text-3xl">{money(total)}</span>
               </div>
+              {priceNote && <p className="text-xs opacity-80 mt-2" data-testid="builder-price-note">{priceNote}</p>}
             </div>
           </div>
         )}

@@ -488,6 +488,7 @@ export default function QuotationDetail() {
               <div className="flex justify-between"><span className="text-ink-500">Subtotal</span><span className="text-ink-900 font-medium">{money(q.subtotal, q.currency)}</span></div>
               {q.commission > 0 && <div className="flex justify-between"><span className="text-ink-500">Comisión</span><span className="text-red-600 font-medium">- {money(q.commission, q.currency)}</span></div>}
               <div className="flex justify-between pt-2 border-t border-ink-100 mt-2"><span className="text-ink-700">Total</span><span className="text-ink-900 font-semibold">{money(q.total, q.currency)}</span></div>
+              {q.price_note && <p className="text-xs text-ink-400 italic" data-testid="detail-price-note">{q.price_note}</p>}
               {q.discount && q.discount.amount > 0 && (
                 <div className="flex justify-between"><span className="text-ink-500">Descuento ({q.discount.type === 'percent' ? `${q.discount.value}%` : 'fijo'})</span><span className="text-red-600 font-medium">- {money(q.discount.amount, q.currency)}</span></div>
               )}
