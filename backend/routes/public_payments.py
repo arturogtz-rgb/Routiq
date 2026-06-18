@@ -48,20 +48,17 @@ async def get_public_quotation(token: str):
     if q.get("type") == "paquete" and pack and q.get("hotel_selected"):
         sel = next((h for h in (pack.get("hotels") or []) if h.get("name") == q.get("hotel_selected")), None)
         if sel:
-            from pricing import channel_price
+            from pricing import occupancy_rows_selected, occupancy_rows_all
             pcfg = company.get("pricing_config") or {}
             divisor = float(pcfg.get("margin_divisor", 0.76) or 0.76)
             commissions = pcfg.get("commissions", {}) or {}
             channel = q.get("client_snapshot", {}).get("channel", "directo")
-            prices = sel.get("prices_by_occupancy", {}) or {}
-            for key, label in [("sencilla", "Sencilla"), ("doble", "Doble"), ("triple", "Triple"), ("cuadruple", "Cuádruple")]:
-                net = float(prices.get(key, 0) or 0)
-                if net <= 0:
-                    continue
-                occupancy_prices.append({"key": key, "label": label, "price": channel_price(net, channel, divisor, commissions)})
-            minor_net = float(sel.get("minor_price", 0) or 0)
-            if minor_net > 0:
-                occupancy_prices.append({"key": "menor", "label": "Menor", "price": channel_price(minor_net, channel, divisor, commissions)})
+            if q.get("show_all_occupancies"):
+                rows = occupancy_rows_all(sel, channel, divisor, commissions)
+            else:
+                rows = occupancy_rows_selected(q.get("items", []))
+            occupancy_prices = [{"key": str(i), "label": r["label"], "price": r["per_person"], "total": r.get("total")}
+                                for i, r in enumerate(rows)]
     exec_name = ""
     if q.get("assigned_to"):
         exec_user = await db.users.find_one({"id": q["assigned_to"]}, {"_id": 0, "name": 1})

@@ -42,6 +42,7 @@ export default function QuotationBuilder() {
     notes: '',
     presentation_text: '',
     important_info: '',
+    show_all_occupancies: false,
   });
 
   useEffect(() => {
@@ -64,6 +65,7 @@ export default function QuotationBuilder() {
             notes: q.notes || '',
             presentation_text: q.presentation_text || '',
             important_info: q.important_info || '',
+            show_all_occupancies: !!q.show_all_occupancies,
           });
         } catch (e) { setError(formatApiError(e)); }
         return;
@@ -277,6 +279,7 @@ export default function QuotationBuilder() {
           notes: form.notes,
           presentation_text: form.presentation_text || '',
           important_info: form.important_info || '',
+          show_all_occupancies: !!form.show_all_occupancies,
         };
         if (!isServices) patch.hotel_name = form.hotel_name;
         await api.patch(`/quotations/${id}`, patch);
@@ -291,6 +294,7 @@ export default function QuotationBuilder() {
         contacts,
         presentation_text: form.presentation_text || '',
         important_info: form.important_info || '',
+        show_all_occupancies: !!form.show_all_occupancies,
         from_request: search.get('lead') || undefined,
       };
       if (isServices) {
@@ -722,6 +726,16 @@ export default function QuotationBuilder() {
               <textarea rows="3" className="input-field" value={form.important_info || ''} placeholder="Ej. Tarifas vigentes solo para las fechas indicadas. Anticipo del 50% para confirmar…"
                 onChange={(e) => setForm((f) => ({ ...f, important_info: e.target.value }))} data-testid="important-info-input" />
             </div>
+            {!isServices && (
+              <label className="card-surface p-4 flex items-start gap-3 cursor-pointer" data-testid="show-all-occupancies-label">
+                <input type="checkbox" className="mt-1 h-4 w-4 accent-brand-500" checked={!!form.show_all_occupancies}
+                  onChange={(e) => setForm((f) => ({ ...f, show_all_occupancies: e.target.checked }))} data-testid="show-all-occupancies-checkbox" />
+                <span>
+                  <span className="font-medium text-ink-900">Mostrar todas las opciones de ocupación disponibles</span>
+                  <span className="block text-xs text-ink-400 mt-0.5">Útil para cotizaciones abiertas donde el cliente elige. Si lo desactivas, el PDF y el enlace muestran solo las ocupaciones seleccionadas con su total.</span>
+                </span>
+              </label>
+            )}
             <div className="grid md:grid-cols-2 gap-4 text-sm">
               <div className="rounded-xl border border-ink-100 p-4">
                 <p className="text-xs uppercase tracking-widest font-bold text-ink-400 mb-1">Cliente</p>

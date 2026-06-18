@@ -330,32 +330,34 @@ def generate_quotation_pdf(company: dict, quotation: dict, package: dict, client
         sel_hotel = next((h for h in (package.get("hotels") or [])
                           if h.get("name") == quotation.get("hotel_selected")), None)
         if sel_hotel:
-            from pricing import channel_price
+            from pricing import channel_price, occupancy_rows_selected, occupancy_rows_all
             cur_occ = quotation.get("currency", "MXN")
             pc = company.get("pricing_config") or {}
             divisor = float(pc.get("margin_divisor", 0.76) or 0.76)
             commissions = pc.get("commissions", {}) or {}
             channel = (client or {}).get("channel", "directo")
-            prices = sel_hotel.get("prices_by_occupancy", {}) or {}
-            occ_rows = [["Ocupación", "Precio por persona"]]
-            for key, label, paxlbl in [("sencilla", "Sencilla", "1 pax"), ("doble", "Doble", "2 pax"),
-                                       ("triple", "Triple", "3 pax"), ("cuadruple", "Cuádruple", "4 pax")]:
-                net = float(prices.get(key, 0) or 0)
-                if net <= 0:
-                    continue  # precio 0 = no disponible
-                occ_rows.append([f"{label} ({paxlbl})", _money(channel_price(net, channel, divisor, commissions), cur_occ)])
-            minor_net = float(sel_hotel.get("minor_price", 0) or 0)
-            if minor_net > 0:
-                occ_rows.append(["Menor", _money(channel_price(minor_net, channel, divisor, commissions), cur_occ)])
-            if len(occ_rows) > 1:
+            show_all = bool(quotation.get("show_all_occupancies"))
+            data_rows = (occupancy_rows_all(sel_hotel, channel, divisor, commissions)
+                         if show_all else occupancy_rows_selected(quotation.get("items", [])))
+            has_total = any(r.get("total") is not None for r in data_rows)
+            if data_rows:
+                if has_total:
+                    occ_rows = [["Ocupación", "Precio por persona", "Total"]]
+                    occ_rows += [[r["label"], _money(r["per_person"], cur_occ), _money(r["total"], cur_occ)] for r in data_rows]
+                    col_widths = [7 * cm, 5 * cm, 4.5 * cm]
+                else:
+                    occ_rows = [["Ocupación", "Precio por persona"]]
+                    occ_rows += [[r["label"], _money(r["per_person"], cur_occ)] for r in data_rows]
+                    col_widths = [10 * cm, 6.5 * cm]
                 story.append(Spacer(1, 8))
-                story.append(Paragraph(f"Precios por persona — {sel_hotel.get('name','')}", s["h2"]))
-                ot = Table(occ_rows, colWidths=[10 * cm, 6.5 * cm])
+                title = "Opciones de ocupación" if show_all else "Precios por persona"
+                story.append(Paragraph(f"{title} — {sel_hotel.get('name','')}", s["h2"]))
+                ot = Table(occ_rows, colWidths=col_widths)
                 ot.setStyle(TableStyle([
                     ("BACKGROUND", (0, 0), (-1, 0), PRIMARY),
                     ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
                     ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
-                    ("ALIGN", (1, 0), (1, -1), "RIGHT"),
+                    ("ALIGN", (1, 0), (-1, -1), "RIGHT"),
                     ("FONTSIZE", (0, 0), (-1, -1), 9),
                     ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.white, colors.HexColor("#F8F9FA")]),
                     ("GRID", (0, 0), (-1, -1), 0.3, colors.HexColor("#E2E8F0")),
@@ -363,6 +365,10 @@ def generate_quotation_pdf(company: dict, quotation: dict, package: dict, client
                     ("TOPPADDING", (0, 0), (-1, -1), 6), ("BOTTOMPADDING", (0, 0), (-1, -1), 6),
                 ]))
                 story.append(ot)
+                note = (quotation.get("price_note") or "").strip()
+                if note:
+                    story.append(Spacer(1, 3))
+                    story.append(Paragraph(f"<font color='#475569'><i>{_xml_escape(note)}</i></font>", s["soft"]))
 
     # Price items
     # Salto de página automático cuando el contenido es extenso (presentación + itinerario

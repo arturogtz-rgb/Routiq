@@ -153,6 +153,7 @@ async def create_quotation(payload: QuotationCreate, user: dict = Depends(requir
         "notes": payload.notes,
         "presentation_text": payload.presentation_text or "",
         "important_info": payload.important_info or "",
+        "show_all_occupancies": bool(payload.show_all_occupancies),
         "from_request": payload.from_request or None,
         "history": [{
             "at": now_iso(), "user_id": user["id"], "user_name": user.get("name", ""),

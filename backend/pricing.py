@@ -103,6 +103,45 @@ def channel_price(net: float, channel: str, margin_divisor: float, commissions: 
     return pub  # directo, agencia y cualquier otro
 
 
+_OCC_LABEL = {"sencilla": "Sencilla", "doble": "Doble", "triple": "Triple", "cuadruple": "Cuádruple"}
+
+
+def occupancy_rows_selected(items: list) -> list:
+    """Filas de ocupación SELECCIONADAS (a partir de los items de la cotización):
+    cada fila trae precio por persona y total. Solo conceptos de hospedaje."""
+    rows = []
+    for it in (items or []):
+        if it.get("kind") != "hospedaje":
+            continue
+        occ = it.get("ocupacion")
+        if occ:
+            rc = int(it.get("rooms_count", 1) or 1)
+            label = (f"{rc} hab " if rc > 1 else "") + _OCC_LABEL.get(occ, occ.capitalize())
+        elif "Menor" in (it.get("label", "") or ""):
+            label = "Menor"
+        else:
+            label = it.get("label", "")
+        rows.append({"label": label, "per_person": it.get("unit_price", 0), "total": it.get("subtotal", 0)})
+    return rows
+
+
+def occupancy_rows_all(hotel: dict, channel: str, margin_divisor: float, commissions: dict) -> list:
+    """Todas las ocupaciones DISPONIBLES del hotel (precio por persona según canal),
+    para cotizaciones abiertas. Omite ocupaciones con precio 0 (no disponible)."""
+    rows = []
+    prices = (hotel or {}).get("prices_by_occupancy", {}) or {}
+    for key, label in [("sencilla", "Sencilla"), ("doble", "Doble"), ("triple", "Triple"), ("cuadruple", "Cuádruple")]:
+        net = float(prices.get(key, 0) or 0)
+        if net <= 0:
+            continue
+        rows.append({"label": label, "per_person": channel_price(net, channel, margin_divisor, commissions), "total": None})
+    minor = float((hotel or {}).get("minor_price", 0) or 0)
+    if minor > 0:
+        rows.append({"label": "Menor", "per_person": channel_price(minor, channel, margin_divisor, commissions), "total": None})
+    return rows
+
+
+
 def compute_quotation(pack: dict | None, hotel_name: str, pax: dict, nights: int,
                       client_channel: str, pricing_config: dict,
                       services_catalog: dict | None = None,
@@ -227,7 +266,12 @@ def compute_quotation(pack: dict | None, hotel_name: str, pax: dict, nights: int
     total = round(subtotal - commission, 2)
 
     has_package = pack is not None
-    price_note = "Precio neto no comisionable" if (has_package and client_channel in ("mayorista", "operador")) else ""
+    if has_package and client_channel == "agencia":
+        price_note = "Precio comisionable"
+    elif has_package and client_channel in ("mayorista", "operador"):
+        price_note = "Precio neto no comisionable"
+    else:
+        price_note = ""
 
     return {
         "items": items,
@@ -309,7 +353,13 @@ def compute_custom_quotation(custom_items: list, pax: dict, custom_nights: int,
     total = round(subtotal - commission, 2)
 
     has_neto = any(it.get("price_type", "neto") != "publico" for it in items)
-    price_note = "Precio neto no comisionable" if (has_neto and client_channel in ("mayorista", "operador")) else ""
+    has_publico = any(it.get("price_type") == "publico" for it in items)
+    if has_neto and client_channel in ("mayorista", "operador"):
+        price_note = "Precio neto no comisionable"
+    elif client_channel == "agencia" and (has_neto or has_publico):
+        price_note = "Precio comisionable"
+    else:
+        price_note = ""
 
     return {
         "items": items,

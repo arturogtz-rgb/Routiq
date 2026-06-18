@@ -7,6 +7,12 @@ Plataforma SaaS PWA multi-tenant para **cotización y seguimiento turístico** p
 - **Producción: https://routiq.com.mx** ✅ (VPS Hostinger 177.7.36.75, Docker + Nginx + Let's Encrypt)
 - Iteración actual: **v2.4** (iter_24: registro de uso/costo de IA en Master + generar respaldo on-demand + revisión de seguridad pre-lanzamiento)
 
+## Iteración 36 (jun-2026) — Correcciones PDF / enlace / catálogo público
+1. **Precios por canal (PDF + enlace `/q/:token`):** nunca se muestran todas las ocupaciones por defecto; solo las **seleccionadas** con precio por persona **y total**. Notas por canal: directo (sin nota), agencia ("Precio comisionable"), mayorista/operador ("Precio neto no comisionable"). Checkbox en paso Revisión "Mostrar todas las opciones de ocupación disponibles" (`show_all_occupancies`, off por defecto) → muestra la tabla completa (cotización abierta, precio por persona). Helpers compartidos `occupancy_rows_selected/all` en `pricing.py`.
+2. **Hero `/p/:slug/:code`:** la imagen ahora cubre el 100% del área (altura fija + `object-cover absolute inset-0`); se eliminó la franja gris.
+3. **Botón "Imprimir" en `/p/:slug/:code`:** `@media print` (Tailwind `print:`) — imprime logo+datos empresa, nombre, descripción, itinerario, Incluye/No incluye; oculta precios, CTA "Quiero este paquete", header de navegación, hoteles y modales.
+- Verificado por curl (seleccionadas/todas, notas, PDF 200) y screenshots (hero, botón imprimir, tabla en enlace).
+
 ## Iteración 35 (jun-2026) — Fases 2-5 + PDF profesional + Confirmación de Reserva
 **Fase 2 (constructor):** al elegir paquete se ocultan los demás (+ "Cambiar paquete"); ocupaciones con precio neto 0 = "no disponible" (ocultas en selects/tarjetas/PDF/enlace); fix selector de Tono.
 **Fase 3 (Excel):** plantilla/import/export con itinerario día a día (`dia_1..dia_10`), hojas de servicios por categoría (Tours/Traslados/Accesos/Extras) con `image_url`; importación upsert idempotente e independiente por categoría. Servicios con imagen + import/export desde `/app/services`.

@@ -235,12 +235,13 @@ export default function PublicQuotation() {
             <h2 className="font-display text-xl font-semibold text-ink-900 mb-4">Precios por persona{q.hotel_selected ? ` — ${q.hotel_selected}` : ''}</h2>
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
-                <thead><tr className="text-ink-500 border-b border-ink-100"><th className="text-left py-2">Ocupación</th><th className="text-right py-2">Precio por persona</th></tr></thead>
+                <thead><tr className="text-ink-500 border-b border-ink-100"><th className="text-left py-2">Ocupación</th><th className="text-right py-2">Precio por persona</th>{q.occupancy_prices.some((o) => o.total != null) && <th className="text-right py-2">Total</th>}</tr></thead>
                 <tbody>
                   {q.occupancy_prices.map((o) => (
                     <tr key={o.key} className="border-b border-ink-50" data-testid={`occ-row-${o.key}`}>
                       <td className="py-2 text-ink-800">{o.label}</td>
                       <td className="py-2 text-right font-semibold">{money(o.price, q.currency)}</td>
+                      {q.occupancy_prices.some((x) => x.total != null) && <td className="py-2 text-right font-semibold">{o.total != null ? money(o.total, q.currency) : '—'}</td>}
                     </tr>
                   ))}
                 </tbody>

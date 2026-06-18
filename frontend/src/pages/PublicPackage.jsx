@@ -4,7 +4,7 @@ import api, { formatApiError } from '@/lib/api';
 import { formatDateEs } from '@/lib/dates';
 import {
   Moon, MapPin, Check, X, Hotel, Calendar, Sparkles, Loader2,
-  CheckCircle2, Phone, Mail, Send,
+  CheckCircle2, Phone, Mail, Send, Printer,
 } from 'lucide-react';
 
 function money(v, c = 'MXN') { return v == null ? '' : `$${Number(v).toLocaleString('es-MX')} ${c}`; }
@@ -55,9 +55,17 @@ export default function PublicPackage() {
   const heroImg = p.image_url ? (p.image_url.startsWith('http') ? p.image_url : `${backend}${p.image_url}`) : null;
 
   return (
-    <div className="min-h-screen bg-cream" data-testid="public-package-page">
+    <div className="min-h-screen bg-cream print:bg-white" data-testid="public-package-page">
+      {/* Encabezado solo para impresión */}
+      <div className="hidden print:block px-2 pt-2 mb-4">
+        {logo && <img src={logo} alt={company.name} className="h-16 object-contain mb-2" />}
+        <p className="font-bold text-lg text-ink-900">{company.name}</p>
+        <p className="text-sm text-ink-600">{[company.contact_phone, company.contact_email].filter(Boolean).join(' · ')}</p>
+        {company.address && <p className="text-sm text-ink-600">{company.address}</p>}
+        <h1 className="text-2xl font-bold text-ink-900 mt-3">{p.name}</h1>
+      </div>
       {/* Header */}
-      <header className="bg-white border-b border-ink-100 sticky top-0 z-30">
+      <header className="bg-white border-b border-ink-100 sticky top-0 z-30 print:hidden">
         <div className="max-w-5xl mx-auto px-5 py-3 flex items-center justify-between">
           <div className="flex items-center gap-3">
             {logo ? <img src={logo} alt={company.name} className="h-9 max-w-[160px] object-contain" />
@@ -71,10 +79,10 @@ export default function PublicPackage() {
       </header>
 
       {/* Hero */}
-      <div className="relative">
-        <div className="aspect-[16/9] sm:aspect-[21/9] max-h-[420px] w-full overflow-hidden bg-ink-200">
-          {heroImg ? <img src={heroImg} alt={p.name} className="w-full h-full object-cover object-center" data-testid="pkg-hero-image" />
-            : <div className="w-full h-full" style={{ background: `linear-gradient(135deg, ${brand}, #0f2f52)` }} />}
+      <div className="relative print:hidden">
+        <div className="relative h-[300px] sm:h-[420px] w-full overflow-hidden bg-ink-200">
+          {heroImg ? <img src={heroImg} alt={p.name} className="absolute inset-0 w-full h-full object-cover object-center" data-testid="pkg-hero-image" />
+            : <div className="absolute inset-0" style={{ background: `linear-gradient(135deg, ${brand}, #0f2f52)` }} />}
           <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent" />
         </div>
         <div className="max-w-5xl mx-auto px-5">
@@ -88,23 +96,28 @@ export default function PublicPackage() {
                   {p.hotels?.length ? <span className="flex items-center gap-1"><Hotel className="w-4 h-4" /> {p.hotels.length} hotel(es)</span> : null}
                 </div>
               </div>
-              <div className="text-left sm:text-right">
+              <div className="text-left sm:text-right print:hidden">
                 {p.base_price != null && (
                   <>
                     <p className="text-xs text-ink-400">Desde</p>
                     <p className="font-display text-3xl font-bold" style={{ color: brand }} data-testid="pkg-price">{money(p.base_price, p.currency)}<span className="text-sm text-ink-400"> / pax</span></p>
                   </>
                 )}
-                <button onClick={() => { setShowForm(true); setSent(false); }} className="mt-3 inline-flex items-center gap-2 rounded-full px-6 py-3 text-white font-semibold shadow-lg hover:brightness-110 transition" style={{ background: brand }} data-testid="want-package-btn">
-                  <Sparkles className="w-4 h-4" /> Quiero este paquete
-                </button>
+                <div className="mt-3 flex flex-wrap gap-2 sm:justify-end">
+                  <button onClick={() => window.print()} className="inline-flex items-center gap-2 rounded-full px-5 py-3 font-semibold border border-ink-200 text-ink-700 hover:bg-ink-50 transition" data-testid="print-package-btn">
+                    <Printer className="w-4 h-4" /> Imprimir
+                  </button>
+                  <button onClick={() => { setShowForm(true); setSent(false); }} className="inline-flex items-center gap-2 rounded-full px-6 py-3 text-white font-semibold shadow-lg hover:brightness-110 transition" style={{ background: brand }} data-testid="want-package-btn">
+                    <Sparkles className="w-4 h-4" /> Quiero este paquete
+                  </button>
+                </div>
               </div>
             </div>
           </div>
         </div>
       </div>
 
-      <main className="max-w-5xl mx-auto px-5 py-10 grid lg:grid-cols-3 gap-8">
+      <main className="max-w-5xl mx-auto px-5 py-10 grid lg:grid-cols-3 gap-8 print:block print:py-0 print:px-2">
         <div className="lg:col-span-2 space-y-8">
           {p.description && (
             <section data-testid="pkg-description">
@@ -151,7 +164,7 @@ export default function PublicPackage() {
         </div>
 
         {/* Side CTA */}
-        <aside className="lg:sticky lg:top-20 h-fit">
+        <aside className="lg:sticky lg:top-20 h-fit print:hidden">
           <div className="bg-white rounded-2xl shadow-sm border border-ink-100 p-6">
             {p.hotels?.length > 0 && (
               <>
@@ -170,13 +183,13 @@ export default function PublicPackage() {
         </aside>
       </main>
 
-      <footer className="border-t border-ink-100 py-6 text-center text-xs text-ink-400">
+      <footer className="border-t border-ink-100 py-6 text-center text-xs text-ink-400 print:hidden">
         {company.name} · Cotización generada con Routiq
       </footer>
 
       {/* Request form modal */}
       {showForm && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-ink-900/50" onClick={() => !sending && setShowForm(false)}>
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-ink-900/50 print:hidden" onClick={() => !sending && setShowForm(false)}>
           <div className="bg-white rounded-2xl p-6 w-full max-w-md" onClick={(e) => e.stopPropagation()} data-testid="package-request-modal">
             {sent ? (
               <div className="text-center py-6" data-testid="request-success">

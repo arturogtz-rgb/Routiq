@@ -422,6 +422,7 @@ class QuotationCreate(BaseModel):
     assigned_to: Optional[str] = None
     presentation_text: str = ""
     important_info: str = ""  # "Información importante" — texto libre por cotización (cliente lo ve)
+    show_all_occupancies: bool = False  # PDF/enlace: mostrar todas las ocupaciones disponibles (cotización abierta)
     from_request: Optional[str] = None  # lead id when created from a public catalog request
     # Custom / programa personalizado
     custom_title: str = ""
@@ -492,6 +493,7 @@ class QuotationUpdate(BaseModel):
     assigned_to: Optional[str] = None
     presentation_text: Optional[str] = None
     important_info: Optional[str] = None
+    show_all_occupancies: Optional[bool] = None
     # Custom / programa personalizado
     custom_title: Optional[str] = None
     custom_items: Optional[List[CustomItem]] = None
