@@ -407,7 +407,7 @@ class ExtraNights(BaseModel):
 
 # ---------- Custom / "Programa personalizado" (cotización a medida libre) ----------
 CustomUnit = Literal["per_person", "per_night", "per_room", "per_group", "per_day", "per_vehicle"]
-CustomCategory = Literal["hospedaje", "traslado", "tour", "extra"]
+CustomCategory = Literal["hospedaje", "traslado", "tour", "acceso", "extra"]
 
 
 class CustomItem(BaseModel):
@@ -421,6 +421,9 @@ class CustomItem(BaseModel):
     service_date: str = ""   # fecha del servicio (opcional, ISO YYYY-MM-DD)
     start_time: str = ""     # hora de inicio (opcional, HH:MM)
     end_time: str = ""       # hora de fin (opcional, HH:MM)
+    checkin: str = ""        # hospedaje: fecha de check-in (ISO)
+    checkout: str = ""       # hospedaje: fecha de check-out (ISO)
+    nights: int = Field(default=0, ge=0)  # hospedaje: noches (auto = checkout - checkin)
 
 
 class CustomDay(BaseModel):

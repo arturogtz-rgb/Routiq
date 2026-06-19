@@ -69,6 +69,12 @@ async def create_quotation(payload: QuotationCreate, user: dict = Depends(requir
     client = await db.clients.find_one({"id": payload.client_id, "tenant_id": user["tenant_id"]}, {"_id": 0})
     if not client:
         raise HTTPException(status_code=404, detail="Cliente no encontrado")
+    execs = client.get("executives") or []
+    if execs:
+        if not payload.executive_id:
+            raise HTTPException(status_code=400, detail="Selecciona el ejecutivo de la empresa para esta cotización.")
+        if not any(e.get("id") == payload.executive_id for e in execs):
+            raise HTTPException(status_code=400, detail="El ejecutivo seleccionado no pertenece a esta empresa.")
     company = await db.companies.find_one({"id": user["tenant_id"]}, {"_id": 0})
     pricing_config = company.get("pricing_config") or DEFAULT_PRICING_CONFIG
     services_sel = [s.model_dump() for s in payload.services]

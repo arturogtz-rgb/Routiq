@@ -155,6 +155,19 @@ def _fmt_service_datetime(it: dict) -> str:
     return " · ".join(parts)
 
 
+def _fmt_concept_when(it: dict) -> str:
+    """Fecha/hora según el tipo de concepto. Hospedaje => check-in→check-out (noches)."""
+    if it.get("category") == "hospedaje" and (it.get("checkin") or it.get("checkout")):
+        ci = _fmt_date(it["checkin"]) if it.get("checkin") else ""
+        co = _fmt_date(it["checkout"]) if it.get("checkout") else ""
+        rango = " → ".join([x for x in [ci, co] if x])
+        n = int(it.get("nights", 0) or 0)
+        if n:
+            rango += f" ({n} {'noche' if n == 1 else 'noches'})"
+        return rango
+    return _fmt_service_datetime(it)
+
+
 def generate_quotation_pdf(company: dict, quotation: dict, package: dict, client: dict,
                            exec_name: str = "", base_url: str = "") -> bytes:
     buf = io.BytesIO()
@@ -373,10 +386,10 @@ def generate_quotation_pdf(company: dict, quotation: dict, package: dict, client
         story.append(Paragraph("Desglose de precios", s["h2"]))
         rows = [["Fecha", "Servicio", "Detalle", "Cant.", "$ unitario", "Subtotal"]]
         for it in items:
-            fecha = _fmt_date(it["service_date"]) if it.get("service_date") else "—"
+            fecha = _fmt_concept_when(it) or "—"
             detalle = _xml_escape(it.get("description", "") or "")
             rows.append([
-                fecha,
+                Paragraph(_xml_escape(fecha), concept_style),
                 Paragraph(f"<b>{_xml_escape(it.get('label',''))}</b>", concept_style),
                 Paragraph(detalle, concept_style),
                 str(it.get("qty", "")),

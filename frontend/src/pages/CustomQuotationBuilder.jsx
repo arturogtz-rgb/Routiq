@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import AppShell from '@/components/AppShell';
 import api, { formatApiError } from '@/lib/api';
-import { ArrowLeft, ArrowRight, Check, User, Wand2, ListChecks, CalendarRange, Calculator, Plus, Trash2, Briefcase, Users, FileText, Bed, Car, Compass, Sparkles, Save, BookmarkPlus } from 'lucide-react';
+import { ArrowLeft, ArrowRight, Check, User, Wand2, ListChecks, CalendarRange, Calculator, Plus, Trash2, Briefcase, Users, FileText, Bed, Car, Compass, Ticket, Sparkles, Save, BookmarkPlus } from 'lucide-react';
 import { formatDateEs, nightsBetween } from '@/lib/dates';
 
 const UNITS = [
@@ -18,6 +18,7 @@ const CATEGORIES = [
   { v: 'hospedaje', label: 'Hospedaje', icon: Bed },
   { v: 'traslado', label: 'Traslado', icon: Car },
   { v: 'tour', label: 'Tour', icon: Compass },
+  { v: 'acceso', label: 'Acceso', icon: Ticket },
   { v: 'extra', label: 'Extra', icon: Sparkles },
 ];
 const CAT_ICON = Object.fromEntries(CATEGORIES.map((c) => [c.v, c.icon]));
@@ -218,13 +219,30 @@ export default function CustomQuotationBuilder() {
   };
 
   const addItem = (category) => setForm((f) => ({
-    ...f, custom_items: [...f.custom_items, { category, name: '', description: '', net_price: 0, price_type: 'neto', unit: 'per_person', qty: defaultQty('per_person'), service_date: '', start_time: '', end_time: '' }],
+    ...f, custom_items: [...f.custom_items, {
+      category, name: '', description: '', net_price: 0, price_type: 'neto',
+      unit: category === 'hospedaje' ? 'per_night' : 'per_person',
+      qty: category === 'hospedaje' ? 0 : defaultQty('per_person'),
+      service_date: '', start_time: '', end_time: '', checkin: '', checkout: '', nights: 0,
+    }],
   }));
   const updateItem = (idx, patch) => setForm((f) => ({
     ...f, custom_items: f.custom_items.map((it, i) => {
       if (i !== idx) return it;
-      const next = { ...it, ...patch };
-      if (patch.unit && patch.qty === undefined) next.qty = defaultQty(patch.unit);
+      let next = { ...it, ...patch };
+      // Cambio de categoría: ajustar unidad por defecto y limpiar campos no aplicables.
+      if (patch.category && patch.category !== it.category) {
+        if (patch.category === 'hospedaje') { next.unit = 'per_night'; next.start_time = ''; next.end_time = ''; }
+        else { next.checkin = ''; next.checkout = ''; next.nights = 0; if (it.unit === 'per_night') next.unit = 'per_person'; }
+        if (patch.category === 'tour' || patch.category === 'acceso') next.end_time = '';
+        if (patch.category === 'acceso') next.start_time = '';
+      }
+      // Hospedaje: calcular noches automáticamente y usarlas como cantidad.
+      if (next.category === 'hospedaje' && (patch.checkin !== undefined || patch.checkout !== undefined)) {
+        const n = (next.checkin && next.checkout) ? Math.max(0, nightsBetween(next.checkin, next.checkout)) : 0;
+        next.nights = n; next.qty = n > 0 ? n : 0;
+      }
+      if (patch.unit && patch.qty === undefined && next.category !== 'hospedaje') next.qty = defaultQty(patch.unit);
       return next;
     }),
   }));
@@ -271,6 +289,7 @@ export default function CustomQuotationBuilder() {
           category: it.category, name: it.name, description: it.description || '',
           net_price: Number(it.net_price) || 0, price_type: it.price_type || 'neto', unit: it.unit, qty: Number(it.qty) || 0,
           service_date: it.service_date || '', start_time: it.start_time || '', end_time: it.end_time || '',
+          checkin: it.checkin || '', checkout: it.checkout || '', nights: Number(it.nights) || 0,
         })),
         custom_itinerary: form.custom_itinerary.map((d, i) => ({ day: i + 1, title: d.title || '', description: d.description || '' })),
         custom_includes: form.custom_includes.filter((x) => (x || '').trim()),
@@ -457,13 +476,34 @@ export default function CustomQuotationBuilder() {
                           {UNITS.map((u) => <option key={u.v} value={u.v}>{u.label}</option>)}
                         </select>
                       </div>
-                      <div><label className="label-text">Cantidad</label><input type="number" min="1" className="input-field" value={it.qty} onChange={(e) => updateItem(idx, { qty: Math.max(1, +e.target.value || 1) })} data-testid={`custom-item-qty-${idx}`} /></div>
+                      <div><label className="label-text">Cantidad</label>
+                        {it.category === 'hospedaje'
+                          ? <input className="input-field bg-ink-50" value={it.nights || 0} readOnly disabled data-testid={`custom-item-qty-${idx}`} />
+                          : <input type="number" min="1" className="input-field" value={it.qty} onChange={(e) => updateItem(idx, { qty: Math.max(1, +e.target.value || 1) })} data-testid={`custom-item-qty-${idx}`} />}
+                      </div>
                     </div>
-                    <div className="grid md:grid-cols-3 gap-3 mt-3">
-                      <div><label className="label-text">Fecha del servicio (opc.)</label><input type="date" className="input-field" value={it.service_date || ''} onChange={(e) => updateItem(idx, { service_date: e.target.value })} data-testid={`custom-item-date-${idx}`} /></div>
-                      <div><label className="label-text">Hora inicio (opc.)</label><input type="time" className="input-field" value={it.start_time || ''} onChange={(e) => updateItem(idx, { start_time: e.target.value })} data-testid={`custom-item-start-${idx}`} /></div>
-                      <div><label className="label-text">Hora fin (opc.)</label><input type="time" className="input-field" value={it.end_time || ''} onChange={(e) => updateItem(idx, { end_time: e.target.value })} data-testid={`custom-item-end-${idx}`} /></div>
-                    </div>
+                    {it.category === 'hospedaje' ? (
+                      <div className="grid md:grid-cols-3 gap-3 mt-3" data-testid={`custom-item-lodging-${idx}`}>
+                        <div><label className="label-text">Check-in</label><input type="date" className="input-field" value={it.checkin || ''} onChange={(e) => updateItem(idx, { checkin: e.target.value })} data-testid={`custom-item-checkin-${idx}`} /></div>
+                        <div><label className="label-text">Check-out</label><input type="date" className="input-field" value={it.checkout || ''} onChange={(e) => updateItem(idx, { checkout: e.target.value })} data-testid={`custom-item-checkout-${idx}`} /></div>
+                        <div><label className="label-text">Noches (auto)</label><input className="input-field bg-ink-50" value={it.nights || 0} readOnly disabled data-testid={`custom-item-nights-${idx}`} /></div>
+                      </div>
+                    ) : it.category === 'acceso' ? (
+                      <div className="grid md:grid-cols-3 gap-3 mt-3">
+                        <div><label className="label-text">Fecha del acceso</label><input type="date" className="input-field" value={it.service_date || ''} onChange={(e) => updateItem(idx, { service_date: e.target.value })} data-testid={`custom-item-date-${idx}`} /></div>
+                      </div>
+                    ) : it.category === 'tour' ? (
+                      <div className="grid md:grid-cols-3 gap-3 mt-3">
+                        <div><label className="label-text">Fecha del servicio</label><input type="date" className="input-field" value={it.service_date || ''} onChange={(e) => updateItem(idx, { service_date: e.target.value })} data-testid={`custom-item-date-${idx}`} /></div>
+                        <div><label className="label-text">Hora inicio</label><input type="time" className="input-field" value={it.start_time || ''} onChange={(e) => updateItem(idx, { start_time: e.target.value })} data-testid={`custom-item-start-${idx}`} /></div>
+                      </div>
+                    ) : (
+                      <div className="grid md:grid-cols-3 gap-3 mt-3">
+                        <div><label className="label-text">Fecha del servicio</label><input type="date" className="input-field" value={it.service_date || ''} onChange={(e) => updateItem(idx, { service_date: e.target.value })} data-testid={`custom-item-date-${idx}`} /></div>
+                        <div><label className="label-text">Hora inicio</label><input type="time" className="input-field" value={it.start_time || ''} onChange={(e) => updateItem(idx, { start_time: e.target.value })} data-testid={`custom-item-start-${idx}`} /></div>
+                        <div><label className="label-text">Hora fin</label><input type="time" className="input-field" value={it.end_time || ''} onChange={(e) => updateItem(idx, { end_time: e.target.value })} data-testid={`custom-item-end-${idx}`} /></div>
+                      </div>
+                    )}
                     <div className="flex flex-wrap items-center justify-end gap-x-4 gap-y-1 mt-3 text-sm">
                       <span className="text-ink-400">{(it.price_type || 'neto') === 'publico'
                         ? <>Público: <b className="text-ink-700">{money(Number(it.net_price) || 0, currency)}</b></>

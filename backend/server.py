@@ -609,6 +609,18 @@ async def create_client(payload: ClientCreate, user: dict = Depends(require_tena
     return doc
 
 
+@api.get("/clients/{client_id}")
+async def get_client(client_id: str, user: dict = Depends(require_tenant)):
+    db = get_db()
+    c = await db.clients.find_one({"id": client_id, "tenant_id": user["tenant_id"]}, {"_id": 0})
+    if not c:
+        raise HTTPException(status_code=404, detail="Cliente no encontrado")
+    c["executives_count"] = len(c.get("executives") or [])
+    c["quotations_count"] = await db.quotations.count_documents(
+        {"tenant_id": user["tenant_id"], "client_id": client_id})
+    return c
+
+
 @api.patch("/clients/{client_id}")
 async def update_client(client_id: str, payload: ClientUpdate, user: dict = Depends(require_tenant)):
     db = get_db()

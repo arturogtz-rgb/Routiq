@@ -30,6 +30,7 @@ CUSTOM_CATEGORY_ES = {
     "hospedaje": "Hospedaje",
     "traslado": "Traslado",
     "tour": "Tour",
+    "acceso": "Acceso",
     "extra": "Extra",
 }
 
@@ -167,6 +168,9 @@ def _price_custom_item(ci: dict, total_pax: int, nights_total: int, rooms: int,
         "service_date": ci.get("service_date", "") or "",
         "start_time": ci.get("start_time", "") or "",
         "end_time": ci.get("end_time", "") or "",
+        "checkin": ci.get("checkin", "") or "",
+        "checkout": ci.get("checkout", "") or "",
+        "nights": int(ci.get("nights", 0) or 0),
     }
 
 

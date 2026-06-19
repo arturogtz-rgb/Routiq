@@ -5,6 +5,15 @@ import { CheckCircle2, Calendar, MapPin, Users, FileText, Sparkles, CreditCard, 
 import { formatDateEs } from '@/lib/dates';
 
 function money(v, c = 'MXN') { return `$${Number(v || 0).toLocaleString('es-MX')} ${c}`; }
+function conceptWhen(it) {
+  if (it.category === 'hospedaje' && (it.checkin || it.checkout)) {
+    const rango = [it.checkin ? formatDateEs(it.checkin) : '', it.checkout ? formatDateEs(it.checkout) : ''].filter(Boolean).join(' → ');
+    const n = Number(it.nights) || 0;
+    return rango + (n ? ` (${n} ${n === 1 ? 'noche' : 'noches'})` : '');
+  }
+  const time = (it.start_time && it.end_time) ? `${it.start_time}–${it.end_time}` : (it.start_time || '');
+  return [it.service_date ? formatDateEs(it.service_date) : '', time].filter(Boolean).join(' · ');
+}
 
 const OCC = { sencilla: 1, doble: 2, triple: 3, cuadruple: 4, menor: 1 };
 
@@ -299,7 +308,7 @@ export default function PublicQuotation() {
             ) : (
             <div className="space-y-1">
               {(q.items || []).map((it, i) => {
-                const dt = [it.service_date ? formatDateEs(it.service_date) : '', (it.start_time && it.end_time) ? `${it.start_time}–${it.end_time}` : (it.start_time || '')].filter(Boolean).join(' · ');
+                const dt = conceptWhen(it);
                 const Icon = it.kind === 'noche_extra' ? Moon : Sparkles;
                 return (
                   <div key={i} className="flex items-start justify-between gap-3 py-2.5 border-b border-ink-100 last:border-0" data-testid={`public-line-item-${i}`}>
