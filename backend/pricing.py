@@ -134,10 +134,10 @@ def occupancy_rows_all(hotel: dict, channel: str, margin_divisor: float, commiss
         net = float(prices.get(key, 0) or 0)
         if net <= 0:
             continue
-        rows.append({"label": label, "per_person": channel_price(net, channel, margin_divisor, commissions), "total": None})
+        rows.append({"key": key, "label": label, "per_person": channel_price(net, channel, margin_divisor, commissions), "total": None})
     minor = float((hotel or {}).get("minor_price", 0) or 0)
     if minor > 0:
-        rows.append({"label": "Menor", "per_person": channel_price(minor, channel, margin_divisor, commissions), "total": None})
+        rows.append({"key": "menor", "label": "Menor", "per_person": channel_price(minor, channel, margin_divisor, commissions), "total": None})
     return rows
 
 

@@ -28,6 +28,7 @@ import MasterAdmin, { MasterCompanies } from '@/pages/Master';
 import MasterSite from '@/pages/MasterSite';
 import MasterAI from '@/pages/MasterAI';
 import PublicQuotation from '@/pages/PublicQuotation';
+import BookingConfirmationPublic from '@/pages/BookingConfirmationPublic';
 import PublicPackage from '@/pages/PublicPackage';
 import PublicCatalog from '@/pages/PublicCatalog';
 import PublicServices from '@/pages/PublicServices';
@@ -75,6 +76,7 @@ export default function App() {
           <Route path="/forgot-password" element={<ForgotPassword />} />
           <Route path="/reset-password" element={<ResetPassword />} />
           <Route path="/q/:token" element={<PublicQuotation />} />
+          <Route path="/r/:token" element={<BookingConfirmationPublic />} />
           <Route path="/p/:slug/:code" element={<PublicPackage />} />
           <Route path="/c/:slug" element={<PublicCatalog />} />
           <Route path="/c/:slug/servicios" element={<PublicServices />} />

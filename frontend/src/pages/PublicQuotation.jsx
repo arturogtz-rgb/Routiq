@@ -1,12 +1,12 @@
 import { useEffect, useState } from 'react';
 import { useParams, useSearchParams } from 'react-router-dom';
 import api, { formatApiError } from '@/lib/api';
-import { CheckCircle2, Calendar, MapPin, Users, FileText, Sparkles, CreditCard, Loader2, Moon, Landmark, Copy } from 'lucide-react';
+import { CheckCircle2, Calendar, MapPin, Users, FileText, Sparkles, CreditCard, Loader2, Moon, Landmark, Copy, Download } from 'lucide-react';
 import { formatDateEs } from '@/lib/dates';
 
 function money(v, c = 'MXN') { return `$${Number(v || 0).toLocaleString('es-MX')} ${c}`; }
 
-const OCC = { sencilla: 1, doble: 2, triple: 3, cuadruple: 4 };
+const OCC = { sencilla: 1, doble: 2, triple: 3, cuadruple: 4, menor: 1 };
 
 export default function PublicQuotation() {
   const { token } = useParams();
@@ -22,6 +22,7 @@ export default function PublicQuotation() {
   const [verifying, setVerifying] = useState(false);
   const [showTransfer, setShowTransfer] = useState(false);
   const [transferMsg, setTransferMsg] = useState('');
+  const [selectedOcc, setSelectedOcc] = useState(null);
 
   const load = async () => {
     try {
@@ -146,8 +147,13 @@ export default function PublicQuotation() {
     <div className="min-h-screen bg-cream" data-testid="public-quotation-page">
       {/* Header */}
       <header className="bg-white border-b border-ink-100 sticky top-0 z-10">
-        <div className="max-w-3xl mx-auto px-4 py-4 flex items-center justify-end">
+        <div className="max-w-3xl mx-auto px-4 py-3 flex items-center justify-between gap-3">
           <span className="text-xs font-mono text-ink-500">{q.code}</span>
+          <a href={`${backend}/api/public/quotations/${token}/pdf`} target="_blank" rel="noreferrer"
+            className="inline-flex items-center gap-2 text-sm font-semibold px-3 py-2 rounded-xl border-2 transition-all hover:bg-cream"
+            style={{ borderColor: primary, color: primary }} data-testid="download-pdf-btn">
+            <Download className="w-4 h-4" /> Descargar PDF
+          </a>
         </div>
       </header>
 
@@ -211,24 +217,44 @@ export default function PublicQuotation() {
           </div>
         </div>
 
-        {/* Opciones de ocupación — solo cuando el ejecutivo activa "Mostrar todas las opciones" */}
+        {/* Opciones de ocupación interactivas — solo cuando el ejecutivo activa "Mostrar todas las opciones" */}
         {q.occupancy_prices?.length > 0 && (
           <div className="card-surface p-6" data-testid="public-occupancy-table">
-            <h2 className="font-display text-xl font-semibold text-ink-900 mb-4">Opciones de ocupación{q.hotel_selected ? ` — ${q.hotel_selected}` : ''}</h2>
-            <div className="overflow-x-auto">
-              <table className="w-full text-sm">
-                <thead><tr className="text-ink-500 border-b border-ink-100"><th className="text-left py-2">Ocupación</th><th className="text-right py-2">Precio por persona</th>{q.occupancy_prices.some((o) => o.total != null) && <th className="text-right py-2">Total</th>}</tr></thead>
-                <tbody>
-                  {q.occupancy_prices.map((o) => (
-                    <tr key={o.key} className="border-b border-ink-50" data-testid={`occ-row-${o.key}`}>
-                      <td className="py-2 text-ink-800">{o.label}</td>
-                      <td className="py-2 text-right font-semibold">{money(o.price, q.currency)}</td>
-                      {q.occupancy_prices.some((x) => x.total != null) && <td className="py-2 text-right font-semibold">{o.total != null ? money(o.total, q.currency) : '—'}</td>}
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+            <h2 className="font-display text-xl font-semibold text-ink-900 mb-1">Opciones de ocupación{q.hotel_selected ? ` — ${q.hotel_selected}` : ''}</h2>
+            <p className="text-sm text-ink-500 mb-4">Elige tu tipo de ocupación para ver el precio estimado.</p>
+            <div className="space-y-2">
+              {q.occupancy_prices.map((o) => {
+                const count = OCC[o.occ] || 1;
+                const active = selectedOcc?.key === o.key;
+                return (
+                  <button key={o.key} type="button" onClick={() => setSelectedOcc(o)}
+                    data-testid={`occ-option-${o.occ || o.key}`}
+                    className={`w-full flex items-center justify-between gap-3 rounded-xl border-2 px-4 py-3 text-left transition-all ${active ? 'shadow-sm' : 'border-ink-100 hover:border-ink-200'}`}
+                    style={active ? { borderColor: primary, background: `${primary}0D` } : {}}>
+                    <span className="flex items-center gap-3">
+                      <span className={`w-4 h-4 rounded-full border-2 flex items-center justify-center ${active ? '' : 'border-ink-300'}`} style={active ? { borderColor: primary } : {}}>
+                        {active && <span className="w-2 h-2 rounded-full" style={{ background: primary }} />}
+                      </span>
+                      <span className="font-medium text-ink-900">{o.label}</span>
+                    </span>
+                    <span className="text-right">
+                      <span className="block font-semibold text-ink-900">{money(o.price, q.currency)}</span>
+                      <span className="block text-xs text-ink-400">por persona</span>
+                    </span>
+                  </button>
+                );
+              })}
             </div>
+            {selectedOcc && (
+              <div className="mt-4 rounded-xl px-4 py-3 flex items-center justify-between" style={{ background: `${primary}12` }} data-testid="occ-estimated-total">
+                <div>
+                  <p className="text-xs uppercase tracking-widest font-bold" style={{ color: primary }}>Total estimado — {selectedOcc.label}</p>
+                  <p className="text-xs text-ink-500">{money(selectedOcc.price, q.currency)} × {OCC[selectedOcc.occ] || 1} persona(s)</p>
+                </div>
+                <p className="font-display text-2xl font-bold" style={{ color: primary }}>{money(selectedOcc.price * (OCC[selectedOcc.occ] || 1), q.currency)}</p>
+              </div>
+            )}
+            <p className="text-xs text-ink-400 italic mt-3">Precio referencial por habitación. El monto a pagar es el indicado en el total de la cotización.</p>
           </div>
         )}
 

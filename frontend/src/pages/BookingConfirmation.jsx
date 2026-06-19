@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import AppShell from '@/components/AppShell';
 import api, { formatApiError } from '@/lib/api';
-import { ArrowLeft, Plus, Trash2, Save, Download, Mail, MessageCircle, Loader2, CheckCircle2 } from 'lucide-react';
+import { ArrowLeft, Plus, Trash2, Save, Download, Mail, MessageCircle, Loader2, CheckCircle2, Link2 } from 'lucide-react';
 
 const EMPTY_SVC = { date: '', service: '', details: '', persons: '', observations: '' };
 const EMPTY_LODGING = { hotel: '', plan: '', checkin: '', checkout: '', nights: '', room_type: '', confirmation_number: '', guest_name: '' };
@@ -123,6 +123,7 @@ export default function BookingConfirmation() {
               <Save className="w-4 h-4" /> {saving ? 'Guardando…' : 'Guardar'}
             </button>
             {conf && <button onClick={downloadPdf} className="btn-secondary text-sm" data-testid="download-confirmation-pdf-btn"><Download className="w-4 h-4" /> PDF</button>}
+            {conf?.token && <button onClick={() => { navigator.clipboard.writeText(`${window.location.origin}/r/${conf.token}`); setOk('Enlace web copiado'); setTimeout(() => setOk(''), 2500); }} className="btn-ghost text-sm border border-ink-100" data-testid="copy-booking-link-btn"><Link2 className="w-4 h-4" /> Copiar enlace</button>}
             {conf && <button onClick={() => send('email')} disabled={sending} className="btn-ghost text-sm border border-ink-100" data-testid="send-email-btn"><Mail className="w-4 h-4" /> Correo</button>}
             {conf && <button onClick={() => send('whatsapp')} disabled={sending} className="btn-ghost text-sm border border-emerald-300 text-emerald-700" data-testid="send-whatsapp-btn"><MessageCircle className="w-4 h-4" /> WhatsApp</button>}
           </div>

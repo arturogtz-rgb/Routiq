@@ -55,7 +55,7 @@ async def get_public_quotation(token: str):
             channel = q.get("client_snapshot", {}).get("channel", "directo")
             if q.get("show_all_occupancies"):
                 rows = occupancy_rows_all(sel, channel, divisor, commissions)
-                occupancy_prices = [{"key": str(i), "label": r["label"], "price": r["per_person"], "total": r.get("total")}
+                occupancy_prices = [{"key": str(i), "occ": r.get("key"), "label": r["label"], "price": r["per_person"], "total": r.get("total")}
                                     for i, r in enumerate(rows)]
     exec_name = ""
     if q.get("assigned_to"):
@@ -128,6 +128,46 @@ async def get_public_quotation(token: str):
         "season_applied": q.get("season_applied"),
         "cancellation_policy": company.get("cancellation_policy", ""),
     }
+
+
+@router.get("/public/quotations/{token}/pdf")
+async def public_quotation_pdf(token: str, request: Request):
+    """PDF de la cotización descargable desde el enlace público (precios públicos,
+    idéntico al que ve el ejecutivo; nunca expone tarifas netas confidenciales)."""
+    import io as _io
+    from fastapi.responses import StreamingResponse
+    from pdf_generator import generate_quotation_pdf
+    db = get_db()
+    q = await db.quotations.find_one({"public_link.token": token}, {"_id": 0})
+    if not q:
+        raise HTTPException(status_code=404, detail="Enlace inválido")
+    expires = q.get("public_link", {}).get("expires_at")
+    if expires and datetime.fromisoformat(expires) < datetime.now(timezone.utc):
+        raise HTTPException(status_code=410, detail="Enlace expirado")
+    company = await db.companies.find_one({"id": q["tenant_id"]}, {"_id": 0})
+    pack = None
+    if q.get("package_id"):
+        pack = await db.packages.find_one({"id": q["package_id"]}, {"_id": 0})
+    if q.get("type") == "personalizado":
+        pack = {
+            "name": q.get("custom_title") or "Programa personalizado",
+            "description": "",
+            "nights": q.get("nights_total"),
+            "itinerary": q.get("custom_itinerary", []),
+            "includes": q.get("custom_includes", []),
+            "excludes": q.get("custom_excludes", []),
+        }
+    client = await db.clients.find_one({"id": q.get("client_id")}, {"_id": 0})
+    exec_name = ""
+    if q.get("assigned_to"):
+        exec_user = await db.users.find_one({"id": q["assigned_to"]}, {"_id": 0, "name": 1})
+        exec_name = (exec_user or {}).get("name", "")
+    base_url = f"{request.url.scheme}://{request.headers.get('host', '')}"
+    pdf = generate_quotation_pdf(company or {}, q, pack or {},
+                                 client or {"name": q.get("client_snapshot", {}).get("name", "")},
+                                 exec_name=exec_name, base_url=base_url)
+    return StreamingResponse(_io.BytesIO(pdf), media_type="application/pdf",
+                             headers={"Content-Disposition": f'attachment; filename="{q["code"]}.pdf"'})
 
 
 def _esc(s: str) -> str:

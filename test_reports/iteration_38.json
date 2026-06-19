@@ -1,0 +1,30 @@
+{
+  "summary": "Iteration 38 — Verificación de 3 features: (a) PDF público en /q/:token, (b) selección interactiva de ocupación en /q/:token con show_all=true, (c) página de Confirmación /r/:token con add-to-calendar (.ics + Google Calendar). Backend 4/4 PASS (pytest /app/backend/tests/test_iteration38_pdf_occ_booking.py): GET /api/public/quotations/E4cWS--ucnOiioZotwHcD8OM/pdf -> 200 application/pdf + magic %PDF + >1KB; payload público expone quotation.occupancy_prices con 5 filas y claves 'occ' = {sencilla, doble, triple, cuadruple, menor} y precio doble=$8,900; GET /api/public/booking-confirmation/NVhfGoFku3Mh2CN6B967tA -> 200 con confirmation.trip_start='2026-08-10', trip_end='2026-08-13' y company poblada; GET /api/public/booking-confirmation/{token}/pdf -> 200 application/pdf. Frontend Playwright PASS: en /q/E4cWS-- aparece data-testid='download-pdf-btn' (anchor con href correcto al endpoint /api/public/quotations/{token}/pdf), data-testid='public-occupancy-table' y los 5 occ-option-* clicables. Clic en occ-option-doble -> occ-estimated-total muestra '$8,900 MXN × 2 persona(s) = $17,800 MXN' (verificado dígitos '17800'); occ-option-triple -> '$23,400 MXN' (7800×3); occ-option-menor -> '$4,500 MXN' (4500×1). El data-testid='public-total-card' permanece SIN MUTAR ($22,300 MXN antes y después del clic) — selección es solo informativa, como spec. En /r/NVhfGoFku3Mh2CN6B967tA: data-testid='public-booking-page' carga, hero contiene '¡Tu reserva está confirmada!', booking-services, booking-lodging y booking-bank presentes; sección add-to-calendar con ics-download-btn (descarga COT-2026056-CR.ics — VCALENDAR válido con DTSTART:20260810/DTEND:20260814) y gcal-btn con href https://calendar.google.com/calendar/render?...&dates=20260810/20260814 (fin exclusivo +1 día confirmado); booking-download-pdf-btn apunta a /api/public/booking-confirmation/{token}/pdf.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_iteration38_pdf_occ_booking.py",
+    "/app/test_reports/pytest/iter38.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "/app/backend/routes/booking.py L93-156: public_booking_confirmation computa trip_start/trip_end a partir de checkins+svc_dates / checkouts+svc_dates. Edge case: si lodging tiene checkout pero la única service date es posterior al último checkout, end correctamente refleja el max — ok. Si todas las fechas faltan, trip_end queda vacío y la UI debería ocultar add-to-calendar (verificado solo en el caso poblado).",
+    "/app/backend/routes/public_payments.py: el payload de /api/public/quotations/{token} NO expone show_all_occupancies como flag explícito; en su lugar usa occupancy_prices vacío vs poblado como señal efectiva. Funciona pero acoplado — recomendable exponer el bool para que la UI/tests no infieran estado.",
+    "BookingConfirmationPublic.jsx ics-download-btn: usa onClick React (no atributo onclick inline ni href/download), por lo que la inspección de atributos HTML muestra all-null. El click real dispara la descarga (verificado vía page.expect_download). No es bug, solo nota para tests futuros: usar expect_download en lugar de checar atributos.",
+    "401 de /api/auth/me persisten en rutas públicas /q/* y /r/* (también señalado en iter 36/37). Recomendable saltar bootstrap de auth en rutas /q/*, /c/*, /r/* para consola limpia."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_iteration38_pdf_occ_booking.py (nuevo — 4 tests)"
+  ],
+  "success_rate": {"backend": "100% (4/4)", "frontend": "100% (todos los data-testid verificados, multiplicación occ correcta para doble/triple/menor, ICS válido, Google Calendar URL con dates correctos)"},
+  "test_credentials": "No se requirió login — rutas públicas /q/:token y /r/:token. Tokens: E4cWS--ucnOiioZotwHcD8OM (quotation paquete, show_all=true), NVhfGoFku3Mh2CN6B967tA (booking confirmation 2026-08-10→2026-08-13).",
+  "seed_data_creation": "Ninguno; se usaron los tokens existentes provistos.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Suite iter38 en /app/backend/tests/test_iteration38_pdf_occ_booking.py cubre PDF público de cotización, payload de ocupación con campo 'occ', booking-confirmation JSON con trip_start/trip_end y PDF público de booking. Frontend: mapeo de personas por ocupación en PublicQuotation.jsx es {sencilla:1, doble:2, triple:3, cuadruple:4, menor:1}; el total grande de pago (public-total-card) NO se altera por la selección — el estimado vive en data-testid='occ-estimated-total' debajo del table. En /r/:token el botón ics-download-btn es un BUTTON con handler React (no atributos HTML); para tests usar page.expect_download. gcal-btn usa formato dates=YYYYMMDD/YYYYMMDD con fin exclusivo (+1 día sobre trip_end real).",
+  "rca of the issue": "N/A — todas las features funcionan correctamente. Un test inicial falló porque asumía que show_all_occupancies se exponía en el payload público; tras inspeccionar el JSON real, la señal efectiva es occupancy_prices != []. Test ajustado y re-ejecutado con éxito."
+}
