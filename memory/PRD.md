@@ -7,6 +7,25 @@ Plataforma SaaS PWA multi-tenant para **cotización y seguimiento turístico** p
 - **Producción: https://routiq.com.mx** ✅ (VPS Hostinger 177.7.36.75, Docker + Nginx + Let's Encrypt)
 - Iteración actual: **v2.4** (iter_24: registro de uso/costo de IA en Master + generar respaldo on-demand + revisión de seguridad pre-lanzamiento)
 
+## Iteración 42 (jun-2026) — Campos por tipo de concepto (Programa Personalizado) + validación server-side
+**Tarea 1 — Campos condicionales por categoría** (`CustomQuotationBuilder.jsx`, reflejado en PDF y `/q/:token`):
+- **Hospedaje:** Check-in, Check-out, Noches (auto = checkout−checkin, NO editable; qty = noches). Sin horas.
+- **Traslado:** Fecha + Hora inicio + Hora fin.
+- **Tour:** Fecha + Hora inicio (sin hora fin).
+- **Acceso:** solo Fecha.
+- **Extra:** Fecha + Hora inicio + Hora fin.
+- Nueva categoría `acceso` (CustomCategory + CUSTOM_CATEGORY_ES). `CustomItem` añade `checkin/checkout/nights`. `_price_custom_item` los propaga. PDF: helper `_fmt_concept_when` (hospedaje → "check-in → check-out (N noches)"; resto → "fecha · horas"). Enlace público: `conceptWhen()`. Cambio de categoría limpia campos no aplicables.
+**Tarea 2 — Validación server-side:**
+- `POST /api/quotations`: exige `executive_id` si la empresa tiene ejecutivos (400 si falta o no pertenece a la empresa).
+- Nuevo endpoint atómico `GET /api/clients/{id}` (con `executives_count` + `quotations_count`).
+- Tests: `/app/test_reports/iteration_41.json` — backend 5/5 PASS + frontend 8/8 (5 categorías con campos correctos, 2 transiciones con limpieza, 1 E2E render público con formato exacto). Ruta builder: `/app/quotations/new/custom`.
+
+## Backlog P2 (no urgente)
+- % de comisión personalizado por cliente (override del canal).
+- Modo vista previa (dry-run) en importación Excel masiva.
+- Pago ligado al total de la ocupación elegida en el enlace público.
+- Mini-panel "Top agencias/ejecutivos por ventas" en Dashboard.
+
 ## Iteración 41 (jun-2026) — FASE B: Clientes en 2 niveles (Empresa + Ejecutivos)
 **Modelo:** `Executive {id,name,phone,email}`; `executives: List[Executive]` en ClientCreate/Update; `phone` añadido a `AgencyContact`; `executive_id` en QuotationCreate/Update. Clientes existentes intactos (sin ejecutivos).
 **Backend:** `list_clients` agrega `executives_count`; create/update_client persisten ejecutivos; quotation guarda `executive_id` + `contacts`. Propagación: PDF "Agencia/Vendedor" = empresa + ejecutivo + **teléfono** + correo; payload público expone `quotation.contacts`; prellenado de Confirmación usa `agency.contact/phone/name` (agent_name=ejecutivo, agent_phone=tel ejecutivo, agent_company=empresa).
