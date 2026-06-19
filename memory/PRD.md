@@ -7,6 +7,22 @@ Plataforma SaaS PWA multi-tenant para **cotización y seguimiento turístico** p
 - **Producción: https://routiq.com.mx** ✅ (VPS Hostinger 177.7.36.75, Docker + Nginx + Let's Encrypt)
 - Iteración actual: **v2.4** (iter_24: registro de uso/costo de IA en Master + generar respaldo on-demand + revisión de seguridad pre-lanzamiento)
 
+## Iteración 38 (jun-2026) — Ajustes finos PDF + desglose unificado en enlace `/q/:token`
+**PDF (`pdf_generator.py`):**
+1. **Membrete:** logo (3.2cm) + datos empresa + bloque COTIZACIÓN en una sola fila con `VALIGN MIDDLE`; menos espacio bajo el header.
+2. **Márgenes** 1.5cm en los 4 lados; `CONTENT_W=18.0cm` común para todas las tablas; padding de celdas reducido (3pt vertical).
+3. **Datos del cliente:** un único recuadro "Datos del cliente" (Agencia/Vendedor + Cliente final, o "Cliente" si no hay contactos). **Eliminada la línea suelta** que duplicaba nombre/teléfono fuera del recuadro.
+4. **Orden página 1:** header → fecha+saludo → Datos del cliente → **Detalles de reservación** → Desglose de precios + total + nota de canal → Información importante → texto fijo → enlace de condiciones → firma.
+5. **Página 2+:** título del paquete → descripción → **Itinerario día a día** → **Incluye/No incluye inmediatamente después del itinerario** (mismo `PageBreak`, sin salto extra). El título del paquete ya NO aparece en página 1.
+6. **Saludo IA (`ai_service.py`):** consistencia singular/plural ("Reciba/Le invito" para 1 persona; "Reciban/Les invito" solo para empresa sin contacto), sin "colaboradores".
+
+**Enlace público (`PublicQuotation.jsx`):**
+7. Sección unificada **"Desglose de precios"** (`public-price-breakdown`) que lista TODAS las líneas de `q.items` juntas (noche extra/servicios/conceptos integrados) con Subtotal + Total al pie. Eliminadas las secciones separadas `public-services` y `public-custom-items`.
+8. **Nota de canal** al pie del desglose (`public-breakdown-note`).
+9. **Incluye/No incluye** movido a la sección de itinerario (`public-includes-excludes` dentro de `public-itinerary`), al final (réplica de la página 2 del PDF). Orden DOM: presentación → desglose → tarjeta total → itinerario(+incluye).
+- Tests: `/app/test_reports/iteration_37.json` — backend 7/7 PASS + frontend 2/2 tokens (orden DOM y unificación verificados). PDF verificado con pypdf (2 págs, membrete en fila, cliente sin duplicado, noche extra en desglose, incluye tras itinerario).
+- ⚠️ **Nota:** las cotizaciones existentes conservan su `presentation_text` generado antes del fix; el saludo nuevo (sin "colaboradores", singular/plural) solo aplica al **regenerar** la presentación con IA.
+
 ## Iteración 37 (jun-2026) — Rediseño estructural del PDF + réplica en enlace `/q/:token`
 1. **PDF de cotización reestructurado (`pdf_generator.py`, los 3 tipos):**
    - **Página 1 (limpia):** membrete horizontal (logo + empresa + bloque COTIZACIÓN/código/fecha), saludo IA, bloque de cliente unificado (cliente + agencia/turista), detalles (hotel/fechas/noches/pax), **desglose de precios línea por línea** (única tabla de precios), totales, nota del canal, Incluye/No incluye, Información importante, condiciones y firma del ejecutivo.
