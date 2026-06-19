@@ -98,6 +98,7 @@ async def get_public_quotation(token: str):
             "exec_name": exec_name,
             "occupancy_prices": occupancy_prices,
             "show_price_breakdown": q.get("show_price_breakdown", True),
+            "contacts": q.get("contacts") or None,
         },
         "company": {
             "name": company.get("name", ""), "logo_url": company.get("logo_url", ""),

@@ -17,7 +17,7 @@ const CUSTOM_UNITS = [
 
 function money(v, c = 'MXN') { return `$${Number(v || 0).toLocaleString('es-MX')} ${c}`; }
 
-const EMPTY_CONTACTS = { agency: { name: '', contact: '', email: '' }, traveler: { name: '', phone: '' } };
+const EMPTY_CONTACTS = { agency: { name: '', contact: '', email: '', phone: '' }, traveler: { name: '', phone: '' } };
 
 export default function QuotationBuilder() {
   const navigate = useNavigate();
@@ -39,6 +39,7 @@ export default function QuotationBuilder() {
   const [form, setForm] = useState({
     type: 'paquete',
     client_id: '',
+    executive_id: '',
     package_id: search.get('package') || '',
     hotel_name: '',
     dates: { start: '', end: '' },
@@ -64,6 +65,7 @@ export default function QuotationBuilder() {
           setForm({
             type: q.type || 'paquete',
             client_id: q.client_id || '',
+            executive_id: q.executive_id || '',
             package_id: q.package_id || '',
             hotel_name: q.hotel_selected || '',
             dates: q.dates || { start: '', end: '' },
@@ -242,13 +244,22 @@ export default function QuotationBuilder() {
   }));
 
   const selectClient = (c) => setForm((f) => {
-    const next = { ...f, client_id: c.id };
-    // Prefill agency block from the client record when it's a B2B channel and empty
-    if (c.channel !== 'directo' && !f.contacts.agency.name) {
-      next.contacts = { ...f.contacts, agency: { name: c.name || '', contact: c.phone || '', email: c.email || '' } };
+    const next = { ...f, client_id: c.id, executive_id: '' };
+    const execs = c.executives || [];
+    if (execs.length > 0) {
+      // Empresa con ejecutivos: la agencia se llena al elegir el ejecutivo.
+      next.contacts = { ...f.contacts, agency: { name: c.name || '', contact: '', email: '', phone: '' } };
+    } else if (c.channel !== 'directo' && !f.contacts.agency.name) {
+      // Empresa sin ejecutivos (legacy): prellenar agencia con datos generales.
+      next.contacts = { ...f.contacts, agency: { name: c.name || '', contact: c.phone || '', email: c.email || '', phone: c.phone || '' } };
     }
     return next;
   });
+
+  const selectExecutive = (ex) => setForm((f) => ({
+    ...f, executive_id: ex.id,
+    contacts: { ...f.contacts, agency: { name: (clients.find((c) => c.id === f.client_id) || {}).name || '', contact: ex.name || '', email: ex.email || '', phone: ex.phone || '' } },
+  }));
 
   const goToStep = (i) => setStep(i);
 
@@ -266,7 +277,12 @@ export default function QuotationBuilder() {
   const removeConcept = (idx) => setForm((f) => ({ ...f, custom_items: f.custom_items.filter((_, i) => i !== idx) }));
 
   const canNext = () => {
-    if (cur === 'client') return !!form.client_id;
+    if (cur === 'client') {
+      if (!form.client_id) return false;
+      const cl = clients.find((c) => c.id === form.client_id);
+      if (cl && (cl.executives || []).length > 0 && !form.executive_id) return false;
+      return true;
+    }
     if (cur === 'package') return !!form.package_id && !!form.hotel_name;
     if (cur === 'dates') return form.dates.start && form.dates.end && rooms.length > 0 && totalAdults > 0;
     if (cur === 'servicios') return totalAdults > 0 && (form.services || []).length > 0;
@@ -313,7 +329,7 @@ export default function QuotationBuilder() {
       service_date: it.service_date || '', start_time: it.start_time || '', end_time: it.end_time || '',
     }));
     try {
-      const contacts = isB2B ? form.contacts : null;
+      const contacts = (isB2B || ((client?.executives || []).length > 0)) ? form.contacts : null;
       if (editing) {
         const patch = {
           dates: form.dates,
@@ -321,6 +337,7 @@ export default function QuotationBuilder() {
           services: form.services,
           extra_nights: form.extra_nights,
           contacts,
+          executive_id: form.executive_id || null,
           notes: form.notes,
           presentation_text: form.presentation_text || '',
           important_info: form.important_info || '',
@@ -341,6 +358,7 @@ export default function QuotationBuilder() {
         services: form.services,
         notes: form.notes,
         contacts,
+        executive_id: form.executive_id || null,
         presentation_text: form.presentation_text || '',
         important_info: form.important_info || '',
         show_all_occupancies: !!form.show_all_occupancies,
@@ -509,14 +527,41 @@ export default function QuotationBuilder() {
               {clients.length === 0 && <p className="text-ink-400 text-sm">No hay clientes. Crea uno.</p>}
             </div>
 
-            {/* Agency + final traveler contacts for B2B */}
-            {isB2B && (
+            {/* Empresa con ejecutivos (nivel 2): elegir ejecutivo + turista */}
+            {client && (client.executives || []).length > 0 && (
+              <div className="grid md:grid-cols-2 gap-4 pt-4 border-t border-ink-100" data-testid="executive-block">
+                <div className="rounded-xl border border-ink-100 p-4 space-y-3">
+                  <p className="font-semibold text-ink-900 flex items-center gap-2"><Briefcase className="w-4 h-4 text-brand-500" /> Ejecutivo de {client.name}</p>
+                  <div className="space-y-2" data-testid="executive-options">
+                    {client.executives.map((ex) => (
+                      <button key={ex.id} type="button" onClick={() => selectExecutive(ex)} data-testid={`executive-option-${ex.id}`}
+                        className={`w-full text-left rounded-xl border p-3 transition-all ${form.executive_id === ex.id ? 'border-brand-500 bg-brand-50' : 'border-ink-100 hover:border-brand-300'}`}>
+                        <p className="font-medium text-ink-900">{ex.name || 'Sin nombre'}</p>
+                        <p className="text-xs text-ink-500">{[ex.phone, ex.email].filter(Boolean).join(' · ') || '—'}</p>
+                      </button>
+                    ))}
+                  </div>
+                  <p className="text-xs text-ink-400">En el PDF y el enlace: <b>{client.name}</b> + el ejecutivo seleccionado (teléfono y correo).</p>
+                </div>
+                <div className="rounded-xl border border-ink-100 p-4 space-y-3">
+                  <p className="font-semibold text-ink-900 flex items-center gap-2"><Users className="w-4 h-4 text-brand-500" /> Cliente final / Turista</p>
+                  <div><label className="label-text">Nombre completo</label><input className="input-field" value={form.contacts.traveler.name} onChange={(e) => setContact('traveler', 'name', e.target.value)} data-testid="contact-traveler-name" /></div>
+                  <div><label className="label-text">Teléfono directo</label><input className="input-field" value={form.contacts.traveler.phone} onChange={(e) => setContact('traveler', 'phone', e.target.value)} data-testid="contact-traveler-phone" /></div>
+                </div>
+              </div>
+            )}
+
+            {/* Agency + final traveler contacts for B2B (empresas sin ejecutivos / legacy) */}
+            {isB2B && !(client && (client.executives || []).length > 0) && (
               <div className="grid md:grid-cols-2 gap-4 pt-4 border-t border-ink-100" data-testid="contacts-block">
                 <div className="rounded-xl border border-ink-100 p-4 space-y-3">
                   <p className="font-semibold text-ink-900 flex items-center gap-2"><Briefcase className="w-4 h-4 text-brand-500" /> Agencia / Vendedor</p>
                   <div><label className="label-text">Nombre de la agencia</label><input className="input-field" value={form.contacts.agency.name} onChange={(e) => setContact('agency', 'name', e.target.value)} data-testid="contact-agency-name" /></div>
                   <div><label className="label-text">Contacto / Vendedor</label><input className="input-field" value={form.contacts.agency.contact} onChange={(e) => setContact('agency', 'contact', e.target.value)} data-testid="contact-agency-contact" /></div>
-                  <div><label className="label-text">Correo</label><input className="input-field" value={form.contacts.agency.email} onChange={(e) => setContact('agency', 'email', e.target.value)} data-testid="contact-agency-email" /></div>
+                  <div className="grid grid-cols-2 gap-2">
+                    <div><label className="label-text">Teléfono</label><input className="input-field" value={form.contacts.agency.phone} onChange={(e) => setContact('agency', 'phone', e.target.value)} data-testid="contact-agency-phone" /></div>
+                    <div><label className="label-text">Correo</label><input className="input-field" value={form.contacts.agency.email} onChange={(e) => setContact('agency', 'email', e.target.value)} data-testid="contact-agency-email" /></div>
+                  </div>
                 </div>
                 <div className="rounded-xl border border-ink-100 p-4 space-y-3">
                   <p className="font-semibold text-ink-900 flex items-center gap-2"><Users className="w-4 h-4 text-brand-500" /> Cliente final / Turista</p>
@@ -876,10 +921,10 @@ export default function QuotationBuilder() {
                   {(form.dates.start || form.dates.end) && <p className="text-ink-500 text-xs mt-1">{formatDateEs(form.dates.start)} → {formatDateEs(form.dates.end)}</p>}
                 </div>
               )}
-              {isB2B && (
+              {(isB2B || ((client?.executives || []).length > 0)) && (
                 <div className="rounded-xl border border-ink-100 p-4 md:col-span-2" data-testid="review-contacts">
                   <p className="text-xs uppercase tracking-widest font-bold text-ink-400 mb-1">Contactos</p>
-                  <p className="text-ink-700"><b>Agencia:</b> {form.contacts.agency.name || '—'} · {form.contacts.agency.email}</p>
+                  <p className="text-ink-700"><b>Agencia / Vendedor:</b> {form.contacts.agency.name || '—'}{form.contacts.agency.contact ? ` · ${form.contacts.agency.contact}` : ''}{form.contacts.agency.phone ? ` · ${form.contacts.agency.phone}` : ''}{form.contacts.agency.email ? ` · ${form.contacts.agency.email}` : ''}</p>
                   <p className="text-ink-700"><b>Turista:</b> {form.contacts.traveler.name || '—'} · {form.contacts.traveler.phone}</p>
                 </div>
               )}

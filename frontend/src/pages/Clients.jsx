@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import AppShell from '@/components/AppShell';
 import api, { formatApiError } from '@/lib/api';
 import { formatDateEs } from '@/lib/dates';
-import { UserCog, Plus, Search, Pencil, Trash2, AlertTriangle, FileText, TrendingUp, ChevronLeft, ChevronRight } from 'lucide-react';
+import { UserCog, Plus, Search, Pencil, Trash2, AlertTriangle, FileText, TrendingUp, ChevronLeft, ChevronRight, Users } from 'lucide-react';
 
 const CHANNELS = [
   { v: 'directo', label: 'Directo' },
@@ -12,8 +12,9 @@ const CHANNELS = [
 ];
 const CHANNEL_LABEL = Object.fromEntries(CHANNELS.map((c) => [c.v, c.label]));
 const PAGE_SIZE = 10;
+const uid = () => (crypto?.randomUUID ? crypto.randomUUID() : `id-${Date.now()}-${Math.random()}`);
 const money = (v) => `$${Number(v || 0).toLocaleString('es-MX', { maximumFractionDigits: 0 })}`;
-const emptyForm = { name: '', email: '', phone: '', channel: 'directo', notes: '' };
+const emptyForm = { name: '', email: '', phone: '', channel: 'directo', notes: '', executives: [] };
 
 export default function Clients() {
   const [clients, setClients] = useState([]);
@@ -58,7 +59,11 @@ export default function Clients() {
   useEffect(() => { setPage(1); }, [q, channel, sort]);
 
   const openNew = () => { setForm(emptyForm); setEditClient({}); setError(''); };
-  const openEdit = (c) => { setForm({ name: c.name || '', email: c.email || '', phone: c.phone || '', channel: c.channel || 'directo', notes: c.notes || '' }); setEditClient(c); setError(''); };
+  const openEdit = (c) => { setForm({ name: c.name || '', email: c.email || '', phone: c.phone || '', channel: c.channel || 'directo', notes: c.notes || '', executives: (c.executives || []).map((e) => ({ ...e })) }); setEditClient(c); setError(''); };
+
+  const addExec = () => setForm((f) => ({ ...f, executives: [...(f.executives || []), { id: uid(), name: '', phone: '', email: '' }] }));
+  const updExec = (idx, patch) => setForm((f) => ({ ...f, executives: f.executives.map((e, i) => i === idx ? { ...e, ...patch } : e) }));
+  const removeExec = (idx) => setForm((f) => ({ ...f, executives: f.executives.filter((_, i) => i !== idx) }));
 
   const save = async () => {
     setError(''); setSaving(true);
@@ -130,6 +135,7 @@ export default function Clients() {
                 </div>
                 <div className="flex items-center gap-4 flex-wrap">
                   <span className="pill bg-ink-100 text-ink-700 capitalize">{CHANNEL_LABEL[c.channel] || c.channel}</span>
+                  <div className="text-center" title="Ejecutivos vinculados"><p className="font-semibold text-ink-900 flex items-center gap-1 text-sm" data-testid={`client-execs-${c.id}`}><Users className="w-3.5 h-3.5 text-ink-400" /> {c.executives_count || 0}</p></div>
                   <div className="text-center" title="Cotizaciones"><p className="font-semibold text-ink-900 flex items-center gap-1 text-sm" data-testid={`client-quotes-${c.id}`}><FileText className="w-3.5 h-3.5 text-ink-400" /> {c.quotations_count || 0}</p></div>
                   <div className="text-center" title="Ventas ganadas"><p className="font-semibold text-emerald-700 flex items-center gap-1 text-sm" data-testid={`client-sales-${c.id}`}><TrendingUp className="w-3.5 h-3.5" /> {money(c.sales_total)}</p></div>
                   <div className="flex items-center gap-1">
@@ -157,21 +163,42 @@ export default function Clients() {
       {/* Create/Edit modal */}
       {editClient && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-ink-900/50" onClick={() => !saving && setEditClient(null)}>
-          <div className="bg-white rounded-2xl p-6 w-full max-w-md" onClick={(e) => e.stopPropagation()} data-testid="client-modal">
-            <h3 className="font-display text-xl font-semibold text-ink-900 mb-4">{editClient.id ? 'Editar cliente' : 'Nuevo cliente'}</h3>
+          <div className="bg-white rounded-2xl p-6 w-full max-w-lg max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()} data-testid="client-modal">
+            <h3 className="font-display text-xl font-semibold text-ink-900 mb-1">{editClient.id ? 'Editar empresa / cliente' : 'Nueva empresa / cliente'}</h3>
+            <p className="text-sm text-ink-500 mb-4">Nivel 1: datos de la empresa. Nivel 2: ejecutivos vinculados.</p>
             {error && <div className="rounded-xl border border-red-200 bg-red-50 text-red-700 px-4 py-3 text-sm mb-3" data-testid="client-modal-error">{error}</div>}
             <div className="space-y-3">
               <div><label className="label-text">Nombre / Empresa</label><input className="input-field" value={form.name} onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))} data-testid="client-name" /></div>
               <div className="grid grid-cols-2 gap-3">
-                <div><label className="label-text">Correo</label><input type="email" className="input-field" value={form.email} onChange={(e) => setForm((f) => ({ ...f, email: e.target.value }))} data-testid="client-email" /></div>
-                <div><label className="label-text">Teléfono</label><input className="input-field" value={form.phone} onChange={(e) => setForm((f) => ({ ...f, phone: e.target.value }))} data-testid="client-phone" /></div>
+                <div><label className="label-text">Correo general</label><input type="email" className="input-field" value={form.email} onChange={(e) => setForm((f) => ({ ...f, email: e.target.value }))} data-testid="client-email" /></div>
+                <div><label className="label-text">Teléfono general</label><input className="input-field" value={form.phone} onChange={(e) => setForm((f) => ({ ...f, phone: e.target.value }))} data-testid="client-phone" /></div>
               </div>
-              <div><label className="label-text">Tipo</label>
+              <div><label className="label-text">Canal</label>
                 <select className="input-field" value={form.channel} onChange={(e) => setForm((f) => ({ ...f, channel: e.target.value }))} data-testid="client-channel">
                   {CHANNELS.map((c) => <option key={c.v} value={c.v}>{c.label}</option>)}
                 </select>
               </div>
-              <div><label className="label-text">Notas (opcional)</label><textarea rows="2" className="input-field" value={form.notes} onChange={(e) => setForm((f) => ({ ...f, notes: e.target.value }))} data-testid="client-notes" /></div>
+              <div><label className="label-text">Dirección / Notas (opcional)</label><textarea rows="2" className="input-field" value={form.notes} onChange={(e) => setForm((f) => ({ ...f, notes: e.target.value }))} data-testid="client-notes" /></div>
+
+              {/* Nivel 2 — Ejecutivos */}
+              <div className="pt-3 border-t border-ink-100" data-testid="client-executives-section">
+                <div className="flex items-center justify-between mb-1">
+                  <p className="label-text mb-0 flex items-center gap-1.5"><Users className="w-4 h-4 text-brand-500" /> Ejecutivos / Contactos</p>
+                  <button type="button" className="text-xs text-brand-600 font-medium inline-flex items-center gap-1" onClick={addExec} data-testid="add-exec-btn"><Plus className="w-3.5 h-3.5" /> Agregar ejecutivo</button>
+                </div>
+                <p className="text-xs text-ink-400 mb-2">Personas de contacto dentro de esta empresa. Al cotizar elegirás el ejecutivo específico.</p>
+                {(form.executives || []).length === 0 && <p className="text-xs text-ink-400 italic">Sin ejecutivos. Las cotizaciones usarán los datos generales de la empresa.</p>}
+                <div className="space-y-2">
+                  {(form.executives || []).map((ex, i) => (
+                    <div key={ex.id || i} className="rounded-xl border border-ink-100 p-2.5 grid grid-cols-1 sm:grid-cols-[1fr_1fr_1fr_auto] gap-2 items-center" data-testid={`exec-row-${i}`}>
+                      <input className="input-field text-sm" placeholder="Nombre completo" value={ex.name} onChange={(e) => updExec(i, { name: e.target.value })} data-testid={`exec-name-${i}`} />
+                      <input className="input-field text-sm" placeholder="Teléfono directo" value={ex.phone} onChange={(e) => updExec(i, { phone: e.target.value })} data-testid={`exec-phone-${i}`} />
+                      <input className="input-field text-sm" placeholder="Correo directo" value={ex.email} onChange={(e) => updExec(i, { email: e.target.value })} data-testid={`exec-email-${i}`} />
+                      <button type="button" className="p-2 text-ink-300 hover:text-red-500 justify-self-end" onClick={() => removeExec(i)} data-testid={`exec-remove-${i}`}><Trash2 className="w-4 h-4" /></button>
+                    </div>
+                  ))}
+                </div>
+              </div>
             </div>
             <div className="flex justify-end gap-2 mt-5">
               <button className="btn-ghost" onClick={() => setEditClient(null)} data-testid="client-cancel">Cancelar</button>

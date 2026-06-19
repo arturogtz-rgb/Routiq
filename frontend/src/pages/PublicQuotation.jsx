@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useParams, useSearchParams } from 'react-router-dom';
 import api, { formatApiError } from '@/lib/api';
-import { CheckCircle2, Calendar, MapPin, Users, FileText, Sparkles, CreditCard, Loader2, Moon, Landmark, Copy, Download } from 'lucide-react';
+import { CheckCircle2, Calendar, MapPin, Users, FileText, Sparkles, CreditCard, Loader2, Moon, Landmark, Copy, Download, Briefcase } from 'lucide-react';
 import { formatDateEs } from '@/lib/dates';
 
 function money(v, c = 'MXN') { return `$${Number(v || 0).toLocaleString('es-MX')} ${c}`; }
@@ -189,6 +189,32 @@ export default function PublicQuotation() {
         {q.presentation_text && (
           <div className="card-surface p-6" data-testid="public-presentation">
             <p className="text-ink-700 leading-relaxed whitespace-pre-line">{q.presentation_text}</p>
+          </div>
+        )}
+
+        {/* Datos del cliente — Agencia/Vendedor + Turista (réplica del PDF) */}
+        {q.contacts && (q.contacts.agency?.name || q.contacts.traveler?.name) && (
+          <div className="card-surface p-6 grid sm:grid-cols-2 gap-4" data-testid="public-client-data">
+            {q.contacts.agency?.name && (
+              <div className="flex items-start gap-3">
+                <Briefcase className="w-5 h-5 mt-0.5" style={{ color: primary }} />
+                <div>
+                  <p className="text-xs uppercase tracking-widest text-ink-400 font-bold">Agencia / Vendedor</p>
+                  <p className="font-semibold text-ink-900">{q.contacts.agency.name}</p>
+                  <p className="text-xs text-ink-500">{[q.contacts.agency.contact, q.contacts.agency.phone, q.contacts.agency.email].filter(Boolean).join(' · ')}</p>
+                </div>
+              </div>
+            )}
+            {q.contacts.traveler?.name && (
+              <div className="flex items-start gap-3">
+                <Users className="w-5 h-5 mt-0.5" style={{ color: primary }} />
+                <div>
+                  <p className="text-xs uppercase tracking-widest text-ink-400 font-bold">Cliente final / Turista</p>
+                  <p className="font-semibold text-ink-900">{q.contacts.traveler.name}</p>
+                  {q.contacts.traveler.phone && <p className="text-xs text-ink-500">Tel: {q.contacts.traveler.phone}</p>}
+                </div>
+              </div>
+            )}
           </div>
         )}
 

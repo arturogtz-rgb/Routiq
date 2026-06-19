@@ -134,6 +134,7 @@ async def create_quotation(payload: QuotationCreate, user: dict = Depends(requir
         "pax": payload.pax.model_dump(),
         "services": services_sel,
         "contacts": payload.contacts.model_dump() if payload.contacts else None,
+        "executive_id": payload.executive_id or None,
         "extra_nights_cfg": extra_cfg,
         **custom_payload,
         "custom_items": [c.model_dump() for c in payload.custom_items],

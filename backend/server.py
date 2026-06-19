@@ -597,6 +597,7 @@ async def list_clients(user: dict = Depends(require_tenant)):
         c["active_count"] = s.get("active", 0)
         c["sales_total"] = round(s.get("sales", 0) or 0, 2)
         c["last_activity_at"] = s.get("last") or c.get("created_at")
+        c["executives_count"] = len(c.get("executives") or [])
     return clients
 
 

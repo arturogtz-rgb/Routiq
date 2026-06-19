@@ -236,9 +236,10 @@ def generate_quotation_pdf(company: dict, quotation: dict, package: dict, client
     ct_rows = []
     if any(agency.values()) or any(traveler.values()):
         if any(agency.values()):
+            agency_line = " · ".join([x for x in [agency.get('contact', ''), agency.get('phone', ''), agency.get('email', '')] if x])
             ct_rows.append([
                 Paragraph("<b>Agencia / Vendedor</b>", s["body"]),
-                Paragraph(f"{agency.get('name','')}<br/><font color='#475569' size=8>{agency.get('contact','')} · {agency.get('email','')}</font>", s["soft"]),
+                Paragraph(f"{agency.get('name','')}<br/><font color='#475569' size=8>{agency_line}</font>", s["soft"]),
             ])
         if any(traveler.values()):
             ct_rows.append([

@@ -328,13 +328,21 @@ class SelectedService(BaseModel):
     qty: int = Field(default=0, ge=0)  # 0 => server computes default by unit
 
 
-# ---------- Clients ----------
+# ---------- Clients (Empresa nivel 1 + Ejecutivos nivel 2) ----------
+class Executive(BaseModel):
+    id: str = Field(default_factory=lambda: __import__("uuid").uuid4().hex[:12])
+    name: str = ""
+    phone: str = ""
+    email: str = ""
+
+
 class ClientCreate(BaseModel):
     name: str
     phone: str = ""
     email: str = ""
     channel: Literal["directo", "agencia", "mayorista", "operador"] = "directo"
     notes: str = ""
+    executives: List[Executive] = []
 
 
 class ClientUpdate(BaseModel):
@@ -343,6 +351,7 @@ class ClientUpdate(BaseModel):
     email: Optional[str] = None
     channel: Optional[Literal["directo", "agencia", "mayorista", "operador"]] = None
     notes: Optional[str] = None
+    executives: Optional[List[Executive]] = None
 
 
 # ---------- Quotation contacts (agency + final traveler) ----------
@@ -350,6 +359,7 @@ class AgencyContact(BaseModel):
     name: str = ""
     contact: str = ""
     email: str = ""
+    phone: str = ""
 
 
 class TravelerContact(BaseModel):
@@ -429,6 +439,7 @@ class QuotationCreate(BaseModel):
     services: List[SelectedService] = []
     extra_nights: Optional[ExtraNights] = None
     contacts: Optional[QuotationContacts] = None
+    executive_id: Optional[str] = None
     notes: str = ""
     assigned_to: Optional[str] = None
     presentation_text: str = ""
@@ -501,6 +512,7 @@ class QuotationUpdate(BaseModel):
     services: Optional[List[SelectedService]] = None
     extra_nights: Optional[ExtraNights] = None
     contacts: Optional[QuotationContacts] = None
+    executive_id: Optional[str] = None
     notes: Optional[str] = None
     assigned_to: Optional[str] = None
     presentation_text: Optional[str] = None

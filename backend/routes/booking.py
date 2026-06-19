@@ -82,7 +82,7 @@ async def get_booking_confirmation(quotation_id: str, user: dict = Depends(requi
     return {
         "_prefill": True,
         "agent_name": agency.get("contact") or client.get("name", ""),
-        "agent_phone": client.get("phone", ""),
+        "agent_phone": agency.get("phone") or client.get("phone", ""),
         "agent_company": agency.get("name") or client.get("name", ""),
         "reservation_date": now_iso()[:10],
         "passenger_name": traveler.get("name") or client.get("name", ""),
