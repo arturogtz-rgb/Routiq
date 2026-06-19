@@ -7,6 +7,15 @@ Plataforma SaaS PWA multi-tenant para **cotización y seguimiento turístico** p
 - **Producción: https://routiq.com.mx** ✅ (VPS Hostinger 177.7.36.75, Docker + Nginx + Let's Encrypt)
 - Iteración actual: **v2.4** (iter_24: registro de uso/costo de IA en Master + generar respaldo on-demand + revisión de seguridad pre-lanzamiento)
 
+## Iteración 37 (jun-2026) — Rediseño estructural del PDF + réplica en enlace `/q/:token`
+1. **PDF de cotización reestructurado (`pdf_generator.py`, los 3 tipos):**
+   - **Página 1 (limpia):** membrete horizontal (logo + empresa + bloque COTIZACIÓN/código/fecha), saludo IA, bloque de cliente unificado (cliente + agencia/turista), detalles (hotel/fechas/noches/pax), **desglose de precios línea por línea** (única tabla de precios), totales, nota del canal, Incluye/No incluye, Información importante, condiciones y firma del ejecutivo.
+   - **Página 2+ (`PageBreak()`):** EXCLUSIVA para **descripción del programa + Itinerario día a día**. Sin rastro de itinerario en página 1.
+   - **Tabla de "Opciones de ocupación":** ahora SOLO se renderiza cuando `show_all_occupancies=true`. Con el toggle desactivado, el desglose línea por línea es la única referencia de precios (se eliminó la tabla redundante de ocupaciones seleccionadas que duplicaba el desglose).
+2. **Saludo IA (`ai_service.py`):** prompt de `generate_presentation` ajustado para abrir con "Estimado/a [nombre]" y **prohibir la palabra "colaboradores"**.
+3. **Réplica web (`PublicQuotation.jsx`):** bloque de itinerario movido al final (después de la tarjeta de total, `data-testid='public-itinerary'`) + descripción del programa; tabla de ocupación gateada por `q.occupancy_prices.length` (backend `public_payments.py` ahora envía `occupancy_prices=[]` cuando `show_all_occupancies=false`).
+- Tests: `/app/test_reports/iteration_36.json` — backend 6/6 PASS (`backend/tests/test_iteration36_pdf_redesign.py`) + frontend Playwright 3/3 tokens (orden DOM total→itinerario verificado, ocupación ausente con show_all=false). PDF verificado con pypdf (pág 1 limpia / itinerario en pág 2). Regla "PDF == enlace cliente" cumplida.
+
 ## Iteración 36 (jun-2026) — Correcciones PDF / enlace / catálogo público
 1. **Precios por canal (PDF + enlace `/q/:token`):** nunca se muestran todas las ocupaciones por defecto; solo las **seleccionadas** con precio por persona **y total**. Notas por canal: directo (sin nota), agencia ("Precio comisionable"), mayorista/operador ("Precio neto no comisionable"). Checkbox en paso Revisión "Mostrar todas las opciones de ocupación disponibles" (`show_all_occupancies`, off por defecto) → muestra la tabla completa (cotización abierta, precio por persona). Helpers compartidos `occupancy_rows_selected/all` en `pricing.py`.
 2. **Hero `/p/:slug/:code`:** la imagen ahora cubre el 100% del área (altura fija + `object-cover absolute inset-0`); se eliminó la franja gris.
