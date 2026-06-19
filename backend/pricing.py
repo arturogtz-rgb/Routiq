@@ -149,28 +149,38 @@ def _price_custom_item(ci: dict, total_pax: int, nights_total: int, rooms: int,
     entered = float(ci.get("net_price", 0) or 0)
     price_type = ci.get("price_type", "neto") or "neto"
     unit = ci.get("unit") or "per_group"
+    category = ci.get("category", "extra")
+    nights = int(ci.get("nights", 0) or 0)
     sel_qty = int(ci.get("qty", 0) or 0)
-    qty = sel_qty if sel_qty > 0 else _custom_default_qty(unit, total_pax, nights_total, rooms)
-    name = (ci.get("name") or "").strip() or CUSTOM_CATEGORY_ES.get(ci.get("category", "extra"), "Concepto")
+    if category == "hospedaje":
+        # Cantidad = habitaciones/personas (libre); subtotal = tarifa × cantidad × noches.
+        qty = sel_qty if sel_qty > 0 else 1
+    else:
+        qty = sel_qty if sel_qty > 0 else _custom_default_qty(unit, total_pax, nights_total, rooms)
+    name = (ci.get("name") or "").strip() or CUSTOM_CATEGORY_ES.get(category, "Concepto")
     if price_type == "publico":
         unit_price = round(entered, 2)
         public_ref = round(entered, 2)
     else:
         unit_price = channel_price(entered, client_channel, margin_divisor, commissions)
         public_ref = public_from_net(entered, margin_divisor)
+    if category == "hospedaje" and nights > 0:
+        subtotal = round(unit_price * qty * nights, 2)
+    else:
+        subtotal = round(unit_price * qty, 2)
     return {
         "label": f"{name} · {CUSTOM_UNIT_ES.get(unit, '')}".strip(" ·"),
         "unit_price": unit_price, "qty": qty, "kind": "custom",
-        "category": ci.get("category", "extra"), "unit": unit,
+        "category": category, "unit": unit,
         "name": name, "description": ci.get("description", "") or "",
         "net_price": entered, "public_price": public_ref, "price_type": price_type,
-        "subtotal": round(unit_price * qty, 2),
+        "subtotal": subtotal,
         "service_date": ci.get("service_date", "") or "",
         "start_time": ci.get("start_time", "") or "",
         "end_time": ci.get("end_time", "") or "",
         "checkin": ci.get("checkin", "") or "",
         "checkout": ci.get("checkout", "") or "",
-        "nights": int(ci.get("nights", 0) or 0),
+        "nights": nights,
     }
 
 

@@ -1,129 +1,144 @@
-<analysis>**original_problem_statement**: Crear un SaaS PWA multi-tenant (Routiq) para cotizaciones turísticas. PRODUCT REQUIREMENTS: Implementar Cotización a medida / Programa personalizado, políticas dinámicas, CRUD de clientes, Analíticas, multi-moneda, y reescritura del Motor de Precios (completado). 
-**NUEVO REQUERIMIENTO CRÍTICO (Actual)**: Rediseño estructural y visual completo del PDF de cotización (aplica a todos los tipos). Página 1 exclusiva para: Membrete (logo + empresa + detalles de cotización en línea), saludo IA corregido (sin la palabra colaboradores), datos del cliente unificados, desglose de precio línea por línea (eliminando la tabla duplicada de ocupación), notas por canal al final de la tabla, y condiciones. Página 2 en adelante: Exclusivo para el Itinerario y descripción.
-**REGLA DE ORO**: Todo cambio visual y estructural hecho en el PDF debe replicarse idénticamente en el enlace web del cliente ().
+<analysis>**original_problem_statement**: Rediseño estructural y visual completo del PDF de cotización, réplica en enlace público (), confirmación de reservas interactivas (), gestión de clientes en dos niveles (Empresa + Ejecutivos), y mejoras avanzadas en el constructor de cotizaciones (desgloses simples/detallados, campos condicionales por tipo de servicio). PRODUCT REQUIREMENTS: La cotización y PDF deben ser idénticos, Hospedaje requiere cálculo .
 
-**User's preferred language**: Spanish (You MUST automatically detect the user's primary language from their messages inside the <trajectory> tag and INSTRUCT next agent to respond in Spanish ONLY).
+**User's preferred language**: Spanish (You MUST automatically detect the user's primary language from their messages inside the <trajectory> tag and INSTRUCT next agent to respond in Spanish ONLY)
 
-**what currently exists?**: SaaS PWA multi-tenant robusto con cotizador libre/paquetes. Motor de precios reescrito para utilizar Tarifas Netas confidenciales y calcular el Precio Público según . Exportación PDF, enlaces web interactivos, nuevo módulo de Confirmación de Reserva, catálogo de servicios con carga vía Excel masiva (4 categorías), y cotizador personalizado con soporte mixto (conceptos en tarifa neta vs precio público).
+**what currently exists?**: SaaS PWA multi-tenant para cotizaciones turísticas. Generación de PDFs y enlaces web interactivos sincronizados. Confirmación de reservas prellenada. Módulo de clientes con estructura de 2 niveles (Empresas con múltiples Ejecutivos). Constructor de cotizaciones Programa Personalizado con campos condicionales (Hospedaje, Traslado, Tour, etc.) y desglose de precios dinámico.
 
 **Last working item**: 
-- Last item agent was working: Analizando  y  para comenzar el rediseño completo del PDF de cotización y el prompt de saludo IA. El agente ubicó las funciones pero **no ha iniciado la codificación**.
-- Status: NOT STARTED
-- Agent Testing Done: N
-- Which testing method agent to use?: both (Backend test for PDF generation, Frontend testing agent / screenshot for Public Link replication).
-- User Testing Done: N
+    - Last item agent was working: Fix en el cálculo del concepto de Hospedaje dentro del Programa Personalizado ( y ). La Cantidad debe ser un campo libre y editable (representando habitaciones o personas) e independiente del campo Noches (el cual se autocalcula por check-in/out). El subtotal para Hospedaje debe ser . El agente acaba de modificar el código pero no ha probado los cambios.
+    - Status: IN PROGRESS
+    - Agent Testing Done: N
+    - Which testing method agent to use?: both (Backend test / curl for pricing validation, and Frontend screenshot/testing agent to verify the input fields in the builder).
+    - User Testing Done: N
 
-**All Pending/In progress Issue list**:
-  - Issue 1: Rediseño estructural del PDF de cotización y su enlace web asociado (Prioridad: P0)
-     - Attempted fixes: Ninguno, apenas se identificaron los archivos.
+**All Pending/In progress Issue list**:  
+  - Issue 1: Fix cálculo y UI de Hospedaje en Programa Personalizado (P0)
+     - Attempted fixes: El agente editó  (función ) y  para independizar Cantidad de las Noches y multiplicar el subtotal. 
      - Next debug checklist: 
-       - : Modificar el prompt de  para eliminar la palabra colaboradores y usar Estimado/a [nombre].
-       - : Reestructurar . Crear un header de membrete horizontal. Remover la información duplicada del cliente. Remover la tabla completa de  si interfiere con el desglose; mantener solo el desglose final. Asegurar el salto de página () justo antes de iterar el itinerario.
-       - : Replicar la misma estructura visual (eliminar info duplicada del cliente, asegurar que la tabla de ocupaciones seleccionadas esté limpia, etc.).
-     - Why fix this issue and what will be achieved with the fix?: Mejorar la presentación profesional de las cotizaciones hacia el turista/agencia final.
-     - Status: NOT STARTED
+        - Frontend (): Asegurar que el campo Cantidad () esté habilitado y editable para la categoría . Confirmar que el cálculo visual del subtotal incluya .
+        - Backend (): Confirmar que  multiplique  correctamente para hospedaje.
+        - Probar ambos y llamar al testing agent o probar manualmente.
+     - Why fix this issue and what will be achieved with the fix?: Para evitar que el sistema asuma que la Cantidad es igual al número de Noches, permitiendo cotizar múltiples habitaciones.
+     - Status: IN PROGRESS
      - Is recurring issue? N
      - Should Test frontend/backend/both after fix?: both
-     - Blocked on other issue: Ninguno.
+     - Blocked on other issue: None
 
 **In progress Task List**:
-  - Task 1: Rediseño del PDF y Enlace 
-     - Where to resume: Iniciar en  y . Luego pasar a .
-     - What will be achieved with this?: Un documento PDF estéticamente superior, con separación clara entre costos/términos (Página 1) y la experiencia de viaje/itinerario (Página 2+).
-     - Status: NOT STARTED
+  - Task 1: Validación y test del fix de Hospedaje
+     - Where to resume: Ejecutar validación del backend para confirmar el cálculo matemático () y renderizar el frontend () para confirmar que el campo Cantidad es editable sin afectar la diferencia de fechas de las Noches.
+     - What will be achieved with this?: Finalización de las correcciones de la fase actual.
+     - Status: TESTING PENDING
      - Should Test frontend/backend/both after fix?: both
-     - Blocked on something: Nada.
+     - Blocked on something: Nothing
 
-**Upcoming and Future Tasks**:
-  - P1: Selección de ocupación interactiva en enlace público (para cotizaciones abiertas donde el ejecutivo activa Mostrar todas las opciones de ocupación, el cliente debe poder seleccionar la suya y auto-calcular el total).
-  - P1: Enlace web de Confirmación de Reserva con botón Agregar al calendario.
-  - P2: Personalización de porcentaje de comisión específico por cliente (sobreescribiendo el global del canal).
-  - P2: Modo vista previa (dry-run) al importar Excel masivamente.
+**Upcoming and Future Tasks**
+    Upcoming Tasks:
+    - P2: Personalización de porcentaje de comisión específico por cliente (sobreescribiendo el global del canal).
+    - P2: Modo vista previa (dry-run) al importar Excel masivamente.
+    - P2: Pago ligado al total de la ocupación elegida en el enlace público.
+    - P2: Mini-panel Top agencias/ejecutivos por ventas en Dashboard.
 
-**Completed work in this session**:
-- Motor de precios Fase 1: Precios Públicos a partir de Tarifa Neta (DONE)
-- Ocultar paquetes no seleccionados en Builder y omitir Habitaciones con precio 0 (DONE)
-- Importación Excel: Itinerarios día a día y Servicios masivos por 4 categorías (DONE)
-- Catálogo público de servicios independiente () con subtítulo editable (DONE)
-- Builder Programa Personalizado: Toggle de precio neto vs precio público por concepto (DONE)
-- Condiciones Generales / Políticas de cancelación: endpoints, UI en settings, e inserción en PDF (DONE)
-- Nuevo Documento: Confirmación de Reserva (PDF interactivo, datos bancarios) (DONE)
-- Ocultar tabla de todas las ocupaciones por defecto; añadir checkbox Mostrar todas las opciones y arreglos a la visualización del Hero (DONE)
+**Completed work in this session**
+- Rediseño completo de PDF y enlace público (Página 1: desglose, Página 2: itinerario) (DONE)
+- Botón Descargar PDF interactivo en vista pública  (DONE)
+- Selección interactiva de ocupación en  (DONE)
+- Generación de Confirmación de Reserva () con prellenado automático y botones ICS/Google Calendar (DONE)
+- Toggle Mostrar desglose detallado de precios en PDF/Link (ON/OFF) (DONE)
+- Checkboxes ¿Qué incluye? en paquetes armados y conceptos adicionales (DONE)
+- Fase B: Estructura de clientes en 2 niveles (Empresa + array de Ejecutivos) integrados en CRUD y PDF (DONE)
+- Campos condicionales por categoría (Hospedaje, Tour, Traslado, Acceso, Extra) en Custom Builder (DONE)
+- Endpoint GET  y validación de  (DONE)
 
-**Earlier issues found/mentioned but not fixed**:
-- Ninguno pendiente. El código ha compilado correctamente y los tests pasan 17/17.
+**Earlier issues found/mentioned but not fixed**
+   - None
 
-**Known issue recurrence from previous fork**:
-- Ninguno reportado.
+**Known issue recurrence from previous fork**
+  - None
+  - Status: RESOLVED
 
-**Code Architecture**:
+**Code Architecture**
+/app
+├── backend/
+│   ├── server.py
+│   ├── pricing.py (Lógica de cálculo de precios)
+│   ├── pdf_generator.py (Lógica de renderizado de PDF)
+│   ├── ai_service.py (Generación de texto con IA)
+│   └── routes/ (booking.py, public_payments.py, quotations.py, etc.)
+├── frontend/
+│   └── src/
+│       ├── pages/ (CustomQuotationBuilder.jsx, PublicQuotation.jsx, BookingConfirmation.jsx, Clients.jsx)
+│       └── components/
 
+**Key Technical Concepts**
+React, Tailwind CSS, FastAPI, MongoDB, ReportLab (PDF), openpyxl, emergenintegrations (Claude Sonnet / GPT-4o for presentations).
 
-**Key Technical Concepts**:
-React, Tailwind CSS, FastAPI, MongoDB, ReportLab (PDF), openpyxl.
+**key DB schema**
+  - : 
+  - : 
+  - : 
 
-**key DB schema**:
-- : , ,  (booleano).
-- : , , .
+**changes in tech stack**
+  - None
 
-**changes in tech stack**:
-Ninguno.
-
-**All files of reference**:
--  (Archivo principal a refactorizar).
--  (Para el fix del prompt colaboradores).
--  (Para replicar los cambios del PDF en la web).
+**All files of reference**
+  - : Updated for Hospedaje calculation.
+  - : Updated for qty/nights independence.
+  - : Updated for dynamic fields by category and simple/detailed breakdown tables.
+  - : Replicates PDF changes.
+  - : Added executives array to clients and contacts schema to quotations.
 
 **Areas that need refactoring**:
- es denso. Se recomienda ser metódico y usar  de ReportLab antes de insertar el .
+  -  and  are growing significantly due to the branching logic for conditional categories and pricing toggles.
 
-**key api endpoints**:
-- 
-- 
+**key api endpoints**
+  - 
+  - 
+  - 
+  - 
 
-**Critical Info for New Agent**:
-1. El usuario demanda que **TODO** cambio visual y de estructura en el PDF debe reflejarse idénticamente en el enlace web (). No hagas el PDF sin actualizar la vista web equivalente.
-2. En el PDF: La página 1 no debe tener el itinerario. Inserta un  justo antes de empezar a renderizar la sección de itinerario.
-3. Elimina la tabla redundante de ocupaciones que aparece antes del desglose de precios en el PDF, dejando solo el desglose final.
-4. Usa parallel tool call siempre que sea posible para la revisión/edición rápida de los archivos  y .
+**Critical Info for New Agent**
+The last task requested by the user is the correction of the Hospedaje category inside the Programa Personalizado. The mathematical formula MUST be  where  is editable by the user (rooms/pax) and  is an auto-calculated, non-editable field driven by Check-in / Check-out dates. The agent has replaced code in  and  but stopped execution before verifying. Your FIRST step must be to verify this implementation via testing.
 
-**documents and test reports created in this job**:
-- 
-- 
--  (Contiene  para pruebas).
+**documents and test reports created in this job**
+  - 
+  - 
+  - 
+  - 
+  - 
+  - 
+  -  (Check for pre-seeded user roles)
 
-**Last 10 User Messages and any pending HUMAN messages**:
-- (Anterior) Usuario pide Fases 2-5 y nuevos items 9-12 (Excel, condiciones, toggle público/neto, confirmación reserva).
-- (Anterior) Agente implementa y pasa tests satisfactoriamente.
-- (Anterior) Usuario indica 3 correcciones a los precios y al renderizado hero/impresión.
-- (Anterior) Agente implementa correcciones.
-- (Anterior) Usuario aprueba el despliegue. Agrega tarea interactiva al backlog y dice pausa.
-- **LATEST HUMAN**: Usuario envía instrucción extensa: Rediseño completo del PDF de cotización (Página 1 datos, Página 2 itinerario), corrección del saludo IA, y réplica idéntica en el enlace web público.
-- (Agent) El agente ubica los archivos mediante  y , pero aún no ejecuta el código. 
+**Last 10 User Messages and any pending HUMAN messages** 
+ - (Completed) Ajustes de diseño para PDF y enlace público.
+ - (Completed) Añadir botón Descargar PDF, interactividad en tabla de ocupación pública y link calendario.
+ - (Completed) Fase A: Checkbox para tabla simple/detallada, Checkboxes ¿Qué incluye? y prellenado de confirmación web.
+ - (Completed) Fase B: Clientes en 2 niveles (Empresa + array de Ejecutivos).
+ - (Completed) Campos por tipo de concepto (Hospedaje, Tour, Traslado, etc.) y validación de .
+ - **PENDING HUMAN MESSAGE**: Fix en el concepto de Hospedaje. Cantidad debe ser editable libremente, Noches se autocalcula y el subtotal es . Actuar sobre este mensaje.
 
-**Project Health Check**:
-Healthy. Tests en verde.
+**Project Health Check:**
+Healthy. No broken dependencies.
 
-**3rd Party Integrations**:
-- OpenAI GPT-4o / Claude Sonnet / Anthropic — Bring Your Own Key / Emergent LLM Key. (Usado en ).
-- Resend / SMTP.
-- Stripe (Payments).
+**3rd Party Integrations**
+  - OpenAI / Anthropic Claude Sonnet — uses Emergent LLM Key (for )
+  - Stripe (Payments) — requires User API Key
 
-**Testing status**:
-- Testing agent used after significant changes: YES (usado en iteración 34 y 35).
-- Troubleshoot agent used after agent stuck in loop: NO.
-- Test files created: Tests en la carpeta .
+**Testing status**
+  - Testing agent used after significant changes: YES (multiple times, Iterations 36-41).
+  - Troubleshoot agent used after agent stuck in loop: NO
+  - Test files created: Tests generated in 
+  - Known regressions: None currently known.
 
-**Credentials to test flow**:
+**Credentials to test flow:**
+Admin demo:  (Password in )
 
-
-**What agent forgot to execute**:
-El agente recibió el prompt para rediseñar el PDF y actualizó su entendimiento revisando el código, pero **no editó ningún archivo**. Debes arrancar aplicando los cambios solicitados a ,  y .
+**What agent forgot to execute**
+The agent modified  and  for the Hospedaje calculation but called no tests (, , or ) to verify the implementation. 
 
 **Debugging checklist for current issue**
-    Issue: Rediseño estructural de PDF y Enlace Web
+    Issue: Hospedaje subtotal computation and UI
     Frontend files to check: 
-      -  (Alinear diseño con el nuevo PDF, mover/quitar información duplicada del cliente, asegurar que la tabla redundante desaparezca).
+      -  (Check the  input field binding and visual  math)
     Backend files to check:
-      -  (Insertar , reestructurar headers y footer).
-      -  (Ajustar prompt de ).</analysis>
+      -  (Check  applies  strictly as a multiplier alongside  when )</analysis>

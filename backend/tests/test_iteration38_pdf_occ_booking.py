@@ -9,7 +9,7 @@ import os
 import pytest
 import requests
 
-BASE_URL = os.environ.get("REACT_APP_BACKEND_URL", "https://quotation-layout-v2.preview.emergentagent.com").rstrip("/")
+BASE_URL = os.environ.get("REACT_APP_BACKEND_URL", "https://travel-estimates-1.preview.emergentagent.com").rstrip("/")
 QUOT_TOKEN = "E4cWS--ucnOiioZotwHcD8OM"
 BOOK_TOKEN = "NVhfGoFku3Mh2CN6B967tA"
 
