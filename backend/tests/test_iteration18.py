@@ -13,7 +13,7 @@ import openpyxl
 from pymongo import MongoClient
 from urllib.parse import urlparse, parse_qs
 
-BASE = os.environ.get("REACT_APP_BACKEND_URL", "https://neto-a-publico.preview.emergentagent.com").rstrip("/")
+BASE = os.environ.get("REACT_APP_BACKEND_URL", "https://quotation-layout-v2.preview.emergentagent.com").rstrip("/")
 API = f"{BASE}/api"
 
 ADMIN_EMAIL = "admin@aventurate.mx"
