@@ -342,3 +342,11 @@ Ver `/app/memory/test_credentials.md`. Seed automático en cada startup.
 - "Noches" se autocalcula por Check-in/Check-out y es no editable.
 - Subtotal Hospedaje = Tarifa × Cantidad × Noches (frontend alineado con backend `pricing.py`).
 - Verificado: público $1,315.79 × cant 2 × noches 3 = $7,894.74 ✓ (backend + frontend).
+
+## [2026-06-19] Refactor + Desglose de Hospedaje (Iteración — COMPLETADO ✅, iter_42)
+### Refactor (sin cambios de comportamiento)
+- Frontend: `CustomQuotationBuilder.jsx` dividido → `src/pages/custom-builder/constants.jsx` (UNITS, CATEGORIES, money, StringList) + `CustomItemCard.jsx` (card de concepto con campos condicionales).
+- Backend: `pdf_generator.py` → extraído `_build_page2()` y helper `_hospedaje_detail()`.
+### Desglose de hospedaje (transparencia)
+- PDF (desglose detallado) y enlace público `/q/:token` muestran "$X/noche × N habitaciones × N noches".
+- Verificado: público $1,315.79/noche × 2 hab × 3 noches = $7,894.74. Regresión paquete/servicios OK.
