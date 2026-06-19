@@ -7,6 +7,18 @@ Plataforma SaaS PWA multi-tenant para **cotización y seguimiento turístico** p
 - **Producción: https://routiq.com.mx** ✅ (VPS Hostinger 177.7.36.75, Docker + Nginx + Let's Encrypt)
 - Iteración actual: **v2.4** (iter_24: registro de uso/costo de IA en Master + generar respaldo on-demand + revisión de seguridad pre-lanzamiento)
 
+## Iteración 41 (jun-2026) — FASE B: Clientes en 2 niveles (Empresa + Ejecutivos)
+**Modelo:** `Executive {id,name,phone,email}`; `executives: List[Executive]` en ClientCreate/Update; `phone` añadido a `AgencyContact`; `executive_id` en QuotationCreate/Update. Clientes existentes intactos (sin ejecutivos).
+**Backend:** `list_clients` agrega `executives_count`; create/update_client persisten ejecutivos; quotation guarda `executive_id` + `contacts`. Propagación: PDF "Agencia/Vendedor" = empresa + ejecutivo + **teléfono** + correo; payload público expone `quotation.contacts`; prellenado de Confirmación usa `agency.contact/phone/name` (agent_name=ejecutivo, agent_phone=tel ejecutivo, agent_company=empresa).
+**Frontend:**
+- `Clients.jsx`: modal con sección "Ejecutivos / Contactos" (agregar/editar/eliminar `exec-row-{i}`); lista muestra nº ejecutivos (`client-execs-{id}`) + nº cotizaciones.
+- `QuotationBuilder.jsx`: paso Cliente → al elegir empresa CON ejecutivos aparece `executive-block` (selección `executive-option-{id}`) y `builder-next` se bloquea hasta elegir; auto-rellena `contacts.agency` (empresa+ejecutivo+tel+correo). Empresas sin ejecutivos (legacy) → bloque manual `contacts-block` (ahora con teléfono). Turista separado sin cambios.
+- `PublicQuotation.jsx`: bloque `public-client-data` (Agencia/Vendedor + Turista) réplica del PDF.
+- Canal 4º etiquetado "Mayorista Preferencial" (clave interna `operador`; enum sin cambios para no romper pricing).
+- Fix menor: "Número de personas" en Confirmación cae a calcular desde el pax de la cotización si viene vacío.
+- Tests: `/app/test_reports/iteration_40.json` — backend 5/5 PASS + frontend 4/4 flujos (gestión ejecutivos, builder con bloqueo, retro-compat legacy, public-client-data, prefill Confirmación).
+- Backlog P2: GET /api/clients/{id} atómico; validación server-side executive_id requerido si la empresa tiene ejecutivos; % comisión por cliente; dry-run import Excel; pago ligado a ocupación elegida.
+
 ## Iteración 40 (jun-2026) — FASE A: desglose configurable, inclusiones de paquete, prellenado de Confirmación, fixes PDF y conceptos libres en paquetes
 **Punto 1 — Checkbox "Mostrar desglose detallado de precios"** (default ON) en Revisión de ambos constructores (`show-price-breakdown-checkbox` / `custom-show-price-breakdown-checkbox`). Backend: campo `show_price_breakdown` en QuotationCreate/Update; expuesto en payload público. PDF: ON = tabla `Fecha | Servicio | Detalle | Cant. | $ unitario | Subtotal`; OFF = lista "Conceptos incluidos" + solo Total. Enlace `/q/:token`: replica (`public-concepts-list` vs desglose detallado).
 **Punto 2 — "¿Qué incluye este paquete?"** en PackageEditor (`inclusions-checkboxes`): traslado llegada/salida, hospedaje, tours, accesos + extras texto libre. Modelo `PackageInclusions`. Usado para contexto IA (`/ai/presentation` recibe `inclusions`) y prellenado de Confirmación.

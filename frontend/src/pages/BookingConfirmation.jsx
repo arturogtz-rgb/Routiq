@@ -31,6 +31,12 @@ export default function BookingConfirmation() {
           api.get(`/quotations/${id}/booking-confirmation`),
         ]);
         setQ(qr.data);
+        const OCC = { sencilla: 1, doble: 2, triple: 3, cuadruple: 4 };
+        const px = qr.data.pax || {};
+        const paxTotal = (px.rooms?.length
+          ? px.rooms.reduce((s, r) => s + (OCC[r.ocupacion] || 1) * (r.count || 1), 0)
+          : (px.adultos || 0)) + (px.menores || 0);
+        const paxStr = paxTotal ? String(paxTotal) : '';
         const existing = cr.data && cr.data.id ? cr.data : null;
         if (existing) {
           setConf(existing);
@@ -38,7 +44,7 @@ export default function BookingConfirmation() {
             agent_name: existing.agent_name || '', agent_phone: existing.agent_phone || '',
             agent_company: existing.agent_company || '', reservation_date: existing.reservation_date || '',
             passenger_name: existing.passenger_name || '', passenger_phone: existing.passenger_phone || '',
-            num_persons: existing.num_persons || '',
+            num_persons: existing.num_persons || paxStr,
             services: existing.services?.length ? existing.services : [{ ...EMPTY_SVC }],
             lodging: existing.lodging?.length ? existing.lodging : [{ ...EMPTY_LODGING }],
             general_observations: existing.general_observations || '',
@@ -50,7 +56,7 @@ export default function BookingConfirmation() {
             agent_name: p.agent_name || '', agent_phone: p.agent_phone || '',
             agent_company: p.agent_company || '', reservation_date: p.reservation_date || '',
             passenger_name: p.passenger_name || '', passenger_phone: p.passenger_phone || '',
-            num_persons: p.num_persons || '',
+            num_persons: p.num_persons || paxStr,
             services: p.services?.length ? p.services : [{ ...EMPTY_SVC }],
             lodging: p.lodging?.length ? p.lodging : [{ ...EMPTY_LODGING }],
             general_observations: p.general_observations || '',
