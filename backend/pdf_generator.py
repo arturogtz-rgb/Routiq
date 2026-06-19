@@ -159,11 +159,12 @@ def generate_quotation_pdf(company: dict, quotation: dict, package: dict, client
                            exec_name: str = "", base_url: str = "") -> bytes:
     buf = io.BytesIO()
     doc = SimpleDocTemplate(buf, pagesize=letter,
-                            leftMargin=1.4 * cm, rightMargin=1.4 * cm,
-                            topMargin=1.3 * cm, bottomMargin=1.3 * cm,
+                            leftMargin=1.5 * cm, rightMargin=1.5 * cm,
+                            topMargin=1.5 * cm, bottomMargin=1.5 * cm,
                             title=f"Cotización {quotation.get('code', '')}")
     s = _styles()
     story = []
+    CONTENT_W = 18.0  # cm — ancho común de contenido (Letter 21.59cm - 2×1.5cm margen)
 
     # Header — with logo if available
     from reportlab.platypus import Image as RLImage
@@ -178,35 +179,38 @@ def generate_quotation_pdf(company: dict, quotation: dict, package: dict, client
         for logo_path in candidates:
             if logo_path.exists() and logo_path.suffix.lower() in (".png", ".jpg", ".jpeg", ".webp"):
                 try:
-                    logo_cell = RLImage(str(logo_path), width=4.6 * cm, height=4.6 * cm, kind="proportional")
+                    logo_cell = RLImage(str(logo_path), width=3.2 * cm, height=3.2 * cm, kind="proportional")
                     break
                 except Exception:
                     logo_cell = ""
 
     company_text = Paragraph(
-        f"<b><font size=12>{company['name']}</font></b><br/><font size=9 color='#475569'>"
+        f"<b><font size=12>{company['name']}</font></b><br/><font size=8.5 color='#475569'>"
         f"{company.get('contact_phone','')}<br/>{company.get('contact_email','')}<br/>{company.get('address','')}</font>",
         s["body"],
     )
     cot_text = Paragraph(
-        f"<b><font color='#185FA5' size=16>COTIZACIÓN</font></b><br/><font size=10>{quotation.get('code','')}</font><br/><font size=9 color='#475569'>{_fmt_date(quotation.get('created_at',''))}</font>",
+        f"<b><font color='#185FA5' size=16>COTIZACIÓN</font></b><br/><font size=10>{quotation.get('code','')}</font><br/><font size=8.5 color='#475569'>{_fmt_date(quotation.get('created_at',''))}</font>",
         s["body"],
     )
     if logo_cell:
         header_data = [[logo_cell, company_text, cot_text]]
-        col_widths = [5 * cm, 7 * cm, 5 * cm]
+        col_widths = [3.5 * cm, 9.5 * cm, 5.0 * cm]
     else:
         header_data = [[company_text, cot_text]]
-        col_widths = [11 * cm, 6 * cm]
+        col_widths = [12.0 * cm, 6.0 * cm]
     header = Table(header_data, colWidths=col_widths)
     header.setStyle(TableStyle([
-        ("VALIGN", (0, 0), (-1, -1), "TOP"),
+        ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
         ("ALIGN", (-1, 0), (-1, 0), "RIGHT"),
         ("LINEBELOW", (0, 0), (-1, -1), 2, PRIMARY),
-        ("BOTTOMPADDING", (0, 0), (-1, -1), 14),
+        ("LEFTPADDING", (0, 0), (-1, -1), 0),
+        ("RIGHTPADDING", (0, 0), (-1, -1), 0),
+        ("TOPPADDING", (0, 0), (-1, -1), 2),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 8),
     ]))
     story.append(header)
-    story.append(Spacer(1, 8))
+    story.append(Spacer(1, 6))
 
     # Ciudad y fecha de emisión
     ciudad = (company.get("address", "") or "").strip()
@@ -225,19 +229,12 @@ def generate_quotation_pdf(company: dict, quotation: dict, package: dict, client
                 story.append(Paragraph(_xml_escape(para), s["body"]))
         story.append(Spacer(1, 10))
 
-    # Client block
-    story.append(Paragraph("Cliente", s["h2"]))
-    story.append(Paragraph(
-        f"<b>{client.get('name','')}</b> &nbsp;&nbsp; <font color='#475569'>{client.get('email','')} · {client.get('phone','')}</font>",
-        s["body"],
-    ))
-
-    # Agency + final traveler contacts (B2B quotations)
+    # Datos del cliente — un solo recuadro (sin línea suelta que duplique la info).
     contacts = quotation.get("contacts") or {}
     agency = contacts.get("agency") or {}
     traveler = contacts.get("traveler") or {}
+    ct_rows = []
     if any(agency.values()) or any(traveler.values()):
-        ct_rows = []
         if any(agency.values()):
             ct_rows.append([
                 Paragraph("<b>Agencia / Vendedor</b>", s["body"]),
@@ -248,22 +245,26 @@ def generate_quotation_pdf(company: dict, quotation: dict, package: dict, client
                 Paragraph("<b>Cliente final / Turista</b>", s["body"]),
                 Paragraph(f"{traveler.get('name','')}<br/><font color='#475569' size=8>Tel: {traveler.get('phone','')}</font>", s["soft"]),
             ])
-        ct = Table(ct_rows, colWidths=[4.5 * cm, 12.5 * cm])
-        ct.setStyle(TableStyle([
-            ("BACKGROUND", (0, 0), (0, -1), PASTEL),
-            ("VALIGN", (0, 0), (-1, -1), "TOP"),
-            ("GRID", (0, 0), (-1, -1), 0.5, colors.HexColor("#E2E8F0")),
-            ("LEFTPADDING", (0, 0), (-1, -1), 8), ("RIGHTPADDING", (0, 0), (-1, -1), 8),
-            ("TOPPADDING", (0, 0), (-1, -1), 6), ("BOTTOMPADDING", (0, 0), (-1, -1), 6),
-        ]))
-        story.append(Spacer(1, 6))
-        story.append(ct)
+    else:
+        ct_rows.append([
+            Paragraph("<b>Cliente</b>", s["body"]),
+            Paragraph(f"{client.get('name','')}<br/><font color='#475569' size=8>{client.get('email','')} · {client.get('phone','')}</font>", s["soft"]),
+        ])
+    story.append(Paragraph("Datos del cliente", s["h2"]))
+    ct = Table(ct_rows, colWidths=[4.3 * cm, (CONTENT_W - 4.3) * cm])
+    ct.setStyle(TableStyle([
+        ("BACKGROUND", (0, 0), (0, -1), PASTEL),
+        ("VALIGN", (0, 0), (-1, -1), "TOP"),
+        ("GRID", (0, 0), (-1, -1), 0.5, colors.HexColor("#E2E8F0")),
+        ("LEFTPADDING", (0, 0), (-1, -1), 8), ("RIGHTPADDING", (0, 0), (-1, -1), 8),
+        ("TOPPADDING", (0, 0), (-1, -1), 4), ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
+    ]))
+    story.append(ct)
 
-    # Package / type block
+    # Detalles de reservación
     is_services = quotation.get("type") == "servicios" or not package.get("name")
     is_custom = quotation.get("type") == "personalizado"
     title_txt = "Servicios a la carta" if is_services else package.get("name", "")
-    story.append(Paragraph(title_txt, s["h2"]))
     dates = quotation.get("dates", {}) or {}
     # Defensive: ensure start <= end (some legacy quotations may have them swapped)
     d_start = dates.get("start", "") or ""
@@ -271,7 +272,7 @@ def generate_quotation_pdf(company: dict, quotation: dict, package: dict, client
     if d_start and d_end and d_start > d_end:
         d_start, d_end = d_end, d_start
     pax = quotation.get("pax", {})
-    story.append(Spacer(1, 6))
+    story.append(Paragraph("Detalles de reservación", s["h2"]))
 
     # Build pax description (rooms or legacy occupancy)
     if pax.get("rooms"):
@@ -300,18 +301,18 @@ def generate_quotation_pdf(company: dict, quotation: dict, package: dict, client
     if not is_services and nights_total:
         meta_rows.append(["Noches", nights_label])
     meta_rows.append(["Pax" if (is_services or is_custom) else "Habitaciones / Pax", pax_desc])
-    meta = Table(meta_rows, colWidths=[3.5 * cm, 12 * cm])
+    meta = Table(meta_rows, colWidths=[3.5 * cm, (CONTENT_W - 3.5) * cm])
     meta.setStyle(TableStyle([
         ("BACKGROUND", (0, 0), (0, -1), PASTEL),
         ("TEXTCOLOR", (0, 0), (0, -1), PRIMARY),
         ("FONTNAME", (0, 0), (0, -1), "Helvetica-Bold"),
-        ("FONTSIZE", (0, 0), (-1, -1), 10),
+        ("FONTSIZE", (0, 0), (-1, -1), 9.5),
         ("ROWBACKGROUNDS", (1, 0), (1, -1), [colors.white, colors.HexColor("#F8F9FA")]),
         ("GRID", (0, 0), (-1, -1), 0.5, colors.HexColor("#E2E8F0")),
         ("LEFTPADDING", (0, 0), (-1, -1), 8),
         ("RIGHTPADDING", (0, 0), (-1, -1), 8),
-        ("TOPPADDING", (0, 0), (-1, -1), 6),
-        ("BOTTOMPADDING", (0, 0), (-1, -1), 6),
+        ("TOPPADDING", (0, 0), (-1, -1), 3),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 3),
     ]))
     story.append(meta)
 
@@ -334,11 +335,11 @@ def generate_quotation_pdf(company: dict, quotation: dict, package: dict, client
                 if has_total:
                     occ_rows = [["Ocupación", "Precio por persona", "Total"]]
                     occ_rows += [[r["label"], _money(r["per_person"], cur_occ), _money(r["total"], cur_occ)] for r in data_rows]
-                    col_widths = [7 * cm, 5 * cm, 4.5 * cm]
+                    col_widths = [8 * cm, 5.5 * cm, (CONTENT_W - 13.5) * cm]
                 else:
                     occ_rows = [["Ocupación", "Precio por persona"]]
                     occ_rows += [[r["label"], _money(r["per_person"], cur_occ)] for r in data_rows]
-                    col_widths = [10 * cm, 6.5 * cm]
+                    col_widths = [11 * cm, (CONTENT_W - 11) * cm]
                 story.append(Spacer(1, 8))
                 story.append(Paragraph(f"Opciones de ocupación — {sel_hotel.get('name','')}", s["h2"]))
                 ot = Table(occ_rows, colWidths=col_widths)
@@ -351,7 +352,7 @@ def generate_quotation_pdf(company: dict, quotation: dict, package: dict, client
                     ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.white, colors.HexColor("#F8F9FA")]),
                     ("GRID", (0, 0), (-1, -1), 0.3, colors.HexColor("#E2E8F0")),
                     ("LEFTPADDING", (0, 0), (-1, -1), 6), ("RIGHTPADDING", (0, 0), (-1, -1), 6),
-                    ("TOPPADDING", (0, 0), (-1, -1), 6), ("BOTTOMPADDING", (0, 0), (-1, -1), 6),
+                    ("TOPPADDING", (0, 0), (-1, -1), 3), ("BOTTOMPADDING", (0, 0), (-1, -1), 3),
                 ]))
                 story.append(ot)
                 note = (quotation.get("price_note") or "").strip()
@@ -379,7 +380,7 @@ def generate_quotation_pdf(company: dict, quotation: dict, package: dict, client
             Paragraph(concept_html, concept_style),
             _money(it["unit_price"], currency), str(it["qty"]), _money(it["subtotal"], currency),
         ])
-    price_table = Table(rows, colWidths=[9 * cm, 3 * cm, 1.5 * cm, 3 * cm])
+    price_table = Table(rows, colWidths=[10.5 * cm, 2.9 * cm, 1.5 * cm, (CONTENT_W - 14.9) * cm])
     price_table.setStyle(TableStyle([
         ("BACKGROUND", (0, 0), (-1, 0), PRIMARY),
         ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
@@ -390,11 +391,11 @@ def generate_quotation_pdf(company: dict, quotation: dict, package: dict, client
         ("GRID", (0, 0), (-1, -1), 0.3, colors.HexColor("#E2E8F0")),
         ("LEFTPADDING", (0, 0), (-1, -1), 6),
         ("RIGHTPADDING", (0, 0), (-1, -1), 6),
-        ("TOPPADDING", (0, 0), (-1, -1), 6),
-        ("BOTTOMPADDING", (0, 0), (-1, -1), 6),
+        ("TOPPADDING", (0, 0), (-1, -1), 3),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 3),
     ]))
     story.append(price_table)
-    story.append(Spacer(1, 10))
+    story.append(Spacer(1, 8))
 
     # Totals
     tot_rows = [
@@ -403,7 +404,7 @@ def generate_quotation_pdf(company: dict, quotation: dict, package: dict, client
     if quotation.get("commission", 0) > 0:
         tot_rows.append(["Comisión canal", f"- {_money(quotation['commission'], currency)}"])
     tot_rows.append(["TOTAL", _money(quotation.get("total", 0), currency)])
-    tot = Table(tot_rows, colWidths=[13 * cm, 3.5 * cm])
+    tot = Table(tot_rows, colWidths=[(CONTENT_W - 3.5) * cm, 3.5 * cm])
     tot.setStyle(TableStyle([
         ("ALIGN", (0, 0), (-1, -1), "RIGHT"),
         ("FONTSIZE", (0, 0), (-1, -1), 10),
@@ -411,8 +412,8 @@ def generate_quotation_pdf(company: dict, quotation: dict, package: dict, client
         ("TEXTCOLOR", (0, -1), (-1, -1), PRIMARY),
         ("FONTSIZE", (0, -1), (-1, -1), 13),
         ("LINEABOVE", (0, -1), (-1, -1), 1.5, PRIMARY),
-        ("TOPPADDING", (0, 0), (-1, -1), 6),
-        ("BOTTOMPADDING", (0, 0), (-1, -1), 6),
+        ("TOPPADDING", (0, 0), (-1, -1), 3),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 3),
     ]))
     story.append(tot)
 
@@ -423,26 +424,6 @@ def generate_quotation_pdf(company: dict, quotation: dict, package: dict, client
             f"<font color='#475569'><i>{_xml_escape(price_note)}</i></font>",
             ParagraphStyle("note", parent=s["soft"], alignment=TA_LEFT),
         ))
-    if package.get("includes") or package.get("excludes"):
-        inc_exc_data = []
-        if package.get("includes"):
-            inc_text = "<b>Incluye:</b> " + " · ".join(f"✓ {x}" for x in package["includes"])
-            inc_exc_data.append([Paragraph(inc_text, s["soft"])])
-        if package.get("excludes"):
-            exc_text = "<b>No incluye:</b> " + " · ".join(f"✗ {x}" for x in package["excludes"])
-            inc_exc_data.append([Paragraph(exc_text, s["soft"])])
-        if inc_exc_data:
-            t = Table(inc_exc_data, colWidths=[17 * cm])
-            t.setStyle(TableStyle([
-                ("BACKGROUND", (0, 0), (-1, -1), colors.HexColor("#F8F9FA")),
-                ("LEFTPADDING", (0, 0), (-1, -1), 8),
-                ("RIGHTPADDING", (0, 0), (-1, -1), 8),
-                ("TOPPADDING", (0, 0), (-1, -1), 4),
-                ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
-                ("BOX", (0, 0), (-1, -1), 0.3, colors.HexColor("#E2E8F0")),
-            ]))
-            story.append(Spacer(1, 6))
-            story.append(t)
 
     # "Información importante" — texto libre por cotización (lo ve el cliente)
     important = (quotation.get("important_info") or "").strip()
@@ -486,10 +467,11 @@ def generate_quotation_pdf(company: dict, quotation: dict, package: dict, client
             s["soft"],
         ))
 
-    # ---- Página 2 en adelante: exclusiva para descripción + itinerario ----
+    # ---- Página 2 en adelante: título, descripción, itinerario e Incluye/No incluye ----
     has_itinerary = bool(package.get("itinerary"))
     has_desc = bool(not is_services and package.get("description"))
-    if has_itinerary or has_desc:
+    has_incexc = bool(package.get("includes") or package.get("excludes"))
+    if has_itinerary or has_desc or has_incexc:
         story.append(PageBreak())
         story.append(Paragraph(title_txt, s["title"]))
         if has_desc:
@@ -501,6 +483,27 @@ def generate_quotation_pdf(company: dict, quotation: dict, package: dict, client
                 story.append(Paragraph(f"<b>Día {day.get('day','')}:</b> {day.get('title','')}", s["h3"]))
                 if day.get("description"):
                     story.append(Paragraph(day["description"], s["body"]))
+        # Incluye / No incluye — inmediatamente después del itinerario (sin salto extra).
+        if has_incexc:
+            inc_exc_data = []
+            if package.get("includes"):
+                inc_text = "<b>Incluye:</b> " + " · ".join(f"✓ {x}" for x in package["includes"])
+                inc_exc_data.append([Paragraph(inc_text, s["soft"])])
+            if package.get("excludes"):
+                exc_text = "<b>No incluye:</b> " + " · ".join(f"✗ {x}" for x in package["excludes"])
+                inc_exc_data.append([Paragraph(exc_text, s["soft"])])
+            if inc_exc_data:
+                t = Table(inc_exc_data, colWidths=[CONTENT_W * cm])
+                t.setStyle(TableStyle([
+                    ("BACKGROUND", (0, 0), (-1, -1), colors.HexColor("#F8F9FA")),
+                    ("LEFTPADDING", (0, 0), (-1, -1), 8),
+                    ("RIGHTPADDING", (0, 0), (-1, -1), 8),
+                    ("TOPPADDING", (0, 0), (-1, -1), 4),
+                    ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
+                    ("BOX", (0, 0), (-1, -1), 0.3, colors.HexColor("#E2E8F0")),
+                ]))
+                story.append(Spacer(1, 8))
+                story.append(t)
 
     doc.build(story)
     return buf.getvalue()

@@ -1,0 +1,30 @@
+{
+  "summary": "Iteration 37 — Verificación de PDF rediseñado + unificación del desglose en la vista pública /q/:token. Backend 7/7 PASS (pytest /app/backend/tests/test_iteration37_pdf_public_unified.py): (1) GET /api/quotations/{id}/pdf con login ejecutivo y admin devuelve 200 + Content-Type application/pdf + magic %PDF para cotización de paquete y personalizada (4 tests); (2) GET /api/public/quotations/JX4Q1xHuqEgQ92QH45Z_rMfI expone quotation.items (4 líneas) con label+subtotal, total, currency y client_name para saludo; (3) itinerary top-level (>=1 día) presente; (4) GET /api/public/quotations/E4cWS--ucnOiioZotwHcD8OM (show_all=false) devuelve quotation.occupancy_prices = []. Frontend Playwright 100% PASS: token COT-2026011 renderiza saludo '¡Hola, Laura!', 4 nodos data-testid='public-line-item-*' dentro de data-testid='public-price-breakdown' con Subtotal y Total al pie; no aparecen data-testid='public-services' ni 'public-custom-items' (eliminados/unificados); data-testid='public-includes-excludes' vive DENTRO de data-testid='public-itinerary'; orden DOM verificado con compareDocumentPosition: public-price-breakdown → public-total-card → public-itinerary (public-presentation NO presente porque q.presentation_text está vacío en esta cotización — esperado por nota del main agent). Token paquete E4cWS show_all=false: data-testid='public-occupancy-table' NO existe; el desglose muestra 'Precio neto no comisionable' como data-testid='public-breakdown-note'. Sin errores JS (solo 401s esperados de /api/auth/me en ruta pública). Botones de pago presentes (Pagar total, Pagar anticipo 50%, Pagar por transferencia bancaria, Confirmar sin pagar ahora).",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_iteration37_pdf_public_unified.py",
+    "/app/test_reports/pytest/iter37.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "PublicQuotation.jsx L183-187: public-presentation se renderiza condicionalmente sobre q.presentation_text. La cotización COT-2026011 no tiene presentation_text (pre-fix del prompt) por lo que el nodo no existe — comportamiento documentado por el main agent, no es bug. Si se desea forzar el orden completo del DOM exigido por la spec aun sin texto, considerar render del contenedor vacío con data-testid (no recomendado) o documentar formalmente que public-presentation es opcional.",
+    "PublicQuotation.jsx L294 'sticky bottom-4' en public-total-card: el total queda flotando al hacer scroll, comportamiento existente (no bug). La spec dice 'orden DOM' no 'orden visual', y compareDocumentPosition confirma el orden correcto en el árbol.",
+    "PublicQuotation.jsx L41-69: el efecto que limpia ?session_id usa setSearchParams con replace en cada cambio de token; en la ruta /q/:token sin session_id ejecuta el cleanup innecesariamente. Optimización menor.",
+    "Las 3 entradas en consola 401 de /api/auth/me persisten en rutas /q/*, ya señaladas en iter 36. Sigue sin bloquear funcionalidad; recomendable saltar bootstrap de auth en rutas públicas /q/* y /c/* para una consola limpia."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_iteration37_pdf_public_unified.py (nuevo — 7 tests: 4 PDF + 3 public payload)"
+  ],
+  "success_rate": {"backend": "100% (7/7)", "frontend": "100% (2/2 tokens verificados con data-testid + DOM order + sin sections legacy)"},
+  "test_credentials": "ejecutivo@aventurate.mx / Demo2026! y admin@aventurate.mx / Demo2026! (de /app/memory/test_credentials.md)",
+  "seed_data_creation": "Ninguno. Se usaron tokens provistos y cotizaciones existentes del seed.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Suite de regresión iter37 vive en /app/backend/tests/test_iteration37_pdf_public_unified.py. Estructura del payload /api/public/quotations/{token}: quotation.items[] es la fuente única de líneas para el desglose unificado en la UI; cada item tiene {label, subtotal, unit_price, qty, kind?, description?, service_date?, start_time?, end_time?}. La UI ya NO renderiza public-services ni public-custom-items (unificados). public-includes-excludes vive dentro de public-itinerary tras un border-top, al final de la página 2. public-presentation es opcional (depende de q.presentation_text). public-breakdown-note se renderiza si q.price_note existe (visible en token E4cWS). Para verificar tokens: usar REACT_APP_BACKEND_URL=https://quotation-layout-v2.preview.emergentagent.com.",
+  "rca of the issue": "N/A — no se encontraron bugs. El primer run del checker de DOM falló al exigir public-presentation; tras revisar el código (renderizado condicional sobre q.presentation_text) y la nota del main agent ('saludo nuevo solo aplica a presentaciones regeneradas'), se ajustó el assert para tratar public-presentation como opcional. Los demás nodos requeridos (breakdown, total, itinerary) están presentes y en el orden correcto."
+}

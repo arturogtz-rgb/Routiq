@@ -232,60 +232,18 @@ export default function PublicQuotation() {
           </div>
         )}
 
-        {/* Includes / Excludes */}
-        {(includes?.length > 0 || excludes?.length > 0) && (
-          <div className="grid sm:grid-cols-2 gap-4">
-            {includes?.length > 0 && (
-              <div className="card-surface p-5">
-                <h3 className="font-display font-semibold text-ink-900 mb-3">Incluye</h3>
-                <ul className="space-y-1.5 text-sm">
-                  {includes.map((x, i) => <li key={i} className="flex items-start gap-2"><CheckCircle2 className="w-4 h-4 mt-0.5 text-emerald-600" />{x}</li>)}
-                </ul>
-              </div>
-            )}
-            {excludes?.length > 0 && (
-              <div className="card-surface p-5">
-                <h3 className="font-display font-semibold text-ink-900 mb-3">No incluye</h3>
-                <ul className="space-y-1.5 text-sm">
-                  {excludes.map((x, i) => <li key={i} className="flex items-start gap-2 text-ink-500">• {x}</li>)}
-                </ul>
-              </div>
-            )}
-          </div>
-        )}
-
-        {/* Servicios a la carta + noches extra */}
-        {(q.items || []).some((it) => it.kind === 'servicio' || it.kind === 'noche_extra') && (
-          <div className="card-surface p-6" data-testid="public-services">
-            <h2 className="font-display text-xl font-semibold text-ink-900 mb-4">Servicios y cargos adicionales</h2>
-            <div className="space-y-2">
-              {(q.items || []).filter((it) => it.kind === 'servicio' || it.kind === 'noche_extra').map((it, i) => (
-                <div key={i} className="flex items-center justify-between py-2 border-b border-ink-100 last:border-0">
-                  <div className="flex items-center gap-3">
-                    {it.kind === 'noche_extra' ? <Moon className="w-4 h-4" style={{ color: primary }} /> : <Sparkles className="w-4 h-4" style={{ color: primary }} />}
-                    <div>
-                      <p className="font-medium text-ink-900">{it.label}</p>
-                      <p className="text-xs text-ink-400">{money(it.unit_price, q.currency)} × {it.qty}</p>
-                    </div>
-                  </div>
-                  <p className="font-semibold text-ink-900">{money(it.subtotal, q.currency)}</p>
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
-
-        {/* Conceptos del programa (cotización a medida) */}
-        {(q.items || []).some((it) => it.kind === 'custom') && (
-          <div className="card-surface p-6" data-testid="public-custom-items">
-            <h2 className="font-display text-xl font-semibold text-ink-900 mb-4">Conceptos del programa</h2>
-            <div className="space-y-2">
-              {(q.items || []).filter((it) => it.kind === 'custom').map((it, i) => {
+        {/* Desglose de precios — todas las líneas juntas (réplica del PDF) */}
+        {(q.items || []).length > 0 && (
+          <div className="card-surface p-6" data-testid="public-price-breakdown">
+            <h2 className="font-display text-xl font-semibold text-ink-900 mb-4">Desglose de precios</h2>
+            <div className="space-y-1">
+              {(q.items || []).map((it, i) => {
                 const dt = [it.service_date ? formatDateEs(it.service_date) : '', (it.start_time && it.end_time) ? `${it.start_time}–${it.end_time}` : (it.start_time || '')].filter(Boolean).join(' · ');
+                const Icon = it.kind === 'noche_extra' ? Moon : Sparkles;
                 return (
-                  <div key={i} className="flex items-start justify-between py-2 border-b border-ink-100 last:border-0" data-testid={`public-custom-item-${i}`}>
+                  <div key={i} className="flex items-start justify-between gap-3 py-2.5 border-b border-ink-100 last:border-0" data-testid={`public-line-item-${i}`}>
                     <div className="flex items-start gap-3">
-                      <Sparkles className="w-4 h-4 mt-1" style={{ color: primary }} />
+                      <Icon className="w-4 h-4 mt-1 shrink-0" style={{ color: primary }} />
                       <div>
                         <p className="font-medium text-ink-900">{it.label}</p>
                         {it.description && <p className="text-xs text-ink-500 mt-0.5">{it.description}</p>}
@@ -298,6 +256,23 @@ export default function PublicQuotation() {
                 );
               })}
             </div>
+            <div className="mt-3 pt-3 space-y-1.5">
+              <div className="flex items-center justify-between text-sm text-ink-600">
+                <span>Subtotal</span><span className="font-medium">{money(q.subtotal, q.currency)}</span>
+              </div>
+              {q.commission > 0 && (
+                <div className="flex items-center justify-between text-sm text-ink-600">
+                  <span>Comisión canal</span><span className="font-medium">- {money(q.commission, q.currency)}</span>
+                </div>
+              )}
+              <div className="flex items-center justify-between pt-1.5 border-t border-ink-100">
+                <span className="font-semibold text-ink-900">Total</span>
+                <span className="font-display text-lg font-bold" style={{ color: primary }}>{money(finalTotal, q.currency)}</span>
+              </div>
+            </div>
+            {q.price_note && (
+              <p className="text-xs text-ink-500 italic mt-3" data-testid="public-breakdown-note">{q.price_note}</p>
+            )}
           </div>
         )}
 
@@ -323,9 +298,6 @@ export default function PublicQuotation() {
           </div>
           {payment?.equivalent_amount && payment?.equivalent_currency && (
             <p className="text-right text-xs text-ink-400 mb-4" data-testid="usd-equivalent">≈ ${Number(payment.equivalent_amount).toLocaleString(payment.equivalent_currency === 'USD' ? 'en-US' : 'es-MX')} {payment.equivalent_currency} (TC {payment.rate_mxn_per_usd})</p>
-          )}
-          {q.price_note && (
-            <p className="text-right text-xs text-ink-400 mb-4 italic" data-testid="public-price-note">{q.price_note}</p>
           )}
           {q.amount_paid > 0 && !isPaid && (
             <p className="text-right text-xs text-emerald-700 mb-3">Pagado: {money(q.amount_paid, q.currency)} · Resta: {money(amountDue, q.currency)}</p>
@@ -425,8 +397,8 @@ export default function PublicQuotation() {
           </p>
         </div>
 
-        {/* Página 2: Descripción + Itinerario día a día (réplica del PDF) */}
-        {(q.package_snapshot?.description || itinerary?.length > 0) && (
+        {/* Página 2: Descripción + Itinerario día a día + Incluye/No incluye (réplica del PDF) */}
+        {(q.package_snapshot?.description || itinerary?.length > 0 || includes?.length > 0 || excludes?.length > 0) && (
           <div className="card-surface p-6" data-testid="public-itinerary">
             <h2 className="font-display text-xl font-semibold text-ink-900 mb-4">{q.package_snapshot?.name || 'Tu programa'}</h2>
             {q.package_snapshot?.description && (
@@ -448,6 +420,26 @@ export default function PublicQuotation() {
                   ))}
                 </div>
               </>
+            )}
+            {(includes?.length > 0 || excludes?.length > 0) && (
+              <div className="grid sm:grid-cols-2 gap-4 mt-6 pt-6 border-t border-ink-100" data-testid="public-includes-excludes">
+                {includes?.length > 0 && (
+                  <div>
+                    <h3 className="font-display font-semibold text-ink-900 mb-3">Incluye</h3>
+                    <ul className="space-y-1.5 text-sm">
+                      {includes.map((x, i) => <li key={i} className="flex items-start gap-2"><CheckCircle2 className="w-4 h-4 mt-0.5 text-emerald-600 shrink-0" />{x}</li>)}
+                    </ul>
+                  </div>
+                )}
+                {excludes?.length > 0 && (
+                  <div>
+                    <h3 className="font-display font-semibold text-ink-900 mb-3">No incluye</h3>
+                    <ul className="space-y-1.5 text-sm">
+                      {excludes.map((x, i) => <li key={i} className="flex items-start gap-2 text-ink-500">• {x}</li>)}
+                    </ul>
+                  </div>
+                )}
+              </div>
             )}
           </div>
         )}

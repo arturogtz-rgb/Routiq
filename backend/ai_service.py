@@ -241,9 +241,12 @@ async def generate_presentation(client_name: str, title: str, date_start: str = 
         f"para encabezar una cotización formal, en español de México, con {tone_desc}. "
         "Entre 40 y 70 palabras. Inicia el saludo con 'Estimado/a' seguido del nombre del cliente "
         "(por ejemplo 'Estimado Juan,' o 'Estimada María,'). NUNCA uses la palabra 'colaboradores' ni te "
-        "dirijas al cliente como colaborador. Menciona el viaje/destino y, si hay fechas, "
-        "alúdelas con naturalidad. Cierra invitando a revisar la propuesta. Sin emojis, sin despedida con firma, "
-        "sin placeholders entre corchetes."
+        "dirijas al cliente como colaborador. "
+        "MUY IMPORTANTE — consistencia gramatical: si el saludo se dirige a UNA persona (un nombre propio), "
+        "todo el cuerpo debe ir en SINGULAR y trato de usted ('Reciba un cordial saludo... Le presento... Le invito a...'). "
+        "Solo si va dirigido a una empresa/agencia sin un contacto específico, usa PLURAL ('Reciban... Les invito...'). "
+        "Menciona el viaje/destino y, si hay fechas, alúdelas con naturalidad. Cierra invitando a revisar la propuesta. "
+        "Sin emojis, sin despedida con firma, sin placeholders entre corchetes."
     )
     pax_txt = f"{adultos} adultos" + (f" y {menores} menores" if menores else "")
     fechas = f"del {date_start} al {date_end}" if date_start and date_end else ""
