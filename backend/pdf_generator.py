@@ -168,6 +168,59 @@ def _fmt_concept_when(it: dict) -> str:
     return _fmt_service_datetime(it)
 
 
+def _hospedaje_detail(it: dict, currency: str) -> str:
+    """Desglose de transparencia para hospedaje: '$X/noche × N hab × N noches'."""
+    if it.get("category") != "hospedaje":
+        return ""
+    n = int(it.get("nights", 0) or 0)
+    if n <= 0:
+        return ""
+    qty = int(it.get("qty", 1) or 1)
+    return f"{_money(it.get('unit_price', 0), currency)}/noche × {qty} hab × {n} {'noche' if n == 1 else 'noches'}"
+
+
+
+def _build_page2(story, s, package: dict, is_services: bool, title_txt: str, CONTENT_W: float):
+    """Página 2+: título, descripción, itinerario día a día e Incluye/No incluye."""
+    has_itinerary = bool(package.get("itinerary"))
+    has_desc = bool(not is_services and package.get("description"))
+    has_incexc = bool(package.get("includes") or package.get("excludes"))
+    if not (has_itinerary or has_desc or has_incexc):
+        return
+    story.append(PageBreak())
+    story.append(Paragraph(title_txt, s["title"]))
+    if has_desc:
+        story.append(Paragraph(package["description"], s["body"]))
+        story.append(Spacer(1, 10))
+    if has_itinerary:
+        story.append(Paragraph("Itinerario día a día", s["h2"]))
+        for day in package["itinerary"]:
+            story.append(Paragraph(f"<b>Día {day.get('day','')}:</b> {day.get('title','')}", s["h3"]))
+            if day.get("description"):
+                story.append(Paragraph(day["description"], s["body"]))
+    if has_incexc:
+        inc_exc_data = []
+        if package.get("includes"):
+            inc_text = "<b>Incluye:</b> " + " · ".join(f"✓ {x}" for x in package["includes"])
+            inc_exc_data.append([Paragraph(inc_text, s["soft"])])
+        if package.get("excludes"):
+            exc_text = "<b>No incluye:</b> " + " · ".join(f"✗ {x}" for x in package["excludes"])
+            inc_exc_data.append([Paragraph(exc_text, s["soft"])])
+        if inc_exc_data:
+            t = Table(inc_exc_data, colWidths=[CONTENT_W * cm])
+            t.setStyle(TableStyle([
+                ("BACKGROUND", (0, 0), (-1, -1), colors.HexColor("#F8F9FA")),
+                ("LEFTPADDING", (0, 0), (-1, -1), 8),
+                ("RIGHTPADDING", (0, 0), (-1, -1), 8),
+                ("TOPPADDING", (0, 0), (-1, -1), 4),
+                ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
+                ("BOX", (0, 0), (-1, -1), 0.3, colors.HexColor("#E2E8F0")),
+            ]))
+            story.append(Spacer(1, 8))
+            story.append(t)
+
+
+
 def generate_quotation_pdf(company: dict, quotation: dict, package: dict, client: dict,
                            exec_name: str = "", base_url: str = "") -> bytes:
     buf = io.BytesIO()
@@ -387,7 +440,13 @@ def generate_quotation_pdf(company: dict, quotation: dict, package: dict, client
         rows = [["Fecha", "Servicio", "Detalle", "Cant.", "$ unitario", "Subtotal"]]
         for it in items:
             fecha = _fmt_concept_when(it) or "—"
-            detalle = _xml_escape(it.get("description", "") or "")
+            desc = _xml_escape(it.get("description", "") or "")
+            hosp = _hospedaje_detail(it, currency)
+            if hosp:
+                hosp_html = f"<font color='#185FA5' size=7.5>{_xml_escape(hosp)}</font>"
+                detalle = f"{desc}<br/>{hosp_html}" if desc else hosp_html
+            else:
+                detalle = desc
             rows.append([
                 Paragraph(_xml_escape(fecha), concept_style),
                 Paragraph(f"<b>{_xml_escape(it.get('label',''))}</b>", concept_style),
@@ -487,42 +546,7 @@ def generate_quotation_pdf(company: dict, quotation: dict, package: dict, client
         ))
 
     # ---- Página 2 en adelante: título, descripción, itinerario e Incluye/No incluye ----
-    has_itinerary = bool(package.get("itinerary"))
-    has_desc = bool(not is_services and package.get("description"))
-    has_incexc = bool(package.get("includes") or package.get("excludes"))
-    if has_itinerary or has_desc or has_incexc:
-        story.append(PageBreak())
-        story.append(Paragraph(title_txt, s["title"]))
-        if has_desc:
-            story.append(Paragraph(package["description"], s["body"]))
-            story.append(Spacer(1, 10))
-        if has_itinerary:
-            story.append(Paragraph("Itinerario día a día", s["h2"]))
-            for day in package["itinerary"]:
-                story.append(Paragraph(f"<b>Día {day.get('day','')}:</b> {day.get('title','')}", s["h3"]))
-                if day.get("description"):
-                    story.append(Paragraph(day["description"], s["body"]))
-        # Incluye / No incluye — inmediatamente después del itinerario (sin salto extra).
-        if has_incexc:
-            inc_exc_data = []
-            if package.get("includes"):
-                inc_text = "<b>Incluye:</b> " + " · ".join(f"✓ {x}" for x in package["includes"])
-                inc_exc_data.append([Paragraph(inc_text, s["soft"])])
-            if package.get("excludes"):
-                exc_text = "<b>No incluye:</b> " + " · ".join(f"✗ {x}" for x in package["excludes"])
-                inc_exc_data.append([Paragraph(exc_text, s["soft"])])
-            if inc_exc_data:
-                t = Table(inc_exc_data, colWidths=[CONTENT_W * cm])
-                t.setStyle(TableStyle([
-                    ("BACKGROUND", (0, 0), (-1, -1), colors.HexColor("#F8F9FA")),
-                    ("LEFTPADDING", (0, 0), (-1, -1), 8),
-                    ("RIGHTPADDING", (0, 0), (-1, -1), 8),
-                    ("TOPPADDING", (0, 0), (-1, -1), 4),
-                    ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
-                    ("BOX", (0, 0), (-1, -1), 0.3, colors.HexColor("#E2E8F0")),
-                ]))
-                story.append(Spacer(1, 8))
-                story.append(t)
+    _build_page2(story, s, package, is_services, title_txt, CONTENT_W)
 
     doc.build(story)
     return buf.getvalue()

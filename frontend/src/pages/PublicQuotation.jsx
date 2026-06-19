@@ -318,7 +318,9 @@ export default function PublicQuotation() {
                         <p className="font-medium text-ink-900">{it.label}</p>
                         {it.description && <p className="text-xs text-ink-500 mt-0.5">{it.description}</p>}
                         {dt && <p className="text-xs text-ink-400 mt-0.5">{dt}</p>}
-                        <p className="text-xs text-ink-400 mt-0.5">{money(it.unit_price, q.currency)} × {it.qty}</p>
+                        <p className="text-xs text-ink-400 mt-0.5">{it.category === 'hospedaje' && Number(it.nights) > 0
+                          ? `${money(it.unit_price, q.currency)}/noche × ${it.qty} hab × ${it.nights} ${Number(it.nights) === 1 ? 'noche' : 'noches'}`
+                          : `${money(it.unit_price, q.currency)} × ${it.qty}`}</p>
                       </div>
                     </div>
                     <p className="font-semibold text-ink-900 whitespace-nowrap pl-3">{money(it.subtotal, q.currency)}</p>
