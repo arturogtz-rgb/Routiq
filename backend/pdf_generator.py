@@ -264,8 +264,6 @@ def generate_quotation_pdf(company: dict, quotation: dict, package: dict, client
     is_custom = quotation.get("type") == "personalizado"
     title_txt = "Servicios a la carta" if is_services else package.get("name", "")
     story.append(Paragraph(title_txt, s["h2"]))
-    if not is_services and package.get("description"):
-        story.append(Paragraph(package["description"], s["soft"]))
     dates = quotation.get("dates", {}) or {}
     # Defensive: ensure start <= end (some legacy quotations may have them swapped)
     d_start = dates.get("start", "") or ""
@@ -317,28 +315,20 @@ def generate_quotation_pdf(company: dict, quotation: dict, package: dict, client
     ]))
     story.append(meta)
 
-    # Itinerary
-    if package.get("itinerary"):
-        story.append(Paragraph("Itinerario", s["h2"]))
-        for day in package["itinerary"]:
-            story.append(Paragraph(f"<b>Día {day.get('day','')}:</b> {day.get('title','')}", s["h3"]))
-            if day.get("description"):
-                story.append(Paragraph(day["description"], s["body"]))
-
-    # Tabla de precios por ocupación (solo paquetes) — precio por persona según el canal del cliente.
-    if not is_services and not is_custom and quotation.get("hotel_selected"):
+    # Tabla de opciones de ocupación — SOLO cuando el ejecutivo activa "Mostrar todas las opciones".
+    # Cuando está desactivado, el desglose línea por línea es la única referencia de precios.
+    if (not is_services and not is_custom and quotation.get("hotel_selected")
+            and bool(quotation.get("show_all_occupancies"))):
         sel_hotel = next((h for h in (package.get("hotels") or [])
                           if h.get("name") == quotation.get("hotel_selected")), None)
         if sel_hotel:
-            from pricing import channel_price, occupancy_rows_selected, occupancy_rows_all
+            from pricing import occupancy_rows_all
             cur_occ = quotation.get("currency", "MXN")
             pc = company.get("pricing_config") or {}
             divisor = float(pc.get("margin_divisor", 0.76) or 0.76)
             commissions = pc.get("commissions", {}) or {}
             channel = (client or {}).get("channel", "directo")
-            show_all = bool(quotation.get("show_all_occupancies"))
-            data_rows = (occupancy_rows_all(sel_hotel, channel, divisor, commissions)
-                         if show_all else occupancy_rows_selected(quotation.get("items", [])))
+            data_rows = occupancy_rows_all(sel_hotel, channel, divisor, commissions)
             has_total = any(r.get("total") is not None for r in data_rows)
             if data_rows:
                 if has_total:
@@ -350,8 +340,7 @@ def generate_quotation_pdf(company: dict, quotation: dict, package: dict, client
                     occ_rows += [[r["label"], _money(r["per_person"], cur_occ)] for r in data_rows]
                     col_widths = [10 * cm, 6.5 * cm]
                 story.append(Spacer(1, 8))
-                title = "Opciones de ocupación" if show_all else "Precios por persona"
-                story.append(Paragraph(f"{title} — {sel_hotel.get('name','')}", s["h2"]))
+                story.append(Paragraph(f"Opciones de ocupación — {sel_hotel.get('name','')}", s["h2"]))
                 ot = Table(occ_rows, colWidths=col_widths)
                 ot.setStyle(TableStyle([
                     ("BACKGROUND", (0, 0), (-1, 0), PRIMARY),
@@ -370,11 +359,8 @@ def generate_quotation_pdf(company: dict, quotation: dict, package: dict, client
                     story.append(Spacer(1, 3))
                     story.append(Paragraph(f"<font color='#475569'><i>{_xml_escape(note)}</i></font>", s["soft"]))
 
-    # Price items
-    # Salto de página automático cuando el contenido es extenso (presentación + itinerario
-    # en la 1ª hoja, desglose de precios en la 2ª).
-    if presentation and package.get("itinerary"):
-        story.append(PageBreak())
+    # Desglose de precios (línea por línea) — única tabla de precios en la página 1.
+    story.append(Spacer(1, 8))
     story.append(Paragraph("Desglose de precios", s["h2"]))
     currency = quotation.get("currency", "MXN")
     concept_style = ParagraphStyle("concept", parent=s["soft"], textColor=TEXT, fontSize=8.5, leading=11)
@@ -499,6 +485,22 @@ def generate_quotation_pdf(company: dict, quotation: dict, package: dict, client
             "<font color='#94A3B8' size=8>Generado con Routiq · routiq.com.mx</font>",
             s["soft"],
         ))
+
+    # ---- Página 2 en adelante: exclusiva para descripción + itinerario ----
+    has_itinerary = bool(package.get("itinerary"))
+    has_desc = bool(not is_services and package.get("description"))
+    if has_itinerary or has_desc:
+        story.append(PageBreak())
+        story.append(Paragraph(title_txt, s["title"]))
+        if has_desc:
+            story.append(Paragraph(package["description"], s["body"]))
+            story.append(Spacer(1, 10))
+        if has_itinerary:
+            story.append(Paragraph("Itinerario día a día", s["h2"]))
+            for day in package["itinerary"]:
+                story.append(Paragraph(f"<b>Día {day.get('day','')}:</b> {day.get('title','')}", s["h3"]))
+                if day.get("description"):
+                    story.append(Paragraph(day["description"], s["body"]))
 
     doc.build(story)
     return buf.getvalue()

@@ -55,10 +55,8 @@ async def get_public_quotation(token: str):
             channel = q.get("client_snapshot", {}).get("channel", "directo")
             if q.get("show_all_occupancies"):
                 rows = occupancy_rows_all(sel, channel, divisor, commissions)
-            else:
-                rows = occupancy_rows_selected(q.get("items", []))
-            occupancy_prices = [{"key": str(i), "label": r["label"], "price": r["per_person"], "total": r.get("total")}
-                                for i, r in enumerate(rows)]
+                occupancy_prices = [{"key": str(i), "label": r["label"], "price": r["per_person"], "total": r.get("total")}
+                                    for i, r in enumerate(rows)]
     exec_name = ""
     if q.get("assigned_to"):
         exec_user = await db.users.find_one({"id": q["assigned_to"]}, {"_id": 0, "name": 1})

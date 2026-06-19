@@ -211,28 +211,10 @@ export default function PublicQuotation() {
           </div>
         </div>
 
-        {/* Itinerary */}
-        {itinerary?.length > 0 && (
-          <div className="card-surface p-6">
-            <h2 className="font-display text-xl font-semibold text-ink-900 mb-4">Itinerario día a día</h2>
-            <div className="space-y-4">
-              {itinerary.map((d) => (
-                <div key={d.day} className="flex gap-4">
-                  <div className="shrink-0 w-10 h-10 rounded-xl text-white font-display font-bold flex items-center justify-center"
-                    style={{ background: primary }}>{d.day}</div>
-                  <div>
-                    <p className="font-semibold text-ink-900">{d.title}</p>
-                    <p className="text-sm text-ink-500 mt-0.5">{d.description}</p>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
-
+        {/* Opciones de ocupación — solo cuando el ejecutivo activa "Mostrar todas las opciones" */}
         {q.occupancy_prices?.length > 0 && (
           <div className="card-surface p-6" data-testid="public-occupancy-table">
-            <h2 className="font-display text-xl font-semibold text-ink-900 mb-4">Precios por persona{q.hotel_selected ? ` — ${q.hotel_selected}` : ''}</h2>
+            <h2 className="font-display text-xl font-semibold text-ink-900 mb-4">Opciones de ocupación{q.hotel_selected ? ` — ${q.hotel_selected}` : ''}</h2>
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
                 <thead><tr className="text-ink-500 border-b border-ink-100"><th className="text-left py-2">Ocupación</th><th className="text-right py-2">Precio por persona</th>{q.occupancy_prices.some((o) => o.total != null) && <th className="text-right py-2">Total</th>}</tr></thead>
@@ -442,6 +424,33 @@ export default function PublicQuotation() {
             <FileText className="w-3 h-3 inline mr-1" /> Pago seguro procesado por Stripe. Al confirmar, {company.name} procederá con la reserva.
           </p>
         </div>
+
+        {/* Página 2: Descripción + Itinerario día a día (réplica del PDF) */}
+        {(q.package_snapshot?.description || itinerary?.length > 0) && (
+          <div className="card-surface p-6" data-testid="public-itinerary">
+            <h2 className="font-display text-xl font-semibold text-ink-900 mb-4">{q.package_snapshot?.name || 'Tu programa'}</h2>
+            {q.package_snapshot?.description && (
+              <p className="text-sm text-ink-600 whitespace-pre-line mb-5">{q.package_snapshot.description}</p>
+            )}
+            {itinerary?.length > 0 && (
+              <>
+                <h3 className="font-display text-lg font-semibold text-ink-900 mb-4">Itinerario día a día</h3>
+                <div className="space-y-4">
+                  {itinerary.map((d) => (
+                    <div key={d.day} className="flex gap-4">
+                      <div className="shrink-0 w-10 h-10 rounded-xl text-white font-display font-bold flex items-center justify-center"
+                        style={{ background: primary }}>{d.day}</div>
+                      <div>
+                        <p className="font-semibold text-ink-900">{d.title}</p>
+                        <p className="text-sm text-ink-500 mt-0.5">{d.description}</p>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </>
+            )}
+          </div>
+        )}
 
         <footer className="text-center text-xs text-ink-400 pt-6">
           {q.exec_name && <p className="mb-2 text-ink-600">Tu ejecutivo: <b>{q.exec_name}</b></p>}

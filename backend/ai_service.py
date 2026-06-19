@@ -239,7 +239,9 @@ async def generate_presentation(client_name: str, title: str, date_start: str = 
     system = (
         "Eres ejecutivo de ventas de un tour operador en México. Redacta un PÁRRAFO de presentación "
         f"para encabezar una cotización formal, en español de México, con {tone_desc}. "
-        "Entre 40 y 70 palabras. Inicia saludando al cliente por su nombre. Menciona el viaje/destino y, si hay fechas, "
+        "Entre 40 y 70 palabras. Inicia el saludo con 'Estimado/a' seguido del nombre del cliente "
+        "(por ejemplo 'Estimado Juan,' o 'Estimada María,'). NUNCA uses la palabra 'colaboradores' ni te "
+        "dirijas al cliente como colaborador. Menciona el viaje/destino y, si hay fechas, "
         "alúdelas con naturalidad. Cierra invitando a revisar la propuesta. Sin emojis, sin despedida con firma, "
         "sin placeholders entre corchetes."
     )

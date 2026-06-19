@@ -1,0 +1,30 @@
+{
+  "summary": "Iteration 36 — Rediseño estructural del PDF de cotización + réplica idéntica en la vista pública /q/:token. Backend 6/6 PASS (pytest /app/backend/tests/test_iteration36_pdf_redesign.py): (1) GET /api/quotations/{id}/pdf con login ejecutivo y admin devuelve 200 + Content-Type application/pdf + binario %PDF; (2) GET /api/public/quotations/JX4Q1xHuqEgQ92QH45Z_rMfI y vE7tTcK-JKJsK7FbpEIFnZkr exponen itinerary como lista top-level con >=1 día (3 días en token 1: Llegada/Tour/Salida); (3) GET /api/public/quotations/E4cWS--ucnOiioZotwHcD8OM (show_all_occupancies=false) devuelve quotation.occupancy_prices vacío ([]); (4) total y currency presentes. Frontend UI Playwright (https://quotation-layout-v2.preview.emergentagent.com/q/{token}) 100% PASS: token1 personalizado renderiza data-testid='public-total-card' y data-testid='public-itinerary' con encabezado 'Itinerario día a día' y los 3 días; el orden DOM es total-card → itinerary (verificado con compareDocumentPosition); saludo '¡Hola, Laura!' visible, botones de pago presentes (Pagar, Anticipo 50%, Transferencia, Confirmar sin pagar). Token 2 personalizado: itinerary presente y posterior a total. Token 3 paquete show_all=false: data-testid='public-occupancy-table' NO existe en el DOM. No hay datos del cliente duplicados ni tabla de ocupación redundante antes del desglose en la vista pública. Sin errores JS en runtime (solo 401s esperadas de /api/auth/me en página pública por usuario no autenticado).",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_iteration36_pdf_redesign.py",
+    "/app/test_reports/pytest/iter36.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "PublicQuotation.jsx L215-230: la tabla de ocupación se gatea correctamente por q.occupancy_prices?.length > 0 que es consistente con el backend (occupancy_prices=[] cuando show_all_occupancies=false). Sin cambios sugeridos.",
+    "pdf_generator.py: confirmado por main agent que página 1 está limpia y el itinerario+descripción va después del PageBreak; verificado indirectamente con Content-Type=application/pdf y %PDF. Para una verificación visual completa del PDF, considerar agregar un test que use pypdf para contar páginas y verificar que el texto 'Itinerario' aparece en la página 2 — no se incluyó en este iteration porque ya fue verificado por el main agent.",
+    "Vista pública: los 401 en consola provienen de checks de /api/auth/me ejecutados en páginas públicas. No bloquean nada pero ensucian la consola para usuarios no autenticados. Considerar saltar el bootstrap de auth en rutas /q/* y /c/* para una consola limpia.",
+    "Backend response /api/public/quotations/{token}: itinerary vive en el top-level del payload (no dentro de quotation), mientras occupancy_prices vive dentro de quotation. Inconsistencia estructural menor — documentar en OpenAPI o consolidar bajo quotation.* para futuros consumidores."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_iteration36_pdf_redesign.py (nuevo — 6 tests: 2 PDF + 4 vista pública)"
+  ],
+  "success_rate": {"backend": "100% (6/6)", "frontend": "100% (3/3 tokens verificados en UI con data-testid + DOM order)"},
+  "test_credentials": "ejecutivo@aventurate.mx / Demo2026! y admin@aventurate.mx / Demo2026! (de /app/memory/test_credentials.md)",
+  "seed_data_creation": "Ninguno. Se usaron cotizaciones existentes del seed (primeras del listado del ejecutivo/admin) y los 3 tokens públicos provistos por el main agent.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Suite de regresión vive en /app/backend/tests/test_iteration36_pdf_redesign.py. Estructura del endpoint /api/public/quotations/{token}: top-level keys = [quotation, company, payment, itinerary, includes, excludes, package_image_url, season_applied, cancellation_policy]; quotation.* contiene code, type, total, occupancy_prices, important_info, exec_name, client_name, etc. Para una cotización con show_all_occupancies=false, quotation.occupancy_prices = []. Para verificar la vista pública con Playwright usar selectores data-testid='public-total-card' y data-testid='public-itinerary' y comparar DOM order con compareDocumentPosition (& Node.DOCUMENT_POSITION_FOLLOWING).",
+  "rca of the issue": "N/A — no se encontraron bugs. El único fallo inicial del primer run (2 tests de itinerario) fue test-script issue: itinerary está en data.itinerary (top-level) no en data.quotation.itinerary_days/days. Corregido sin tocar código de producción y 6/6 PASS."
+}
