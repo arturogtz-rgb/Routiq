@@ -7,6 +7,13 @@ Plataforma SaaS PWA multi-tenant para **cotización y seguimiento turístico** p
 - **Producción: https://routiq.com.mx** ✅ (VPS Hostinger 177.7.36.75, Docker + Nginx + Let's Encrypt)
 - Iteración actual: **v2.4** (iter_24: registro de uso/costo de IA en Master + generar respaldo on-demand + revisión de seguridad pre-lanzamiento)
 
+## Iteración 39 (jun-2026) — PDF descargable público + ocupación interactiva + Confirmación web con calendario
+1. **Botón "Descargar PDF" en `/q/:token`** — nuevo endpoint público `GET /api/public/quotations/{token}/pdf` (mismo PDF que el ejecutivo, precios públicos, sin tarifas netas) + botón `download-pdf-btn` en el header del enlace.
+2. **Selección de ocupación interactiva** (cuando "Mostrar todas las opciones" está activo) — la tabla se vuelve seleccionable (`occ-option-{occ}`); al elegir, se muestra `occ-estimated-total` = precio por persona × nº personas de la ocupación (sencilla×1, doble×2, triple×3, cuádruple×4, menor×1, 1 habitación). **Solo informativo**: el pago sigue usando el total original. Backend: `occupancy_rows_all` y payload incluyen la clave `occ`.
+3. **Confirmación de Reserva web `/r/:token`** (`BookingConfirmationPublic.jsx`) — nuevo endpoint `GET /api/public/booking-confirmation/{token}` (JSON con `trip_start`/`trip_end`) + página con datos de reserva (servicios, hospedaje, banco, precio) y botón **"Agregar al calendario"**: descarga **.ics** (Apple/Outlook) + enlace a **Google Calendar**, un único evento (primer check-in → último check-out, fin exclusivo +1 día). Envío por correo/WhatsApp ahora comparte el enlace web `/r/:token`; botón "Copiar enlace" en la página ejecutiva.
+- Tests: `/app/test_reports/iteration_38.json` — backend 4/4 PASS + frontend 100% (PDF público 200, multiplicación doble=17800/triple=23400/menor=4500, total de pago sin mutar, ICS válido DTSTART 20260810/DTEND 20260814, Google Calendar dates correctos).
+- ⏳ **Backlog P2 restante:** % de comisión personalizado por cliente (override del canal); modo vista previa (dry-run) en importación Excel masiva. Fase posterior: conectar el pago al total de la ocupación elegida.
+
 ## Iteración 38 (jun-2026) — Ajustes finos PDF + desglose unificado en enlace `/q/:token`
 **PDF (`pdf_generator.py`):**
 1. **Membrete:** logo (3.2cm) + datos empresa + bloque COTIZACIÓN en una sola fila con `VALIGN MIDDLE`; menos espacio bajo el header.
