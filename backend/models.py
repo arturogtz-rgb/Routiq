@@ -248,6 +248,15 @@ class PackageSeason(BaseModel):
     ranges: List[SeasonRange] = []
 
 
+class PackageInclusions(BaseModel):
+    arrival_transfer: bool = False
+    departure_transfer: bool = False
+    lodging: bool = False
+    tours: bool = False
+    venue_access: bool = False
+    extras: str = ""  # texto libre para servicios extra
+
+
 class PackageCreate(BaseModel):
     code: str
     name: str
@@ -259,6 +268,7 @@ class PackageCreate(BaseModel):
     seasons: List[PackageSeason] = []
     includes: List[str] = []
     excludes: List[str] = []
+    inclusions: PackageInclusions = Field(default_factory=PackageInclusions)
     season_start: Optional[str] = None
     season_end: Optional[str] = None
     allowed_start_days: List[int] = []  # 0=Mon .. 6=Sun; empty => any day
@@ -276,6 +286,7 @@ class PackageUpdate(BaseModel):
     seasons: Optional[List[PackageSeason]] = None
     includes: Optional[List[str]] = None
     excludes: Optional[List[str]] = None
+    inclusions: Optional[PackageInclusions] = None
     season_start: Optional[str] = None
     season_end: Optional[str] = None
     allowed_start_days: Optional[List[int]] = None
@@ -423,6 +434,7 @@ class QuotationCreate(BaseModel):
     presentation_text: str = ""
     important_info: str = ""  # "Información importante" — texto libre por cotización (cliente lo ve)
     show_all_occupancies: bool = False  # PDF/enlace: mostrar todas las ocupaciones disponibles (cotización abierta)
+    show_price_breakdown: bool = True  # PDF/enlace: mostrar desglose detallado (columnas) vs solo conceptos + total
     from_request: Optional[str] = None  # lead id when created from a public catalog request
     # Custom / programa personalizado
     custom_title: str = ""
@@ -494,6 +506,7 @@ class QuotationUpdate(BaseModel):
     presentation_text: Optional[str] = None
     important_info: Optional[str] = None
     show_all_occupancies: Optional[bool] = None
+    show_price_breakdown: Optional[bool] = None
     # Custom / programa personalizado
     custom_title: Optional[str] = None
     custom_items: Optional[List[CustomItem]] = None
@@ -539,4 +552,5 @@ class PresentationInput(BaseModel):
     date_end: str = ""
     adultos: int = 0
     menores: int = 0
+    inclusions: str = ""  # contexto de "¿qué incluye?" para enriquecer el saludo IA
     tone: Literal["formal", "cercano", "premium"] = "formal"

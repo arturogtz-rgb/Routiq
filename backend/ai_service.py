@@ -228,7 +228,7 @@ async def detect_missing_fields(q: dict, pack: dict | None = None, client: dict 
 
 async def generate_presentation(client_name: str, title: str, date_start: str = "",
                                 date_end: str = "", adultos: int = 0, menores: int = 0,
-                                tone: str = "formal", tenant_id: str | None = None) -> str:
+                                tone: str = "formal", inclusions: str = "", tenant_id: str | None = None) -> str:
     """Redacta el texto de presentación que abre la cotización (carta al cliente)."""
     tone_map = {
         "formal": "tono formal y profesional, trato de usted",
@@ -254,8 +254,9 @@ async def generate_presentation(client_name: str, title: str, date_start: str = 
         f"Cliente: {client_name or 'el cliente'}\n"
         f"Viaje/Programa: {title or 'programa turístico'}\n"
         f"Fechas: {fechas or 'por definir'}\n"
-        f"Pasajeros: {pax_txt}\n\n"
-        "Redacta el párrafo de presentación:"
+        f"Pasajeros: {pax_txt}\n"
+        + (f"El paquete incluye: {inclusions}\n" if inclusions else "")
+        + "\nRedacta el párrafo de presentación:"
     )
     return await _ask(system, prompt, max_tokens=320, tenant_id=tenant_id, feature="presentation")
 

@@ -119,7 +119,8 @@ async def create_quotation(payload: QuotationCreate, user: dict = Depends(requir
         calc = compute_quotation(pack, payload.hotel_name, payload.pax.model_dump(),
                                  pack_nights, client["channel"], pricing_config,
                                  services_catalog, services_sel,
-                                 dates={"start": d_start, "end": d_end}, extra_nights_cfg=extra_cfg)
+                                 dates={"start": d_start, "end": d_end}, extra_nights_cfg=extra_cfg,
+                                 custom_items=[c.model_dump() for c in payload.custom_items])
     type_label = {"personalizado": "programa personalizado", "servicios": "servicios a la carta"}.get(payload.type, "paquete")
     code = await _next_quotation_code(db, user["tenant_id"])
     doc = {
@@ -135,6 +136,7 @@ async def create_quotation(payload: QuotationCreate, user: dict = Depends(requir
         "contacts": payload.contacts.model_dump() if payload.contacts else None,
         "extra_nights_cfg": extra_cfg,
         **custom_payload,
+        "custom_items": [c.model_dump() for c in payload.custom_items],
         "nights_total": calc["nights_total"],
         "extra_nights": calc["extra_nights"],
         "season_applied": calc.get("season_applied"),
@@ -154,6 +156,7 @@ async def create_quotation(payload: QuotationCreate, user: dict = Depends(requir
         "presentation_text": payload.presentation_text or "",
         "important_info": payload.important_info or "",
         "show_all_occupancies": bool(payload.show_all_occupancies),
+        "show_price_breakdown": bool(payload.show_price_breakdown),
         "from_request": payload.from_request or None,
         "history": [{
             "at": now_iso(), "user_id": user["id"], "user_name": user.get("name", ""),
@@ -254,7 +257,7 @@ async def update_quotation(quotation_id: str, payload: QuotationUpdate, user: di
             updates["custom_title"] = title
             snap = dict(q.get("package_snapshot") or {}); snap["name"] = title
             updates["package_snapshot"] = snap
-    elif any(k in updates for k in ("pax", "hotel_name", "services", "dates", "extra_nights")):
+    elif any(k in updates for k in ("pax", "hotel_name", "services", "dates", "extra_nights", "custom_items")):
         pack = None
         if q.get("package_id"):
             pack = await db.packages.find_one({"id": q["package_id"], "tenant_id": user["tenant_id"]}, {"_id": 0})
@@ -264,6 +267,7 @@ async def update_quotation(quotation_id: str, payload: QuotationUpdate, user: di
         hotel = updates.get("hotel_name", q["hotel_selected"])
         pax = updates.get("pax", q["pax"])
         services_sel = updates.get("services", q.get("services", []))
+        citems = updates.get("custom_items", q.get("custom_items", []))
         new_dates = updates.get("dates", q.get("dates"))
         if new_dates and new_dates.get("start") and new_dates.get("end") and new_dates["start"] > new_dates["end"]:
             new_dates = {"start": new_dates["end"], "end": new_dates["start"]}
@@ -272,7 +276,7 @@ async def update_quotation(quotation_id: str, payload: QuotationUpdate, user: di
         pack_nights = pack["nights"] if pack else 0
         calc = compute_quotation(pack, hotel, pax, pack_nights, client["channel"], pricing_config,
                                  services_catalog, services_sel,
-                                 dates=new_dates, extra_nights_cfg=extra_cfg)
+                                 dates=new_dates, extra_nights_cfg=extra_cfg, custom_items=citems)
         updates.update({
             "hotel_selected": hotel if pack else "",
             "services": services_sel,
@@ -400,7 +404,8 @@ async def ai_presentation(payload: PresentationInput, user: dict = Depends(requi
     try:
         text = await ai_service.generate_presentation(
             payload.client_name, payload.title, payload.date_start, payload.date_end,
-            payload.adultos, payload.menores, tone=payload.tone, tenant_id=user["tenant_id"])
+            payload.adultos, payload.menores, tone=payload.tone,
+            inclusions=payload.inclusions, tenant_id=user["tenant_id"])
         return {"text": text}
     except Exception as e:
         log.exception("AI presentation failed")

@@ -142,12 +142,41 @@ def occupancy_rows_all(hotel: dict, channel: str, margin_divisor: float, commiss
 
 
 
+def _price_custom_item(ci: dict, total_pax: int, nights_total: int, rooms: int,
+                       client_channel: str, margin_divisor: float, commissions: dict) -> dict:
+    """Cotiza un concepto libre (programa personalizado o extra de paquete)."""
+    entered = float(ci.get("net_price", 0) or 0)
+    price_type = ci.get("price_type", "neto") or "neto"
+    unit = ci.get("unit") or "per_group"
+    sel_qty = int(ci.get("qty", 0) or 0)
+    qty = sel_qty if sel_qty > 0 else _custom_default_qty(unit, total_pax, nights_total, rooms)
+    name = (ci.get("name") or "").strip() or CUSTOM_CATEGORY_ES.get(ci.get("category", "extra"), "Concepto")
+    if price_type == "publico":
+        unit_price = round(entered, 2)
+        public_ref = round(entered, 2)
+    else:
+        unit_price = channel_price(entered, client_channel, margin_divisor, commissions)
+        public_ref = public_from_net(entered, margin_divisor)
+    return {
+        "label": f"{name} · {CUSTOM_UNIT_ES.get(unit, '')}".strip(" ·"),
+        "unit_price": unit_price, "qty": qty, "kind": "custom",
+        "category": ci.get("category", "extra"), "unit": unit,
+        "name": name, "description": ci.get("description", "") or "",
+        "net_price": entered, "public_price": public_ref, "price_type": price_type,
+        "subtotal": round(unit_price * qty, 2),
+        "service_date": ci.get("service_date", "") or "",
+        "start_time": ci.get("start_time", "") or "",
+        "end_time": ci.get("end_time", "") or "",
+    }
+
+
 def compute_quotation(pack: dict | None, hotel_name: str, pax: dict, nights: int,
                       client_channel: str, pricing_config: dict,
                       services_catalog: dict | None = None,
                       selected_services: list | None = None,
                       dates: dict | None = None,
-                      extra_nights_cfg: dict | None = None) -> dict:
+                      extra_nights_cfg: dict | None = None,
+                      custom_items: list | None = None) -> dict:
     """Returns items, subtotal, commission, total, plus nights_total / extra_nights.
 
     When `pack` is None the quotation is "servicios a la carta": there is no
@@ -256,13 +285,20 @@ def compute_quotation(pack: dict | None, hotel_name: str, pax: dict, nights: int
             "service_id": svc["id"], "subtotal": round(price * qty, 2),
         })
 
+    # ---- Conceptos adicionales libres (extras del paquete / a la carta) ----
+    for ci in (custom_items or []):
+        items.append(_price_custom_item(ci, total_pax, nights_total, num_rooms,
+                                        client_channel, margin_divisor, commissions))
+
     # Comisión por canal SOLO sobre servicios a la carta (los paquetes ya traen
     # el precio por canal incorporado y son "neto no comisionable").
     package_subtotal = sum(it["subtotal"] for it in items if it.get("kind") in ("hospedaje", "noche_extra"))
     service_subtotal = sum(it["subtotal"] for it in items if it.get("kind") == "servicio")
+    custom_publico = sum(it["subtotal"] for it in items if it.get("kind") == "custom" and it.get("price_type") == "publico")
+    custom_neto = sum(it["subtotal"] for it in items if it.get("kind") == "custom" and it.get("price_type", "neto") != "publico")
     commission_rate = float(commissions.get(client_channel, 0.0) or 0.0)
-    commission = round(service_subtotal * commission_rate, 2)
-    subtotal = round(package_subtotal + service_subtotal, 2)
+    commission = round((service_subtotal + custom_publico) * commission_rate, 2)
+    subtotal = round(package_subtotal + service_subtotal + custom_publico + custom_neto, 2)
     total = round(subtotal - commission, 2)
 
     has_package = pack is not None
@@ -317,31 +353,8 @@ def compute_custom_quotation(custom_items: list, pax: dict, custom_nights: int,
 
     items: List[dict] = []
     for ci in (custom_items or []):
-        entered = float(ci.get("net_price", 0) or 0)
-        price_type = ci.get("price_type", "neto") or "neto"
-        unit = ci.get("unit") or "per_group"
-        sel_qty = int(ci.get("qty", 0) or 0)
-        qty = sel_qty if sel_qty > 0 else _custom_default_qty(unit, total_pax, nights_total, rooms)
-        name = (ci.get("name") or "").strip() or CUSTOM_CATEGORY_ES.get(ci.get("category", "extra"), "Concepto")
-        if price_type == "publico":
-            # El monto ingresado ya es PÚBLICO -> lógica de servicios (comisionable).
-            unit_price = round(entered, 2)
-            public_ref = round(entered, 2)
-        else:
-            # El monto ingresado es NETO -> lógica de paquetes (precio por canal, no comisionable).
-            unit_price = channel_price(entered, client_channel, margin_divisor, commissions)
-            public_ref = public_from_net(entered, margin_divisor)
-        items.append({
-            "label": f"{name} · {CUSTOM_UNIT_ES.get(unit, '')}".strip(" ·"),
-            "unit_price": unit_price, "qty": qty, "kind": "custom",
-            "category": ci.get("category", "extra"), "unit": unit,
-            "name": name, "description": ci.get("description", "") or "",
-            "net_price": entered, "public_price": public_ref, "price_type": price_type,
-            "subtotal": round(unit_price * qty, 2),
-            "service_date": ci.get("service_date", "") or "",
-            "start_time": ci.get("start_time", "") or "",
-            "end_time": ci.get("end_time", "") or "",
-        })
+        items.append(_price_custom_item(ci, total_pax, nights_total, rooms,
+                                        client_channel, margin_divisor, commissions))
 
     # Comisión por canal SOLO sobre conceptos de precio público (los netos ya traen el
     # precio por canal incorporado y son "no comisionables").

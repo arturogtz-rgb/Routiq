@@ -16,7 +16,16 @@ const uid = () => (crypto?.randomUUID ? crypto.randomUUID() : `id-${Date.now()}-
 const EMPTY_PKG = {
   code: '', name: '', nights: 3, description: '', image_url: '', status: 'active',
   allowed_start_days: [], includes: [], excludes: [], itinerary: [], seasons: [], hotels: [],
+  inclusions: { arrival_transfer: false, departure_transfer: false, lodging: false, tours: false, venue_access: false, extras: '' },
 };
+
+const INCLUSION_OPTS = [
+  ['arrival_transfer', 'Traslado de llegada'],
+  ['departure_transfer', 'Traslado de salida'],
+  ['lodging', 'Hospedaje'],
+  ['tours', 'Tours'],
+  ['venue_access', 'Accesos a recintos'],
+];
 
 function Section({ icon: Icon, title, desc, children }) {
   return (
@@ -242,6 +251,24 @@ export default function PackageEditor() {
         <Section icon={ListChecks} title="Incluye / No incluye">
           <div><p className="label-text">Incluye</p><StringList items={pkg.includes} onChange={(v) => set('includes', v)} placeholder="Ej. Hospedaje 3 noches" testid="includes-list" /></div>
           <div className="pt-3 border-t border-ink-100"><p className="label-text">No incluye</p><StringList items={pkg.excludes} onChange={(v) => set('excludes', v)} placeholder="Ej. Vuelos" testid="excludes-list" /></div>
+        </Section>
+
+        {/* ¿Qué incluye este paquete? (checkboxes para IA + prellenado de Confirmación) */}
+        <Section icon={ListChecks} title="¿Qué incluye este paquete?" desc="Da contexto a la IA para el saludo y prellena los servicios de la Confirmación de Reserva.">
+          <div className="grid sm:grid-cols-2 gap-2" data-testid="inclusions-checkboxes">
+            {INCLUSION_OPTS.map(([key, label]) => (
+              <label key={key} className="flex items-center gap-2 rounded-lg border border-ink-100 px-3 py-2 cursor-pointer hover:border-brand-300">
+                <input type="checkbox" className="h-4 w-4 accent-brand-500" checked={!!pkg.inclusions?.[key]}
+                  onChange={(e) => set('inclusions', { ...pkg.inclusions, [key]: e.target.checked })} data-testid={`inclusion-${key}`} />
+                <span className="text-sm text-ink-800">{label}</span>
+              </label>
+            ))}
+          </div>
+          <div className="pt-2">
+            <label className="label-text">Servicios extras (texto libre)</label>
+            <input className="input-field text-sm" placeholder="Ej. Cena romántica, guía privado…" value={pkg.inclusions?.extras || ''}
+              onChange={(e) => set('inclusions', { ...pkg.inclusions, extras: e.target.value })} data-testid="inclusion-extras" />
+          </div>
         </Section>
 
         {/* Itinerary */}

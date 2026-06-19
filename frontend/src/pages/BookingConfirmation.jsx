@@ -44,14 +44,18 @@ export default function BookingConfirmation() {
             general_observations: existing.general_observations || '',
             price_per_person: existing.price_per_person || 0, total_amount: existing.total_amount || 0,
           });
-        } else {
-          const total = qr.data.final_total != null ? qr.data.final_total : qr.data.total;
-          const pax = (qr.data.pax?.adultos || 0) + (qr.data.pax?.menores || 0);
-          setForm((f) => ({
-            ...f, agent_name: qr.data.client_snapshot?.name || '',
-            num_persons: pax ? String(pax) : '', total_amount: total || 0,
-            price_per_person: pax ? Math.round((total / pax) * 100) / 100 : 0,
-          }));
+        } else if (cr.data && cr.data._prefill) {
+          const p = cr.data;
+          setForm({
+            agent_name: p.agent_name || '', agent_phone: p.agent_phone || '',
+            agent_company: p.agent_company || '', reservation_date: p.reservation_date || '',
+            passenger_name: p.passenger_name || '', passenger_phone: p.passenger_phone || '',
+            num_persons: p.num_persons || '',
+            services: p.services?.length ? p.services : [{ ...EMPTY_SVC }],
+            lodging: p.lodging?.length ? p.lodging : [{ ...EMPTY_LODGING }],
+            general_observations: p.general_observations || '',
+            price_per_person: p.price_per_person || 0, total_amount: p.total_amount || 0,
+          });
         }
       } catch (e) { setError(formatApiError(e)); }
     })();

@@ -1,0 +1,30 @@
+{
+  "summary": "Iteration 39 — FASE A (Routiq cotizaciones). Backend 5/5 PASS via pytest /app/backend/tests/test_iteration39_fase_a.py: (1) POST /api/quotations tipo 'paquete' con show_price_breakdown=false y custom_items=[{name:'Tour privado',net_price:1500,price_type:'publico',unit:'per_person',qty:0,category:'tour'}] → 201; persiste show_price_breakdown=false y custom_items[0].name='Tour privado'; items contiene 1 item kind='custom' price_type='publico' subtotal=3000 (1500×2 adultos); commission_rate>0 ⇒ commission ≥ 3000*rate (solo aplica a publico, comprobado). (2) GET /api/public/quotations/E4cWS-- expone show_price_breakdown=False en payload. (3) GET /api/public/quotations/{token}/pdf → 200 application/pdf con header %PDF-. (4) Prefill: creada cotización con package que tiene inclusions {arrival_transfer, departure_transfer, lodging, tours, extras='Coctel de bienvenida'} y contacts.traveler.name='Pasajero Demo'; tras PATCH state='ganada', GET /api/quotations/{id}/booking-confirmation retorna _prefill=True con agent_name no vacío, passenger_name='Pasajero Demo', num_persons='2', lodging[0].hotel poblado, checkin='2026-09-10', checkout='2026-09-13', room_type='Doble', services prellenados con 'Traslado de llegada' y 'Tours' (desde inclusions). Booking PDF auth /api/booking-confirmations/{conf_id}/pdf → 200 PDF; público /api/public/booking-confirmation/{token}/pdf → 200 PDF. (5) PackageInclusions persist: POST /api/packages con inclusions {arrival_transfer:true, departure_transfer:false, lodging:true, tours:true, venue_access:false, extras:'Welcome drink'} → GET /api/packages/{id} devuelve inclusions idénticos.\n\nFrontend Playwright PASS (ejecutivo + admin):\n• Punto 1 público en /q/E4cWS--: data-testid='public-price-breakdown' (1), 'public-concepts-list' (1) con 2 items 'public-concept-0/1' SIN montos por línea; título 'Conceptos incluidos' presente; NO aparecen filas 'Subtotal' ni 'Comisión'; 'public-total-card' muestra solo Total final $22,300 MXN; public-line-item count=0 (correcto cuando breakdown=false).\n• Punto 1 paquete (/app/quotations/new tipo paquete → step-review): 'show-price-breakdown-checkbox' presente y default CHECKED=True.\n• Punto 1 custom (type-personalizado → custom-step-review): 'custom-show-price-breakdown-checkbox' presente y default CHECKED=True.\n• Punto 6 (paquete step-services): 'custom-concepts-section' (1) y 'add-concept-btn' (1) presentes; tras click en add y llenar concept-name-0='Tour privado', concept-price-0='1500', concept-type-publico-0 click → 'concepts-subtotal' muestra 'Conceptos adicionales: $3,000 MXN' (1500×2 adultos).\n• Punto 2 (admin login /app/packages/new): 'inclusions-checkboxes' (1) con los 5 checkboxes inclusion-arrival_transfer/departure_transfer/lodging/tours/venue_access (1 cada uno) e inclusion-extras (texto) (1); 'save-package-btn' (1).",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_iteration39_fase_a.py",
+    "/app/test_reports/pytest/iter39.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "/app/backend/routes/booking.py L66-73: el mapeo svc_map omite 'lodging' como servicio prellenado — intencional ya que el hospedaje va en bloque lodging[], no en services. Sin embargo, la spec del usuario menciona 'hospedaje' como inclusión válida; verificado que SÍ genera lodging[0] cuando q.get('hotel_selected') existe, independiente del flag inclusions.lodging. OK.",
+    "/app/backend/routes/booking.py L94: price_per_person = round(total/total_pax,2) — si total_pax==0 devuelve 0; ya manejado correctamente.",
+    "/app/frontend/src/pages/QuotationBuilder.jsx: el step button data-testid es 'step-services' (singular plural mixto: el sidebar de la app también tiene Servicios). En tests hay que usar siempre el data-testid en lugar de get_by_role('button', name='SERVICIOS') porque el nav lateral intercepta. Documentado para próximos agentes.",
+    "Console error 401 persistente al cargar /login y rutas /q/* causado por bootstrap de auth (/api/auth/me sin cookie) — señalado en iter 36/37/38. No bloquea funcionalidad pero ensucia logs."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_iteration39_fase_a.py (nuevo — 5 tests, todos PASS)"
+  ],
+  "success_rate": {"backend": "100% (5/5)", "frontend": "100% (todos los data-testid de los 4 puntos verificados, comportamiento por defecto y cálculos correctos)"},
+  "test_credentials": "ejecutivo@aventurate.mx / Demo2026! (cotizaciones, custom concepts), admin@aventurate.mx / Demo2026! (package editor, inclusions). Token público: E4cWS--ucnOiioZotwHcD8OM (show_price_breakdown=false).",
+  "seed_data_creation": "Tests crean cotizaciones temporales (luego DELETE) y un paquete TEST-INC-39 (luego DELETE).",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Suite iter39 cubre FASE A: pricing con custom_items (kind='custom', commission solo a price_type='publico'), persistencia show_price_breakdown, payload público lo expone, prefill de booking-confirmation desde inclusions del paquete (svc_map traduce arrival_transfer→'Traslado de llegada', departure_transfer→'Traslado de salida', tours→'Tours', venue_access→'Accesos a recintos', extras texto libre→'Servicios extra'), PackageInclusions CRUD. UI: en QuotationBuilder, step buttons usan data-testid='step-{client|package|dates|services|review}'; en CustomQuotationBuilder usan 'custom-step-{client|program|items|itinerary|review}'. Para PackageEditor se requiere rol company_admin (executive es redirigido al dashboard). El builder paquete carga directo en step CLIENTE con type-paquete preseleccionado.",
+  "rca of the issue": "N/A — todas las features de FASE A funcionan correctamente y los data-testid documentados en el review_request están presentes y operativos."
+}

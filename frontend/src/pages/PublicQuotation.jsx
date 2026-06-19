@@ -261,7 +261,16 @@ export default function PublicQuotation() {
         {/* Desglose de precios — todas las líneas juntas (réplica del PDF) */}
         {(q.items || []).length > 0 && (
           <div className="card-surface p-6" data-testid="public-price-breakdown">
-            <h2 className="font-display text-xl font-semibold text-ink-900 mb-4">Desglose de precios</h2>
+            <h2 className="font-display text-xl font-semibold text-ink-900 mb-4">{q.show_price_breakdown === false ? 'Conceptos incluidos' : 'Desglose de precios'}</h2>
+            {q.show_price_breakdown === false ? (
+              <ul className="space-y-1.5 mb-2" data-testid="public-concepts-list">
+                {(q.items || []).map((it, i) => (
+                  <li key={i} className="flex items-center gap-2 text-ink-800" data-testid={`public-concept-${i}`}>
+                    <span className="w-1.5 h-1.5 rounded-full shrink-0" style={{ background: primary }} />{it.label}
+                  </li>
+                ))}
+              </ul>
+            ) : (
             <div className="space-y-1">
               {(q.items || []).map((it, i) => {
                 const dt = [it.service_date ? formatDateEs(it.service_date) : '', (it.start_time && it.end_time) ? `${it.start_time}–${it.end_time}` : (it.start_time || '')].filter(Boolean).join(' · ');
@@ -282,14 +291,19 @@ export default function PublicQuotation() {
                 );
               })}
             </div>
+            )}
             <div className="mt-3 pt-3 space-y-1.5">
-              <div className="flex items-center justify-between text-sm text-ink-600">
-                <span>Subtotal</span><span className="font-medium">{money(q.subtotal, q.currency)}</span>
-              </div>
-              {q.commission > 0 && (
-                <div className="flex items-center justify-between text-sm text-ink-600">
-                  <span>Comisión canal</span><span className="font-medium">- {money(q.commission, q.currency)}</span>
-                </div>
+              {q.show_price_breakdown !== false && (
+                <>
+                  <div className="flex items-center justify-between text-sm text-ink-600">
+                    <span>Subtotal</span><span className="font-medium">{money(q.subtotal, q.currency)}</span>
+                  </div>
+                  {q.commission > 0 && (
+                    <div className="flex items-center justify-between text-sm text-ink-600">
+                      <span>Comisión canal</span><span className="font-medium">- {money(q.commission, q.currency)}</span>
+                    </div>
+                  )}
+                </>
               )}
               <div className="flex items-center justify-between pt-1.5 border-t border-ink-100">
                 <span className="font-semibold text-ink-900">Total</span>

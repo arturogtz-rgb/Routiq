@@ -360,49 +360,54 @@ def generate_quotation_pdf(company: dict, quotation: dict, package: dict, client
                     story.append(Spacer(1, 3))
                     story.append(Paragraph(f"<font color='#475569'><i>{_xml_escape(note)}</i></font>", s["soft"]))
 
-    # Desglose de precios (línea por línea) — única tabla de precios en la página 1.
+    # Desglose de precios — punto 1: detallado (columnas) vs simple (solo conceptos + total).
+    show_breakdown = quotation.get("show_price_breakdown", True)
+    if show_breakdown is None:
+        show_breakdown = True
     story.append(Spacer(1, 8))
-    story.append(Paragraph("Desglose de precios", s["h2"]))
     currency = quotation.get("currency", "MXN")
     concept_style = ParagraphStyle("concept", parent=s["soft"], textColor=TEXT, fontSize=8.5, leading=11)
-    rows = [["Concepto", "P. unitario", "Cant.", "Subtotal"]]
-    for it in quotation.get("items", []):
-        concept_html = f"<b>{_xml_escape(it.get('label',''))}</b>"
-        sub = []
-        if it.get("description"):
-            sub.append(_xml_escape(it["description"]))
-        dt = _fmt_service_datetime(it)
-        if dt:
-            sub.append(dt)
-        if sub:
-            concept_html += f"<br/><font size=7 color='#475569'>{' · '.join(sub)}</font>"
-        rows.append([
-            Paragraph(concept_html, concept_style),
-            _money(it["unit_price"], currency), str(it["qty"]), _money(it["subtotal"], currency),
-        ])
-    price_table = Table(rows, colWidths=[10.5 * cm, 2.9 * cm, 1.5 * cm, (CONTENT_W - 14.9) * cm])
-    price_table.setStyle(TableStyle([
-        ("BACKGROUND", (0, 0), (-1, 0), PRIMARY),
-        ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
-        ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
-        ("ALIGN", (1, 1), (-1, -1), "RIGHT"),
-        ("FONTSIZE", (0, 0), (-1, -1), 9),
-        ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.white, colors.HexColor("#F8F9FA")]),
-        ("GRID", (0, 0), (-1, -1), 0.3, colors.HexColor("#E2E8F0")),
-        ("LEFTPADDING", (0, 0), (-1, -1), 6),
-        ("RIGHTPADDING", (0, 0), (-1, -1), 6),
-        ("TOPPADDING", (0, 0), (-1, -1), 3),
-        ("BOTTOMPADDING", (0, 0), (-1, -1), 3),
-    ]))
-    story.append(price_table)
+    items = quotation.get("items", [])
+    if show_breakdown:
+        story.append(Paragraph("Desglose de precios", s["h2"]))
+        rows = [["Fecha", "Servicio", "Detalle", "Cant.", "$ unitario", "Subtotal"]]
+        for it in items:
+            fecha = _fmt_date(it["service_date"]) if it.get("service_date") else "—"
+            detalle = _xml_escape(it.get("description", "") or "")
+            rows.append([
+                fecha,
+                Paragraph(f"<b>{_xml_escape(it.get('label',''))}</b>", concept_style),
+                Paragraph(detalle, concept_style),
+                str(it.get("qty", "")),
+                _money(it["unit_price"], currency), _money(it["subtotal"], currency),
+            ])
+        price_table = Table(rows, colWidths=[2.2 * cm, 4.8 * cm, 4.5 * cm, 1.3 * cm, 2.6 * cm, (CONTENT_W - 15.4) * cm])
+        price_table.setStyle(TableStyle([
+            ("BACKGROUND", (0, 0), (-1, 0), PRIMARY),
+            ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
+            ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
+            ("ALIGN", (3, 1), (-1, -1), "RIGHT"),
+            ("FONTSIZE", (0, 0), (-1, -1), 8.5),
+            ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.white, colors.HexColor("#F8F9FA")]),
+            ("GRID", (0, 0), (-1, -1), 0.3, colors.HexColor("#E2E8F0")),
+            ("LEFTPADDING", (0, 0), (-1, -1), 5),
+            ("RIGHTPADDING", (0, 0), (-1, -1), 5),
+            ("TOPPADDING", (0, 0), (-1, -1), 3),
+            ("BOTTOMPADDING", (0, 0), (-1, -1), 3),
+        ]))
+        story.append(price_table)
+    else:
+        story.append(Paragraph("Conceptos incluidos", s["h2"]))
+        for it in items:
+            story.append(Paragraph(f"• {_xml_escape(it.get('label',''))}", s["body"]))
     story.append(Spacer(1, 8))
 
-    # Totals
-    tot_rows = [
-        ["Subtotal", _money(quotation.get("subtotal", 0), currency)],
-    ]
-    if quotation.get("commission", 0) > 0:
-        tot_rows.append(["Comisión canal", f"- {_money(quotation['commission'], currency)}"])
+    # Totals — en modo simple solo se muestra el TOTAL.
+    tot_rows = []
+    if show_breakdown:
+        tot_rows.append(["Subtotal", _money(quotation.get("subtotal", 0), currency)])
+        if quotation.get("commission", 0) > 0:
+            tot_rows.append(["Comisión canal", f"- {_money(quotation['commission'], currency)}"])
     tot_rows.append(["TOTAL", _money(quotation.get("total", 0), currency)])
     tot = Table(tot_rows, colWidths=[(CONTENT_W - 3.5) * cm, 3.5 * cm])
     tot.setStyle(TableStyle([
@@ -541,7 +546,8 @@ def _kv_table(rows, label_w=4.5, val_w=12.0):
 
 def _grid_table(header, rows, col_widths):
     s = _styles()
-    data = [[Paragraph(f"<b>{_xml_escape(h)}</b>", s["soft"]) for h in header]]
+    hdr_style = ParagraphStyle("gridhdr", parent=s["soft"], textColor=colors.white, fontName="Helvetica-Bold", fontSize=8.5)
+    data = [[Paragraph(f"<b>{_xml_escape(h)}</b>", hdr_style) for h in header]]
     for r in rows:
         data.append([Paragraph(_xml_escape(str(c or "")), s["body"]) for c in r])
     t = Table(data, colWidths=[w * cm for w in col_widths], repeatRows=1)
@@ -561,34 +567,37 @@ def generate_booking_confirmation_pdf(company: dict, quotation: dict, confirmati
                                       client: dict, base_url: str = "") -> bytes:
     """PDF de Confirmación de Reserva — generado por el ejecutivo desde una cotización ganada."""
     buf = io.BytesIO()
-    doc = SimpleDocTemplate(buf, pagesize=letter, leftMargin=1.4 * cm, rightMargin=1.4 * cm,
-                            topMargin=1.3 * cm, bottomMargin=1.3 * cm,
+    doc = SimpleDocTemplate(buf, pagesize=letter, leftMargin=1.5 * cm, rightMargin=1.5 * cm,
+                            topMargin=1.5 * cm, bottomMargin=1.5 * cm,
                             title=f"Confirmación {confirmation.get('code', '')}")
     s = _styles()
     story = []
     ccy = quotation.get("currency", "MXN")
 
-    logo_cell = _load_logo(company, 4.0)
+    logo_cell = _load_logo(company, 3.2)
     company_text = Paragraph(
-        f"<b><font size=12>{_xml_escape(company.get('name',''))}</font></b><br/><font size=9 color='#475569'>"
+        f"<b><font size=12>{_xml_escape(company.get('name',''))}</font></b><br/><font size=8.5 color='#475569'>"
         f"{_xml_escape(company.get('contact_phone',''))}<br/>{_xml_escape(company.get('contact_email',''))}<br/>{_xml_escape(company.get('address',''))}</font>",
         s["body"])
     title_text = Paragraph(
         f"<b><font color='#185FA5' size=15>CONFIRMACIÓN DE RESERVA</font></b><br/><font size=10>{_xml_escape(confirmation.get('code',''))}</font>"
-        f"<br/><font size=9 color='#475569'>{_fmt_date(confirmation.get('created_at',''))}</font>",
+        f"<br/><font size=8.5 color='#475569'>{_fmt_date(confirmation.get('created_at',''))}</font>",
         s["body"])
     if logo_cell:
-        header = Table([[logo_cell, company_text, title_text]], colWidths=[4.5 * cm, 6.5 * cm, 6 * cm])
+        header = Table([[logo_cell, company_text, title_text]], colWidths=[3.5 * cm, 9.0 * cm, 5.5 * cm])
     else:
-        header = Table([[company_text, title_text]], colWidths=[10 * cm, 7 * cm])
+        header = Table([[company_text, title_text]], colWidths=[12.0 * cm, 6.0 * cm])
     header.setStyle(TableStyle([
-        ("VALIGN", (0, 0), (-1, -1), "TOP"),
+        ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
         ("ALIGN", (-1, 0), (-1, 0), "RIGHT"),
         ("LINEBELOW", (0, 0), (-1, -1), 2, PRIMARY),
-        ("BOTTOMPADDING", (0, 0), (-1, -1), 14),
+        ("LEFTPADDING", (0, 0), (-1, -1), 0),
+        ("RIGHTPADDING", (0, 0), (-1, -1), 0),
+        ("TOPPADDING", (0, 0), (-1, -1), 2),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 8),
     ]))
     story.append(header)
-    story.append(Spacer(1, 10))
+    story.append(Spacer(1, 6))
 
     # Header table (datos del agente/pasajero)
     story.append(_kv_table([

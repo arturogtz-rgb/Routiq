@@ -29,12 +29,71 @@ async def _ctx_for_confirmation(db, conf: dict):
     return q or {}, company or {}, client or {"name": (q or {}).get("client_snapshot", {}).get("name", "")}
 
 
+OCC_LABEL = {"sencilla": "Sencilla", "doble": "Doble", "triple": "Triple", "cuadruple": "Cuádruple"}
+OCC_CNT = {"sencilla": 1, "doble": 2, "triple": 3, "cuadruple": 4}
+
+
 @router.get("/quotations/{quotation_id}/booking-confirmation")
 async def get_booking_confirmation(quotation_id: str, user: dict = Depends(require_tenant)):
     db = get_db()
     conf = await db.booking_confirmations.find_one(
         {"quotation_id": quotation_id, "tenant_id": user["tenant_id"]}, {"_id": 0})
-    return conf or {}
+    if conf:
+        return conf
+
+    # Sin confirmación previa -> devolver un BORRADOR prellenado desde la cotización.
+    q = await db.quotations.find_one({"id": quotation_id, "tenant_id": user["tenant_id"]}, {"_id": 0})
+    if not q:
+        return {}
+    client = await db.clients.find_one({"id": q.get("client_id")}, {"_id": 0}) or {}
+    contacts = q.get("contacts") or {}
+    agency = contacts.get("agency") or {}
+    traveler = contacts.get("traveler") or {}
+    pax = q.get("pax") or {}
+    rooms = pax.get("rooms") or []
+    if rooms:
+        total_pax = sum(OCC_CNT.get(r.get("ocupacion", "doble"), 1) * int(r.get("count", 1)) for r in rooms) + int(pax.get("menores", 0))
+        occ = rooms[0].get("ocupacion", "doble")
+    else:
+        total_pax = int(pax.get("adultos", 0) or 0) + int(pax.get("menores", 0) or 0)
+        occ = pax.get("ocupacion", "doble")
+    total = q.get("final_total") if q.get("final_total") is not None else q.get("total", 0)
+    dates = q.get("dates") or {}
+
+    pack = None
+    if q.get("package_id"):
+        pack = await db.packages.find_one({"id": q["package_id"]}, {"_id": 0})
+    incl = (pack or {}).get("inclusions") or {}
+    svc_map = [("arrival_transfer", "Traslado de llegada"), ("departure_transfer", "Traslado de salida"),
+               ("tours", "Tours"), ("venue_access", "Accesos a recintos")]
+    services = [{"date": "", "service": label, "details": "", "persons": str(total_pax) if total_pax else "", "observations": ""}
+                for key, label in svc_map if incl.get(key)]
+    if incl.get("extras"):
+        services.append({"date": "", "service": "Servicios extra", "details": incl["extras"],
+                         "persons": str(total_pax) if total_pax else "", "observations": ""})
+
+    lodging = [{
+        "hotel": q.get("hotel_selected", ""), "plan": "",
+        "checkin": dates.get("start", ""), "checkout": dates.get("end", ""),
+        "nights": str(q.get("nights_total", "") or ""), "room_type": OCC_LABEL.get(occ, ""),
+        "confirmation_number": "", "guest_name": traveler.get("name", ""),
+    }] if q.get("hotel_selected") else []
+
+    return {
+        "_prefill": True,
+        "agent_name": agency.get("contact") or client.get("name", ""),
+        "agent_phone": client.get("phone", ""),
+        "agent_company": agency.get("name") or client.get("name", ""),
+        "reservation_date": now_iso()[:10],
+        "passenger_name": traveler.get("name") or client.get("name", ""),
+        "passenger_phone": traveler.get("phone") or client.get("phone", ""),
+        "num_persons": str(total_pax) if total_pax else "",
+        "services": services,
+        "lodging": lodging,
+        "general_observations": "",
+        "price_per_person": round(total / total_pax, 2) if total_pax else 0,
+        "total_amount": total or 0,
+    }
 
 
 @router.post("/quotations/{quotation_id}/booking-confirmation")

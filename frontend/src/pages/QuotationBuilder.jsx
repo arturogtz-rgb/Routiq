@@ -2,11 +2,18 @@ import { useEffect, useState } from 'react';
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import AppShell from '@/components/AppShell';
 import api, { formatApiError } from '@/lib/api';
-import { ArrowLeft, ArrowRight, Check, User, Package, CalendarDays, Calculator, FileText, Plus, Sparkles, AlertTriangle, Moon, Briefcase, Users, Wand2 } from 'lucide-react';
+import { ArrowLeft, ArrowRight, Check, User, Package, CalendarDays, Calculator, FileText, Plus, Trash2, Sparkles, AlertTriangle, Moon, Briefcase, Users, Wand2 } from 'lucide-react';
 import { formatDateEs, nightsBetween, addDays, weekdayMon0, WEEKDAYS_ES } from '@/lib/dates';
 
 const SERVICE_UNIT_ES = { per_person: 'por persona', per_group: 'por grupo', per_day: 'por día', per_access: 'por acceso' };
 const OCC_COUNT = { sencilla: 1, doble: 2, triple: 3, cuadruple: 4 };
+const CUSTOM_UNITS = [
+  { v: 'per_person', label: 'Por persona' },
+  { v: 'per_night', label: 'Por noche' },
+  { v: 'per_room', label: 'Por habitación' },
+  { v: 'per_group', label: 'Por grupo (precio único)' },
+  { v: 'per_day', label: 'Por día' },
+];
 
 function money(v, c = 'MXN') { return `$${Number(v || 0).toLocaleString('es-MX')} ${c}`; }
 
@@ -43,6 +50,8 @@ export default function QuotationBuilder() {
     presentation_text: '',
     important_info: '',
     show_all_occupancies: false,
+    show_price_breakdown: true,
+    custom_items: [],
   });
 
   useEffect(() => {
@@ -66,6 +75,8 @@ export default function QuotationBuilder() {
             presentation_text: q.presentation_text || '',
             important_info: q.important_info || '',
             show_all_occupancies: !!q.show_all_occupancies,
+            show_price_breakdown: q.show_price_breakdown !== false,
+            custom_items: (q.custom_items || []).map((it) => ({ ...it })),
           });
         } catch (e) { setError(formatApiError(e)); }
         return;
@@ -187,8 +198,22 @@ export default function QuotationBuilder() {
     if (minorNet > 0) s += channelPrice(minorNet) * (form.pax.menores || 0);
     return s;
   })();
-  const subtotal = isServices ? servicesSubtotal : (packageSubtotal + servicesSubtotal);
-  const commission = Math.round(servicesSubtotal * commissionRate * 100) / 100;  // sólo servicios
+  const customUnitPrice = (it) => {
+    const amt = Number(it.net_price) || 0;
+    return (it.price_type || 'neto') === 'publico' ? amt : channelPrice(amt);
+  };
+  const customDefaultQty = (unit) => {
+    if (unit === 'per_person') return Math.max(1, totalPax);
+    if (unit === 'per_night' || unit === 'per_day') return Math.max(1, tripNights || packNights || 1);
+    if (unit === 'per_room') return Math.max(1, numRooms);
+    return 1;
+  };
+  const customItemSubtotal = (it) => customUnitPrice(it) * (Number(it.qty) > 0 ? Number(it.qty) : customDefaultQty(it.unit));
+  const customItemsSubtotal = (form.custom_items || []).reduce((s, it) => s + customItemSubtotal(it), 0);
+  const customPublicoSubtotal = (form.custom_items || []).filter((it) => (it.price_type || 'neto') === 'publico').reduce((s, it) => s + customItemSubtotal(it), 0);
+
+  const subtotal = isServices ? servicesSubtotal : (packageSubtotal + servicesSubtotal + customItemsSubtotal);
+  const commission = Math.round((servicesSubtotal + customPublicoSubtotal) * commissionRate * 100) / 100;  // servicios + conceptos públicos
   const total = subtotal - commission;
   const priceNote = (!isServices && hotel && (channel === 'mayorista' || channel === 'operador')) ? 'Precio neto no comisionable' : '';
 
@@ -231,6 +256,15 @@ export default function QuotationBuilder() {
   const updateRoom = (idx, patch) => setForm((f) => ({ ...f, pax: { ...f.pax, rooms: f.pax.rooms.map((r, i) => i === idx ? { ...r, ...patch } : r) } }));
   const removeRoom = (idx) => setForm((f) => ({ ...f, pax: { ...f.pax, rooms: f.pax.rooms.filter((_, i) => i !== idx) } }));
 
+  // Conceptos adicionales libres (punto 6) — mismo shape que el Programa Personalizado.
+  const addConcept = () => setForm((f) => ({
+    ...f, custom_items: [...(f.custom_items || []), { category: 'extra', name: '', description: '', net_price: 0, price_type: 'neto', unit: 'per_person', qty: 0, service_date: '', start_time: '', end_time: '' }],
+  }));
+  const updateConcept = (idx, patch) => setForm((f) => ({
+    ...f, custom_items: f.custom_items.map((it, i) => i === idx ? { ...it, ...patch } : it),
+  }));
+  const removeConcept = (idx) => setForm((f) => ({ ...f, custom_items: f.custom_items.filter((_, i) => i !== idx) }));
+
   const canNext = () => {
     if (cur === 'client') return !!form.client_id;
     if (cur === 'package') return !!form.package_id && !!form.hotel_name;
@@ -255,10 +289,15 @@ export default function QuotationBuilder() {
     try {
       const pkg = packages.find((p) => p.id === form.package_id);
       const title = isServices ? 'Servicios a la carta' : (pkg?.name || '');
+      const inclLabels = { arrival_transfer: 'traslado de llegada', departure_transfer: 'traslado de salida', lodging: 'hospedaje', tours: 'tours', venue_access: 'accesos a recintos' };
+      const incl = pkg?.inclusions || {};
+      const inclParts = Object.keys(inclLabels).filter((k) => incl[k]).map((k) => inclLabels[k]);
+      if (incl.extras) inclParts.push(incl.extras);
       const { data } = await api.post('/ai/presentation', {
         client_name: client?.name || '', title,
         date_start: form.dates.start || '', date_end: form.dates.end || '',
         adultos: totalAdults || 0, menores: form.pax.menores || 0, tone: presTone,
+        inclusions: inclParts.join(', '),
       });
       if (data.text) setForm((f) => ({ ...f, presentation_text: data.text }));
     } catch (e) { setError(formatApiError(e)); }
@@ -267,6 +306,12 @@ export default function QuotationBuilder() {
 
   const submit = async () => {
     setError(''); setLoading(true);
+    const cleanCustom = (items) => (items || []).map((it) => ({
+      category: it.category || 'extra', name: it.name, description: it.description || '',
+      net_price: Number(it.net_price) || 0, price_type: it.price_type || 'neto',
+      unit: it.unit || 'per_group', qty: Number(it.qty) || 0,
+      service_date: it.service_date || '', start_time: it.start_time || '', end_time: it.end_time || '',
+    }));
     try {
       const contacts = isB2B ? form.contacts : null;
       if (editing) {
@@ -280,8 +325,12 @@ export default function QuotationBuilder() {
           presentation_text: form.presentation_text || '',
           important_info: form.important_info || '',
           show_all_occupancies: !!form.show_all_occupancies,
+          show_price_breakdown: !!form.show_price_breakdown,
         };
-        if (!isServices) patch.hotel_name = form.hotel_name;
+        if (!isServices) {
+          patch.hotel_name = form.hotel_name;
+          patch.custom_items = cleanCustom(form.custom_items);
+        }
         await api.patch(`/quotations/${id}`, patch);
         navigate(`/app/quotations/${id}`);
         return;
@@ -295,6 +344,7 @@ export default function QuotationBuilder() {
         presentation_text: form.presentation_text || '',
         important_info: form.important_info || '',
         show_all_occupancies: !!form.show_all_occupancies,
+        show_price_breakdown: !!form.show_price_breakdown,
         from_request: search.get('lead') || undefined,
       };
       if (isServices) {
@@ -305,6 +355,7 @@ export default function QuotationBuilder() {
         payload.hotel_name = form.hotel_name;
         payload.pax = form.pax;
         payload.extra_nights = form.extra_nights;
+        payload.custom_items = cleanCustom(form.custom_items);
         let dates = form.dates;
         if (dates.start && dates.end && dates.start > dates.end) dates = { start: dates.end, end: dates.start };
         payload.dates = dates;
@@ -667,6 +718,55 @@ export default function QuotationBuilder() {
                 Servicios seleccionados: {money(servicesSubtotal)}
               </div>
             )}
+
+            {/* Conceptos adicionales libres (punto 6) */}
+            <div className="border-t border-ink-100 pt-5" data-testid="custom-concepts-section">
+              <div className="flex items-center justify-between mb-1">
+                <h3 className="font-display text-lg font-semibold text-ink-900">Conceptos adicionales</h3>
+                <button type="button" className="btn-ghost text-xs border border-brand-200 text-brand-600" onClick={addConcept} data-testid="add-concept-btn">
+                  <Plus className="w-3.5 h-3.5" /> Agregar concepto
+                </button>
+              </div>
+              <p className="text-ink-500 text-sm mb-3">Tours, traslados, accesos o extras que no están en el catálogo. Aparecen en el desglose del PDF y del enlace.</p>
+              {(form.custom_items || []).length === 0 && <p className="text-ink-400 text-sm italic">Sin conceptos adicionales.</p>}
+              <div className="space-y-3">
+                {(form.custom_items || []).map((it, idx) => (
+                  <div key={idx} className="rounded-xl border border-ink-100 p-3 space-y-2" data-testid={`concept-row-${idx}`}>
+                    <div className="flex items-center gap-2">
+                      <input className="input-field flex-1" placeholder="Nombre del concepto (ej. Traslado aeropuerto)" value={it.name}
+                        onChange={(e) => updateConcept(idx, { name: e.target.value })} data-testid={`concept-name-${idx}`} />
+                      <button type="button" className="text-ink-300 hover:text-red-500 p-2" onClick={() => removeConcept(idx)} data-testid={`concept-remove-${idx}`}><Trash2 className="w-4 h-4" /></button>
+                    </div>
+                    <input className="input-field" placeholder="Detalle (opcional)" value={it.description || ''}
+                      onChange={(e) => updateConcept(idx, { description: e.target.value })} data-testid={`concept-detail-${idx}`} />
+                    <div className="flex gap-2">
+                      <button type="button" onClick={() => updateConcept(idx, { price_type: 'neto' })}
+                        className={`flex-1 rounded-lg border px-3 py-2 text-xs font-medium ${(it.price_type || 'neto') === 'neto' ? 'border-brand-500 bg-brand-50 text-brand-700' : 'border-ink-100 text-ink-500'}`} data-testid={`concept-type-neto-${idx}`}>Tarifa neta</button>
+                      <button type="button" onClick={() => updateConcept(idx, { price_type: 'publico' })}
+                        className={`flex-1 rounded-lg border px-3 py-2 text-xs font-medium ${it.price_type === 'publico' ? 'border-emerald-500 bg-mint-100 text-emerald-700' : 'border-ink-100 text-ink-500'}`} data-testid={`concept-type-publico-${idx}`}>Precio público</button>
+                    </div>
+                    <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+                      <div><label className="label-text text-xs">{(it.price_type || 'neto') === 'publico' ? 'Precio público' : 'Tarifa neta'}</label>
+                        <input type="number" min="0" step="0.01" className="input-field" value={it.net_price} onChange={(e) => updateConcept(idx, { net_price: +e.target.value || 0 })} data-testid={`concept-price-${idx}`} /></div>
+                      <div><label className="label-text text-xs">Unidad</label>
+                        <select className="input-field" value={it.unit} onChange={(e) => updateConcept(idx, { unit: e.target.value, qty: 0 })} data-testid={`concept-unit-${idx}`}>
+                          {CUSTOM_UNITS.map((u) => <option key={u.v} value={u.v}>{u.label}</option>)}
+                        </select></div>
+                      <div><label className="label-text text-xs">Cantidad (0 = auto)</label>
+                        <input type="number" min="0" className="input-field" value={it.qty} onChange={(e) => updateConcept(idx, { qty: +e.target.value || 0 })} data-testid={`concept-qty-${idx}`} /></div>
+                      <div><label className="label-text text-xs">Fecha (opcional)</label>
+                        <input type="date" className="input-field" value={it.service_date || ''} onChange={(e) => updateConcept(idx, { service_date: e.target.value })} data-testid={`concept-date-${idx}`} /></div>
+                    </div>
+                    <p className="text-xs text-ink-500 text-right">Subtotal estimado: {money(customItemSubtotal(it))}</p>
+                  </div>
+                ))}
+              </div>
+              {customItemsSubtotal > 0 && (
+                <div className="rounded-xl bg-brand-50 text-brand-700 px-4 py-3 text-sm font-medium mt-3" data-testid="concepts-subtotal">
+                  Conceptos adicionales: {money(customItemsSubtotal)}
+                </div>
+              )}
+            </div>
           </div>
         )}
 
@@ -736,6 +836,14 @@ export default function QuotationBuilder() {
                 </span>
               </label>
             )}
+            <label className="card-surface p-4 flex items-start gap-3 cursor-pointer" data-testid="show-price-breakdown-label">
+              <input type="checkbox" className="mt-1 h-4 w-4 accent-brand-500" checked={form.show_price_breakdown !== false}
+                onChange={(e) => setForm((f) => ({ ...f, show_price_breakdown: e.target.checked }))} data-testid="show-price-breakdown-checkbox" />
+              <span>
+                <span className="font-medium text-ink-900">Mostrar desglose detallado de precios</span>
+                <span className="block text-xs text-ink-400 mt-0.5">Activado: tabla con Fecha · Servicio · Detalle · Cant. · $ unitario · Subtotal. Desactivado: el cliente ve solo los conceptos incluidos y el Total final.</span>
+              </span>
+            </label>
             <div className="grid md:grid-cols-2 gap-4 text-sm">
               <div className="rounded-xl border border-ink-100 p-4">
                 <p className="text-xs uppercase tracking-widest font-bold text-ink-400 mb-1">Cliente</p>

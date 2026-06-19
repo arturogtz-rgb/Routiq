@@ -76,6 +76,7 @@ export default function CustomQuotationBuilder() {
     custom_excludes: [],
     presentation_text: '',
     important_info: '',
+    show_price_breakdown: true,
     contacts: JSON.parse(JSON.stringify(EMPTY_CONTACTS)),
     notes: '',
   });
@@ -100,6 +101,7 @@ export default function CustomQuotationBuilder() {
             custom_excludes: q.custom_excludes || [],
             presentation_text: q.presentation_text || '',
             important_info: q.important_info || '',
+            show_price_breakdown: q.show_price_breakdown !== false,
             contacts: { ...JSON.parse(JSON.stringify(EMPTY_CONTACTS)), ...(q.contacts || {}) },
             notes: q.notes || '',
           });
@@ -277,6 +279,7 @@ export default function CustomQuotationBuilder() {
         notes: form.notes,
         presentation_text: form.presentation_text || '',
         important_info: form.important_info || '',
+        show_price_breakdown: !!form.show_price_breakdown,
       };
       if (editing) {
         await api.patch(`/quotations/${id}`, payload);
@@ -540,6 +543,14 @@ export default function CustomQuotationBuilder() {
               <textarea rows="3" className="input-field" value={form.important_info || ''} placeholder="Ej. Tarifas vigentes solo para las fechas indicadas. Anticipo del 50% para confirmar…"
                 onChange={(e) => setForm((f) => ({ ...f, important_info: e.target.value }))} data-testid="custom-important-info-input" />
             </div>
+            <label className="card-surface p-4 flex items-start gap-3 cursor-pointer" data-testid="custom-show-price-breakdown-label">
+              <input type="checkbox" className="mt-1 h-4 w-4 accent-brand-500" checked={form.show_price_breakdown !== false}
+                onChange={(e) => setForm((f) => ({ ...f, show_price_breakdown: e.target.checked }))} data-testid="custom-show-price-breakdown-checkbox" />
+              <span>
+                <span className="font-medium text-ink-900">Mostrar desglose detallado de precios</span>
+                <span className="block text-xs text-ink-400 mt-0.5">Activado: tabla con Fecha · Servicio · Detalle · Cant. · $ unitario · Subtotal. Desactivado: el cliente ve solo los conceptos incluidos y el Total final.</span>
+              </span>
+            </label>
             <div className="grid md:grid-cols-2 gap-4 text-sm">
               <div className="rounded-xl border border-ink-100 p-4">
                 <p className="text-xs uppercase tracking-widest font-bold text-ink-400 mb-1">Cliente</p>
