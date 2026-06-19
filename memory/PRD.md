@@ -336,3 +336,9 @@ Ver `/app/memory/test_credentials.md`. Seed automático en cada startup.
 2. En VPS: `cd /opt/routiq && git pull`
 3. Editar `/opt/routiq/deploy/.env` y agregar `EMERGENT_LLM_KEY=sk-emergent-fF2A3A42eB149Cc812` al final.
 4. `sudo /opt/routiq/deploy/scripts/05-update.sh` (el script ya hace `--force-recreate` que recarga env vars).
+
+## [2026-06-19] Fix Hospedaje en Programa Personalizado (P0 — COMPLETADO)
+- "Cantidad" (hab./pax) ahora es campo libre y editable, inicia en 1 por defecto.
+- "Noches" se autocalcula por Check-in/Check-out y es no editable.
+- Subtotal Hospedaje = Tarifa × Cantidad × Noches (frontend alineado con backend `pricing.py`).
+- Verificado: público $1,315.79 × cant 2 × noches 3 = $7,894.74 ✓ (backend + frontend).

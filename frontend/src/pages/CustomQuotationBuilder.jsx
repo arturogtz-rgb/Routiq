@@ -184,7 +184,12 @@ export default function CustomQuotationBuilder() {
     if (channel === 'mayorista') return Math.round(pub * (1 - (Number(commissions.mayorista) || 0)) * 100) / 100;
     return pub;
   };
-  const itemSubtotal = (it) => unitPriceFor(it) * (Number(it.qty) || 0);
+  const itemSubtotal = (it) => {
+    const base = unitPriceFor(it) * (Number(it.qty) || 0);
+    const n = Number(it.nights) || 0;
+    if (it.category === 'hospedaje' && n > 0) return base * n;
+    return base;
+  };
 
   const publicoSubtotal = form.custom_items.filter((it) => (it.price_type || 'neto') === 'publico').reduce((s, it) => s + itemSubtotal(it), 0);
   const subtotal = form.custom_items.reduce((s, it) => s + itemSubtotal(it), 0);
@@ -222,7 +227,7 @@ export default function CustomQuotationBuilder() {
     ...f, custom_items: [...f.custom_items, {
       category, name: '', description: '', net_price: 0, price_type: 'neto',
       unit: category === 'hospedaje' ? 'per_night' : 'per_person',
-      qty: category === 'hospedaje' ? 0 : defaultQty('per_person'),
+      qty: category === 'hospedaje' ? 1 : defaultQty('per_person'),
       service_date: '', start_time: '', end_time: '', checkin: '', checkout: '', nights: 0,
     }],
   }));
@@ -237,10 +242,9 @@ export default function CustomQuotationBuilder() {
         if (patch.category === 'tour' || patch.category === 'acceso') next.end_time = '';
         if (patch.category === 'acceso') next.start_time = '';
       }
-      // Hospedaje: calcular noches automáticamente y usarlas como cantidad.
+      // Hospedaje: las noches se autocalculan por check-in/out; la cantidad (habitaciones/personas) es independiente y editable.
       if (next.category === 'hospedaje' && (patch.checkin !== undefined || patch.checkout !== undefined)) {
-        const n = (next.checkin && next.checkout) ? Math.max(0, nightsBetween(next.checkin, next.checkout)) : 0;
-        next.nights = n; next.qty = n > 0 ? n : 0;
+        next.nights = (next.checkin && next.checkout) ? Math.max(0, nightsBetween(next.checkin, next.checkout)) : 0;
       }
       if (patch.unit && patch.qty === undefined && next.category !== 'hospedaje') next.qty = defaultQty(patch.unit);
       return next;
@@ -476,10 +480,8 @@ export default function CustomQuotationBuilder() {
                           {UNITS.map((u) => <option key={u.v} value={u.v}>{u.label}</option>)}
                         </select>
                       </div>
-                      <div><label className="label-text">Cantidad</label>
-                        {it.category === 'hospedaje'
-                          ? <input className="input-field bg-ink-50" value={it.nights || 0} readOnly disabled data-testid={`custom-item-qty-${idx}`} />
-                          : <input type="number" min="1" className="input-field" value={it.qty} onChange={(e) => updateItem(idx, { qty: Math.max(1, +e.target.value || 1) })} data-testid={`custom-item-qty-${idx}`} />}
+                      <div><label className="label-text">Cantidad{it.category === 'hospedaje' ? ' (hab./pax)' : ''}</label>
+                        <input type="number" min="1" className="input-field" value={it.qty} onChange={(e) => updateItem(idx, { qty: Math.max(1, +e.target.value || 1) })} data-testid={`custom-item-qty-${idx}`} />
                       </div>
                     </div>
                     {it.category === 'hospedaje' ? (
@@ -610,7 +612,7 @@ export default function CustomQuotationBuilder() {
                     <tr key={i} className="border-t border-ink-100" data-testid={`custom-review-item-${i}`}>
                       <td className="p-3"><span className="font-medium text-ink-900">{it.name || '—'}</span> <span className="text-ink-400 text-xs">· {UNIT_ES[it.unit]}{(it.price_type || 'neto') === 'neto' ? ' · neto' : ''}</span></td>
                       <td className="p-3 text-right">{money(unitPriceFor(it), currency)}</td>
-                      <td className="p-3 text-center">{it.qty}</td>
+                      <td className="p-3 text-center">{it.category === 'hospedaje' ? `${it.qty} × ${it.nights || 0}n` : it.qty}</td>
                       <td className="p-3 text-right font-semibold">{money(itemSubtotal(it), currency)}</td>
                     </tr>
                   ))}
