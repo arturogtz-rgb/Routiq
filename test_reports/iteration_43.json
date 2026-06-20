@@ -1,0 +1,22 @@
+{
+  "summary": "Iter 43 — Two-level client flow (Empresa + Ejecutivo) replicated in CustomQuotationBuilder (/app/quotations/new/custom). Backend pytest 6/6 PASS (/app/backend/tests/test_iteration43_custom_2level_clients.py): (1) POST /api/quotations type='personalizado' con cliente 'Agencia Demo SA' SIN executive_id → 400 con mensaje 'ejecutivo'. (2) CON executive_id=Laura + contacts → 201, persiste executive_id + contacts.agency.contact='Laura Vendedora' + traveler; GET, PDF (200, %PDF, >2KB) y POST public-link + GET /api/public/quotations/{token} expone quotation.contacts.agency.name='Agencia Demo SA', contact='Laura Vendedora', traveler.name='TEST Turista Final'. (3) Cliente directo 'Laura Ramírez' crea sin contacts ni executive_id (201). (4) 'Agencia Viajes del Sol' (sin ejecutivos) crea con legacy contacts.agency manual + PDF OK. (5) Regresión paquete + servicios: ambos rechazan (400) cuando cliente con execs no envía executive_id. Frontend Playwright PASS: (a) seleccionar 'Agencia Demo SA' muestra custom-executive-block con custom-executive-option-279e0affe93c (Laura) y custom-executive-option-f3f757d14f07 (Pedro), oculta custom-contacts-block. (b) Sin elegir ejecutivo, custom-next está disabled=True. (c) Al elegir Laura + llenar custom-contact-traveler-name/phone, Next se habilita; flujo completo (programa + hospedaje 1000/2026-08-10→2026-08-12 + revisión) muestra custom-review-contacts con 'Agencia Demo SA · Laura Vendedora · ...' y 'Turista: TEST_UI Turista Final'; submit crea cotización. (d) Cliente 'directo' (Laura Ramírez) oculta exec-block y contacts-block, Next habilitado. (e) 'Agencia Viajes del Sol' (0 ejecutivos) muestra custom-contacts-block legacy (custom-contact-agency-name precargado), oculta exec-block, Next habilitado.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {"ui_bugs": [], "integration_issues": [], "design_issues": []},
+  "test_report_links": ["/app/backend/tests/test_iteration43_custom_2level_clients.py", "/app/test_reports/pytest/iter43.xml"],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "/app/frontend/src/pages/CustomQuotationBuilder.jsx L177-192 selectClient/selectExecutive: lógica idéntica a QuotationBuilder.jsx (paquete/servicios). Auto-prefill agency con name+phone+email del ejecutivo. Correcto.",
+    "/app/frontend/src/pages/CustomQuotationBuilder.jsx L250-255 canNext('client'): exige executive_id cuando client.executives.length>0. Match con backend validation en routes/quotations.py L72-77.",
+    "/app/frontend/src/pages/CustomQuotationBuilder.jsx L281: contacts se envía cuando (isB2B || ejecutivos>0) — incluye el caso de empresas con ejecutivos. Bien.",
+    "/app/frontend/src/pages/CustomQuotationBuilder.jsx L386: condicional muestra custom-contacts-block legacy SOLO si isB2B Y no hay ejecutivos. Evita duplicación con executive-block. Correcto.",
+    "/app/backend/routes/public_payments.py L101: 'contacts': q.get('contacts') or None expuesto en endpoint público. PDF público y autenticado renderizan contacts.agency + traveler vía pdf_generator (verificado en test #2)."
+  ],
+  "updated_files": ["/app/backend/tests/test_iteration43_custom_2level_clients.py (nuevo)"],
+  "success_rate": {"backend": "100% (6/6)", "frontend": "100% (5 escenarios UI verificados)"},
+  "test_credentials": "admin@aventurate.mx / Demo2026!",
+  "seed_data_creation": "Las cotizaciones TEST_iter43 se crean y eliminan con DELETE /api/quotations/{id} (finally block). Las del UI test (TEST_UI iter43) quedaron creadas — main agent puede limpiarlas si lo desea.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Iter 43 valida la replicación del flujo de 2 niveles cliente (empresa+ejecutivo) en CustomQuotationBuilder. Endpoint público de quotation devuelve contacts bajo response.quotation.contacts (no top-level). Backend devuelve 201 (no 200) en POST /api/quotations. Cliente con executives requiere executive_id para los 3 tipos (paquete, servicios, personalizado).",
+  "rca of the issue": "N/A — feature funciona end-to-end. Validación backend (routes/quotations.py L72-77) ya aplicaba a todos los types antes del refactor; el cambio fue solo frontend (CustomQuotationBuilder replica selectClient/selectExecutive/canNext/submit/UI blocks). Propagación a PDF y enlace público confirmada (contacts incluido en /api/public/quotations/{token} y renderizado por pdf_generator)."
+}

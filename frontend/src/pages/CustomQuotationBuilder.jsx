@@ -29,6 +29,7 @@ export default function CustomQuotationBuilder() {
 
   const [form, setForm] = useState({
     client_id: '',
+    executive_id: '',
     custom_title: '',
     dates: { start: '', end: '' },
     pax: { adultos: 2, menores: 0 },
@@ -54,6 +55,7 @@ export default function CustomQuotationBuilder() {
           const { data: q } = await api.get(`/quotations/${id}`);
           setForm({
             client_id: q.client_id || '',
+            executive_id: q.executive_id || '',
             custom_title: q.custom_title || '',
             dates: q.dates || { start: '', end: '' },
             pax: { adultos: q.pax?.adultos || 0, menores: q.pax?.menores || 0 },
@@ -173,10 +175,21 @@ export default function CustomQuotationBuilder() {
   // --- mutators ---
   const setContact = (group, key, val) => setForm((f) => ({ ...f, contacts: { ...f.contacts, [group]: { ...f.contacts[group], [key]: val } } }));
   const selectClient = (c) => setForm((f) => {
-    const next = { ...f, client_id: c.id };
-    if (c.channel !== 'directo' && !f.contacts.agency.name) next.contacts = { ...f.contacts, agency: { name: c.name || '', contact: c.phone || '', email: c.email || '' } };
+    const next = { ...f, client_id: c.id, executive_id: '' };
+    const execs = c.executives || [];
+    if (execs.length > 0) {
+      // Empresa con ejecutivos: la agencia se llena al elegir el ejecutivo.
+      next.contacts = { ...f.contacts, agency: { name: c.name || '', contact: '', email: '', phone: '' } };
+    } else if (c.channel !== 'directo' && !f.contacts.agency.name) {
+      // Empresa sin ejecutivos (legacy): prellenar agencia con datos generales.
+      next.contacts = { ...f.contacts, agency: { name: c.name || '', contact: c.phone || '', email: c.email || '', phone: c.phone || '' } };
+    }
     return next;
   });
+  const selectExecutive = (ex) => setForm((f) => ({
+    ...f, executive_id: ex.id,
+    contacts: { ...f.contacts, agency: { name: (clients.find((c) => c.id === f.client_id) || {}).name || '', contact: ex.name || '', email: ex.email || '', phone: ex.phone || '' } },
+  }));
   const handleCreateClient = async () => {
     setError('');
     try {
@@ -235,7 +248,11 @@ export default function CustomQuotationBuilder() {
   };
 
   const canNext = () => {
-    if (cur === 'client') return !!form.client_id;
+    if (cur === 'client') {
+      if (!form.client_id) return false;
+      if (client && (client.executives || []).length > 0 && !form.executive_id) return false;
+      return true;
+    }
     if (cur === 'program') return !!form.custom_title.trim() && totalPax > 0;
     if (cur === 'items') return form.custom_items.length > 0 && form.custom_items.every((it) => (it.name || '').trim() && Number(it.net_price) > 0);
     return true;
@@ -261,7 +278,8 @@ export default function CustomQuotationBuilder() {
         custom_itinerary: form.custom_itinerary.map((d, i) => ({ day: i + 1, title: d.title || '', description: d.description || '' })),
         custom_includes: form.custom_includes.filter((x) => (x || '').trim()),
         custom_excludes: form.custom_excludes.filter((x) => (x || '').trim()),
-        contacts: isB2B ? form.contacts : null,
+        contacts: (isB2B || ((client?.executives || []).length > 0)) ? form.contacts : null,
+        executive_id: form.executive_id || null,
         notes: form.notes,
         presentation_text: form.presentation_text || '',
         important_info: form.important_info || '',
@@ -340,18 +358,47 @@ export default function CustomQuotationBuilder() {
               ))}
               {clients.length === 0 && <p className="text-ink-400 text-sm">No hay clientes. Crea uno.</p>}
             </div>
-            {isB2B && (
-              <div className="grid md:grid-cols-2 gap-4 pt-4 border-t border-ink-100" data-testid="custom-contacts-block">
+            {/* Empresa con ejecutivos (nivel 2): elegir ejecutivo + turista */}
+            {client && (client.executives || []).length > 0 && (
+              <div className="grid md:grid-cols-2 gap-4 pt-4 border-t border-ink-100" data-testid="custom-executive-block">
                 <div className="rounded-xl border border-ink-100 p-4 space-y-3">
-                  <p className="font-semibold text-ink-900 flex items-center gap-2"><Briefcase className="w-4 h-4 text-brand-500" /> Agencia / Vendedor</p>
-                  <div><label className="label-text">Nombre de la agencia</label><input className="input-field" value={form.contacts.agency.name} onChange={(e) => setContact('agency', 'name', e.target.value)} data-testid="custom-contact-agency-name" /></div>
-                  <div><label className="label-text">Contacto / Vendedor</label><input className="input-field" value={form.contacts.agency.contact} onChange={(e) => setContact('agency', 'contact', e.target.value)} data-testid="custom-contact-agency-contact" /></div>
-                  <div><label className="label-text">Correo</label><input className="input-field" value={form.contacts.agency.email} onChange={(e) => setContact('agency', 'email', e.target.value)} data-testid="custom-contact-agency-email" /></div>
+                  <p className="font-semibold text-ink-900 flex items-center gap-2"><Briefcase className="w-4 h-4 text-brand-500" /> Ejecutivo de {client.name}</p>
+                  <div className="space-y-2" data-testid="custom-executive-options">
+                    {client.executives.map((ex) => (
+                      <button key={ex.id} type="button" onClick={() => selectExecutive(ex)} data-testid={`custom-executive-option-${ex.id}`}
+                        className={`w-full text-left rounded-xl border p-3 transition-all ${form.executive_id === ex.id ? 'border-brand-500 bg-brand-50' : 'border-ink-100 hover:border-brand-300'}`}>
+                        <p className="font-medium text-ink-900">{ex.name || 'Sin nombre'}</p>
+                        <p className="text-xs text-ink-500">{[ex.phone, ex.email].filter(Boolean).join(' · ') || '—'}</p>
+                      </button>
+                    ))}
+                  </div>
+                  <p className="text-xs text-ink-400">En el PDF y el enlace: <b>{client.name}</b> + el ejecutivo seleccionado (teléfono y correo).</p>
                 </div>
                 <div className="rounded-xl border border-ink-100 p-4 space-y-3">
                   <p className="font-semibold text-ink-900 flex items-center gap-2"><Users className="w-4 h-4 text-brand-500" /> Cliente final / Turista</p>
                   <div><label className="label-text">Nombre completo</label><input className="input-field" value={form.contacts.traveler.name} onChange={(e) => setContact('traveler', 'name', e.target.value)} data-testid="custom-contact-traveler-name" /></div>
                   <div><label className="label-text">Teléfono directo</label><input className="input-field" value={form.contacts.traveler.phone} onChange={(e) => setContact('traveler', 'phone', e.target.value)} data-testid="custom-contact-traveler-phone" /></div>
+                </div>
+              </div>
+            )}
+
+            {/* Agencia + turista para B2B (empresas sin ejecutivos / legacy) */}
+            {isB2B && !(client && (client.executives || []).length > 0) && (
+              <div className="grid md:grid-cols-2 gap-4 pt-4 border-t border-ink-100" data-testid="custom-contacts-block">
+                <div className="rounded-xl border border-ink-100 p-4 space-y-3">
+                  <p className="font-semibold text-ink-900 flex items-center gap-2"><Briefcase className="w-4 h-4 text-brand-500" /> Agencia / Vendedor</p>
+                  <div><label className="label-text">Nombre de la agencia</label><input className="input-field" value={form.contacts.agency.name} onChange={(e) => setContact('agency', 'name', e.target.value)} data-testid="custom-contact-agency-name" /></div>
+                  <div><label className="label-text">Contacto / Vendedor</label><input className="input-field" value={form.contacts.agency.contact} onChange={(e) => setContact('agency', 'contact', e.target.value)} data-testid="custom-contact-agency-contact" /></div>
+                  <div className="grid grid-cols-2 gap-2">
+                    <div><label className="label-text">Teléfono</label><input className="input-field" value={form.contacts.agency.phone} onChange={(e) => setContact('agency', 'phone', e.target.value)} data-testid="custom-contact-agency-phone" /></div>
+                    <div><label className="label-text">Correo</label><input className="input-field" value={form.contacts.agency.email} onChange={(e) => setContact('agency', 'email', e.target.value)} data-testid="custom-contact-agency-email" /></div>
+                  </div>
+                </div>
+                <div className="rounded-xl border border-ink-100 p-4 space-y-3">
+                  <p className="font-semibold text-ink-900 flex items-center gap-2"><Users className="w-4 h-4 text-brand-500" /> Cliente final / Turista</p>
+                  <div><label className="label-text">Nombre completo</label><input className="input-field" value={form.contacts.traveler.name} onChange={(e) => setContact('traveler', 'name', e.target.value)} data-testid="custom-contact-traveler-name" /></div>
+                  <div><label className="label-text">Teléfono directo</label><input className="input-field" value={form.contacts.traveler.phone} onChange={(e) => setContact('traveler', 'phone', e.target.value)} data-testid="custom-contact-traveler-phone" /></div>
+                  <p className="text-xs text-ink-400">Puedes tener varias reservas de la misma agencia con turistas distintos.</p>
                 </div>
               </div>
             )}
@@ -501,6 +548,13 @@ export default function CustomQuotationBuilder() {
                 <p className="text-ink-500">{totalPax} persona(s){nights > 0 ? ` · ${nights} noche(s)` : ''}</p>
               </div>
             </div>
+            {(isB2B || ((client?.executives || []).length > 0)) && (
+              <div className="rounded-xl border border-ink-100 p-4 text-sm" data-testid="custom-review-contacts">
+                <p className="text-xs uppercase tracking-widest font-bold text-ink-400 mb-1">Contactos</p>
+                <p className="text-ink-700"><b>Agencia / Vendedor:</b> {form.contacts.agency.name || '—'}{form.contacts.agency.contact ? ` · ${form.contacts.agency.contact}` : ''}{form.contacts.agency.phone ? ` · ${form.contacts.agency.phone}` : ''}{form.contacts.agency.email ? ` · ${form.contacts.agency.email}` : ''}</p>
+                <p className="text-ink-700"><b>Turista:</b> {form.contacts.traveler.name || '—'}{form.contacts.traveler.phone ? ` · ${form.contacts.traveler.phone}` : ''}</p>
+              </div>
+            )}
             <div className="rounded-xl border border-ink-100 overflow-hidden">
               <table className="w-full text-sm">
                 <thead className="bg-cream text-ink-500"><tr><th className="text-left p-3">Concepto</th><th className="text-right p-3">Precio</th><th className="text-center p-3">Cant.</th><th className="text-right p-3">Subtotal</th></tr></thead>

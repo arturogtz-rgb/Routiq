@@ -19,7 +19,7 @@ export const CATEGORIES = [
 ];
 export const CAT_ICON = Object.fromEntries(CATEGORIES.map((c) => [c.v, c.icon]));
 
-export const EMPTY_CONTACTS = { agency: { name: '', contact: '', email: '' }, traveler: { name: '', phone: '' } };
+export const EMPTY_CONTACTS = { agency: { name: '', contact: '', email: '', phone: '' }, traveler: { name: '', phone: '' } };
 
 export function money(v, c = 'MXN') {
   return `$${Number(v || 0).toLocaleString('es-MX', { maximumFractionDigits: 2 })} ${c}`;
