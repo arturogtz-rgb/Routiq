@@ -357,3 +357,11 @@ Ver `/app/memory/test_credentials.md`. Seed automático en cada startup.
 - Servicios a la carta: YA tenía el flujo (comparte QuotationBuilder con Paquete). Verificado en regresión.
 - Propagación idéntica a PDF y enlace público (contacts.agency = empresa + ejecutivo; traveler por separado) en los 3 tipos.
 - Probado: backend pytest 6/6, frontend 5 escenarios UI.
+
+## [2026-06-20] Motor de precios del Programa Personalizado por unidad de cobro (COMPLETADO ✅, iter_44)
+- Regla nueva (SOLO Cotización a medida): subtotal = precio × multiplicador según unidad:
+  per_night→noches (auto) · per_group→1 · per_room/per_person/per_day/per_vehicle→cantidad.
+- Las noches/check-in/check-out son informativas y NO multiplican (salvo per_night).
+- `_price_custom_item(custom_engine=True)` para custom; Paquete/Servicios usan `custom_engine=False` (comportamiento histórico INTACTO, verificado en regresión).
+- Frontend `itemMultiplier`/`itemSubtotal` coinciden exactamente con backend. Se removió el detalle especial de hospedaje del PDF y enlace público (la columna Cant. ya muestra el multiplicador y las fechas quedan informativas).
+- Probado: backend 10/10 pytest, frontend 5 unidades + submit + detalle.
