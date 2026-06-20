@@ -1,0 +1,27 @@
+{
+  "summary": "Iter 44 — Custom pricing engine refactor (Cotización a Medida): subtotal = precio × multiplicador por unidad de cobro. Backend pytest 10/10 PASS (/app/backend/tests/test_iteration44_custom_pricing_units.py): (1) per_night con qty=5 + checkin/out 2026-07-01→04 → unit_price=1000 × nights=3 = 3000 (qty=5 IGNORADA, item.qty se persiste como nights=3). (2) per_room con qty=5 → 5000 (ignora noches; nights=3 informativo). (3) per_person qty=4 → 4000. (4) per_group qty=5 → 1000 (multiplicador fijo=1). (5) per_vehicle qty=3 → 3000. (6) per_day qty=2 → 2000. (7) Multi-item (per_night+per_room+per_group) crea cotización subtotal=6000, PDF auth 200 %PDF >2KB, public-link OK, GET /api/public/quotations/{token} expone items con subtotales correctos y checkin/checkout/nights informativos. (8-9) REGRESIÓN: type='paquete' con custom_item extra unit='per_night' qty=5 → backend usa qty (no nights) → 5000 ✅. type='servicios' con custom_item extra per_night qty=4 → 4000 ✅. (10) Cleanup OK. Frontend Playwright PASS (admin@aventurate.mx → /app/quotations/new/custom): hospedaje Precio público $1000, qty=5, checkin/out=2026-07-01/04 → nights=3 (auto, disabled). Subtotal visual cambia EXACTAMENTE según unidad: per_night=$3,000 / per_room=$5,000 / per_person(qty=4)=$4,000 / per_group=$1,000 / per_vehicle(qty=3)=$3,000. Submit con per_night crea cotización; página detalle muestra 'Hotel Test · por noche  $3,000 MXN' con '$1,000 MXN × 3' y total $3,000 MXN — coincide 100% con backend.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {"ui_bugs": [], "integration_issues": [], "design_issues": []},
+  "test_report_links": [
+    "/app/backend/tests/test_iteration44_custom_pricing_units.py",
+    "/app/test_reports/pytest/iter44.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "/app/backend/pricing.py L146-203 _price_custom_item: parámetro `custom_engine` (default False) preserva comportamiento histórico para Paquete/Servicios mientras compute_custom_quotation L389-391 lo activa. Diseño limpio y testable.",
+    "/app/backend/pricing.py L173-180: cuando custom_engine=True, per_night → qty=nights (sobreescribe sel_qty), per_group → 1, resto → sel_qty (o default por unidad). El item resultante persiste qty=multiplicador, lo cual el frontend asume al renderizar '$X × qty' en PublicQuotation y detalle.",
+    "/app/frontend/src/pages/CustomQuotationBuilder.jsx L152-158 itemMultiplier + itemSubtotal: lógica IDÉNTICA al backend (per_night→nights, per_group→1, resto→qty). UI y backend coinciden en cada unidad probada.",
+    "/app/frontend/src/pages/CustomQuotationBuilder.jsx L567: review usa itemMultiplier(it) en columna 'Cant.' — consistente con backend.",
+    "/app/backend/pdf_generator.py: removida _hospedaje_detail especial; columna 'Cant.' muestra multiplicador. Verificado vía PDF 200 %PDF con multi-item (no se inspeccionó el render visual del PDF; backend responde con cuerpo válido y tamaño >2KB).",
+    "Sugerencia menor: el frontend itemMultiplier (L153) y el backend _price_custom_item (L174) son duplicación lógica obligatoria. Una única tabla en constants.jsx exportada al servidor (vía endpoint /api/pricing/rules) podría evitar drift futuro, pero NO es bloqueante.",
+    "Nota: el campo 'qty' guardado en el item para per_night es el número de noches (no la cantidad original ingresada). El UI no preserva la qty original al editar (que se vuelve a calcular). Si en el futuro se desea editar manteniendo qty original separada, requerirá un campo adicional. Hoy no es un issue."
+  ],
+  "updated_files": ["/app/backend/tests/test_iteration44_custom_pricing_units.py (nuevo)"],
+  "success_rate": {"backend": "100% (10/10)", "frontend": "100% (5 unidades + submit + detalle verificados)"},
+  "test_credentials": "admin@aventurate.mx / Demo2026!",
+  "seed_data_creation": "Tests crean cotizaciones TEST_iter44/TEST_UI iter44 y las eliminan al final (cleanup test + script post-UI). Verificado: 0 quedan en la BD.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Iter 44 valida el motor de precios refactorizado SOLO para type='personalizado' (compute_custom_quotation usa custom_engine=True). El nuevo contrato del item personalizado es: qty almacenado = MULTIPLICADOR (no la cantidad original del usuario en per_night). El frontend muestra '$X × qty' en PublicQuotation/detalle y eso coincide. Regresión confirmada: type='paquete' y type='servicios' siguen usando qty original (sin custom_engine) — un per_night extra de paquete con qty=5 sigue dando subtotal=precio×5.",
+  "rca of the issue": "N/A — feature 100% funcional. Backend y frontend usan el MISMO multiplicador por unidad. PDF y enlace público heredan los subtotales del backend, por lo tanto consistentes."
+}

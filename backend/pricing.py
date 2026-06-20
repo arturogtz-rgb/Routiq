@@ -144,19 +144,24 @@ def occupancy_rows_all(hotel: dict, channel: str, margin_divisor: float, commiss
 
 
 def _price_custom_item(ci: dict, total_pax: int, nights_total: int, rooms: int,
-                       client_channel: str, margin_divisor: float, commissions: dict) -> dict:
-    """Cotiza un concepto libre (programa personalizado o extra de paquete)."""
+                       client_channel: str, margin_divisor: float, commissions: dict,
+                       custom_engine: bool = False) -> dict:
+    """Cotiza un concepto libre (programa personalizado o extra de paquete).
+
+    custom_engine=True (Programa Personalizado / Cotización a medida): el subtotal es
+    `precio × multiplicador`, donde el multiplicador depende ÚNICAMENTE de la unidad de cobro:
+      - per_night  -> número de noches (único caso donde las noches multiplican)
+      - per_group  -> 1 (precio único)
+      - per_room / per_person / per_day / per_vehicle -> la cantidad ingresada
+    Check-in / check-out / noches son informativos y NO multiplican (salvo per_night).
+    custom_engine=False (extras de Paquete Armado / Servicios): comportamiento histórico intacto.
+    """
     entered = float(ci.get("net_price", 0) or 0)
     price_type = ci.get("price_type", "neto") or "neto"
     unit = ci.get("unit") or "per_group"
     category = ci.get("category", "extra")
     nights = int(ci.get("nights", 0) or 0)
     sel_qty = int(ci.get("qty", 0) or 0)
-    if category == "hospedaje":
-        # Cantidad = habitaciones/personas (libre); subtotal = tarifa × cantidad × noches.
-        qty = sel_qty if sel_qty > 0 else 1
-    else:
-        qty = sel_qty if sel_qty > 0 else _custom_default_qty(unit, total_pax, nights_total, rooms)
     name = (ci.get("name") or "").strip() or CUSTOM_CATEGORY_ES.get(category, "Concepto")
     if price_type == "publico":
         unit_price = round(entered, 2)
@@ -164,10 +169,24 @@ def _price_custom_item(ci: dict, total_pax: int, nights_total: int, rooms: int,
     else:
         unit_price = channel_price(entered, client_channel, margin_divisor, commissions)
         public_ref = public_from_net(entered, margin_divisor)
-    if category == "hospedaje" and nights > 0:
-        subtotal = round(unit_price * qty * nights, 2)
-    else:
+    if custom_engine:
+        # Multiplicador por unidad de cobro (las noches solo cuentan en per_night).
+        if unit == "per_night":
+            qty = nights
+        elif unit == "per_group":
+            qty = 1
+        else:
+            qty = sel_qty if sel_qty > 0 else _custom_default_qty(unit, total_pax, nights_total, rooms)
         subtotal = round(unit_price * qty, 2)
+    else:
+        if category == "hospedaje":
+            qty = sel_qty if sel_qty > 0 else 1
+        else:
+            qty = sel_qty if sel_qty > 0 else _custom_default_qty(unit, total_pax, nights_total, rooms)
+        if category == "hospedaje" and nights > 0:
+            subtotal = round(unit_price * qty * nights, 2)
+        else:
+            subtotal = round(unit_price * qty, 2)
     return {
         "label": f"{name} · {CUSTOM_UNIT_ES.get(unit, '')}".strip(" ·"),
         "unit_price": unit_price, "qty": qty, "kind": "custom",
@@ -368,7 +387,8 @@ def compute_custom_quotation(custom_items: list, pax: dict, custom_nights: int,
     items: List[dict] = []
     for ci in (custom_items or []):
         items.append(_price_custom_item(ci, total_pax, nights_total, rooms,
-                                        client_channel, margin_divisor, commissions))
+                                        client_channel, margin_divisor, commissions,
+                                        custom_engine=True))
 
     # Comisión por canal SOLO sobre conceptos de precio público (los netos ya traen el
     # precio por canal incorporado y son "no comisionables").

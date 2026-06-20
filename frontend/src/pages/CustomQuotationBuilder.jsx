@@ -149,12 +149,13 @@ export default function CustomQuotationBuilder() {
     if (channel === 'mayorista') return Math.round(pub * (1 - (Number(commissions.mayorista) || 0)) * 100) / 100;
     return pub;
   };
-  const itemSubtotal = (it) => {
-    const base = unitPriceFor(it) * (Number(it.qty) || 0);
-    const n = Number(it.nights) || 0;
-    if (it.category === 'hospedaje' && n > 0) return base * n;
-    return base;
+  // Multiplicador por unidad de cobro: solo per_night usa las noches; per_group es 1; el resto usa la cantidad.
+  const itemMultiplier = (it) => {
+    if (it.unit === 'per_night') return Number(it.nights) || 0;
+    if (it.unit === 'per_group') return 1;
+    return Number(it.qty) || 0;
   };
+  const itemSubtotal = (it) => unitPriceFor(it) * itemMultiplier(it);
 
   const publicoSubtotal = form.custom_items.filter((it) => (it.price_type || 'neto') === 'publico').reduce((s, it) => s + itemSubtotal(it), 0);
   const subtotal = form.custom_items.reduce((s, it) => s + itemSubtotal(it), 0);
@@ -563,7 +564,7 @@ export default function CustomQuotationBuilder() {
                     <tr key={i} className="border-t border-ink-100" data-testid={`custom-review-item-${i}`}>
                       <td className="p-3"><span className="font-medium text-ink-900">{it.name || '—'}</span> <span className="text-ink-400 text-xs">· {UNIT_ES[it.unit]}{(it.price_type || 'neto') === 'neto' ? ' · neto' : ''}</span></td>
                       <td className="p-3 text-right">{money(unitPriceFor(it), currency)}</td>
-                      <td className="p-3 text-center">{it.category === 'hospedaje' ? `${it.qty} × ${it.nights || 0}n` : it.qty}</td>
+                      <td className="p-3 text-center">{itemMultiplier(it)}</td>
                       <td className="p-3 text-right font-semibold">{money(itemSubtotal(it), currency)}</td>
                     </tr>
                   ))}

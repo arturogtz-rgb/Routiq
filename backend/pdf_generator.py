@@ -168,18 +168,6 @@ def _fmt_concept_when(it: dict) -> str:
     return _fmt_service_datetime(it)
 
 
-def _hospedaje_detail(it: dict, currency: str) -> str:
-    """Desglose de transparencia para hospedaje: '$X/noche × N hab × N noches'."""
-    if it.get("category") != "hospedaje":
-        return ""
-    n = int(it.get("nights", 0) or 0)
-    if n <= 0:
-        return ""
-    qty = int(it.get("qty", 1) or 1)
-    return f"{_money(it.get('unit_price', 0), currency)}/noche × {qty} hab × {n} {'noche' if n == 1 else 'noches'}"
-
-
-
 def _build_page2(story, s, package: dict, is_services: bool, title_txt: str, CONTENT_W: float):
     """Página 2+: título, descripción, itinerario día a día e Incluye/No incluye."""
     has_itinerary = bool(package.get("itinerary"))
@@ -440,13 +428,7 @@ def generate_quotation_pdf(company: dict, quotation: dict, package: dict, client
         rows = [["Fecha", "Servicio", "Detalle", "Cant.", "$ unitario", "Subtotal"]]
         for it in items:
             fecha = _fmt_concept_when(it) or "—"
-            desc = _xml_escape(it.get("description", "") or "")
-            hosp = _hospedaje_detail(it, currency)
-            if hosp:
-                hosp_html = f"<font color='#185FA5' size=7.5>{_xml_escape(hosp)}</font>"
-                detalle = f"{desc}<br/>{hosp_html}" if desc else hosp_html
-            else:
-                detalle = desc
+            detalle = _xml_escape(it.get("description", "") or "")
             rows.append([
                 Paragraph(_xml_escape(fecha), concept_style),
                 Paragraph(f"<b>{_xml_escape(it.get('label',''))}</b>", concept_style),
