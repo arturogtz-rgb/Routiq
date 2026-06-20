@@ -365,3 +365,9 @@ Ver `/app/memory/test_credentials.md`. Seed automático en cada startup.
 - `_price_custom_item(custom_engine=True)` para custom; Paquete/Servicios usan `custom_engine=False` (comportamiento histórico INTACTO, verificado en regresión).
 - Frontend `itemMultiplier`/`itemSubtotal` coinciden exactamente con backend. Se removió el detalle especial de hospedaje del PDF y enlace público (la columna Cant. ya muestra el multiplicador y las fechas quedan informativas).
 - Probado: backend 10/10 pytest, frontend 5 unidades + submit + detalle.
+
+## [2026-06-20] Mini-texto por unidad + Comisión específica por cliente (COMPLETADO ✅, iter_45)
+- (1) Texto de ayuda discreto bajo "Cantidad" en el constructor de Programa Personalizado, según unidad de cobro (UNIT_HINT en custom-builder/constants.jsx, render en CustomItemCard).
+- (2) Comisión específica por cliente (P2 #1): campo "Comisión específica (%)" en alta/edición de cliente (solo canales != directo). Se guarda como commission_rate (fracción 0-1) y sobrescribe el % global del canal SOLO para ese cliente. Vacío = usa el global; limpiar usa $unset.
+- Aplica a las 3 cotizaciones vía `_apply_client_commission` en quotations.py (create+update): afecta precio mayorista y comisión final. Verificado: mayorista override 5% → commission 50 (vs 150 global).
+- Probado: backend 8/8 pytest (+1 skip de entorno), frontend 100%.
