@@ -10,6 +10,16 @@ export const UNITS = [
 ];
 export const UNIT_ES = Object.fromEntries(UNITS.map((u) => [u.v, u.label]));
 
+// Texto de ayuda discreto: qué multiplica cada unidad de cobro en el subtotal.
+export const UNIT_HINT = {
+  per_person: 'Multiplica por la cantidad de personas.',
+  per_night: 'Multiplica por el número de noches (automático).',
+  per_room: 'Multiplica por la cantidad de habitaciones.',
+  per_group: 'Precio fijo, sin multiplicar.',
+  per_day: 'Multiplica por el número de días.',
+  per_vehicle: 'Multiplica por la cantidad de vehículos.',
+};
+
 export const CATEGORIES = [
   { v: 'hospedaje', label: 'Hospedaje', icon: Bed },
   { v: 'traslado', label: 'Traslado', icon: Car },

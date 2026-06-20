@@ -343,6 +343,7 @@ class ClientCreate(BaseModel):
     channel: Literal["directo", "agencia", "mayorista", "operador"] = "directo"
     notes: str = ""
     executives: List[Executive] = []
+    commission_rate: Optional[float] = Field(default=None, ge=0, le=1)  # override del % de comisión del canal (fracción 0-1). None = usa el global.
 
 
 class ClientUpdate(BaseModel):
@@ -352,6 +353,7 @@ class ClientUpdate(BaseModel):
     channel: Optional[Literal["directo", "agencia", "mayorista", "operador"]] = None
     notes: Optional[str] = None
     executives: Optional[List[Executive]] = None
+    commission_rate: Optional[float] = Field(default=None, ge=0, le=1)
 
 
 # ---------- Quotation contacts (agency + final traveler) ----------

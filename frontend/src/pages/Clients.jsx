@@ -14,7 +14,7 @@ const CHANNEL_LABEL = Object.fromEntries(CHANNELS.map((c) => [c.v, c.label]));
 const PAGE_SIZE = 10;
 const uid = () => (crypto?.randomUUID ? crypto.randomUUID() : `id-${Date.now()}-${Math.random()}`);
 const money = (v) => `$${Number(v || 0).toLocaleString('es-MX', { maximumFractionDigits: 0 })}`;
-const emptyForm = { name: '', email: '', phone: '', channel: 'directo', notes: '', executives: [] };
+const emptyForm = { name: '', email: '', phone: '', channel: 'directo', notes: '', executives: [], commission_pct: '' };
 
 export default function Clients() {
   const [clients, setClients] = useState([]);
@@ -29,6 +29,7 @@ export default function Clients() {
   const [saving, setSaving] = useState(false);
   const [delClient, setDelClient] = useState(null);
   const [deleting, setDeleting] = useState(false);
+  const [globalCommissions, setGlobalCommissions] = useState({});
 
   const load = async () => {
     setLoading(true);
@@ -37,6 +38,12 @@ export default function Clients() {
     finally { setLoading(false); }
   };
   useEffect(() => { load(); }, []);
+  useEffect(() => {
+    (async () => {
+      try { const { data } = await api.get('/companies/me'); setGlobalCommissions(data?.pricing_config?.commissions || {}); }
+      catch { /* hint opcional */ }
+    })();
+  }, []);
 
   const filtered = useMemo(() => {
     let list = [...clients];
@@ -59,7 +66,7 @@ export default function Clients() {
   useEffect(() => { setPage(1); }, [q, channel, sort]);
 
   const openNew = () => { setForm(emptyForm); setEditClient({}); setError(''); };
-  const openEdit = (c) => { setForm({ name: c.name || '', email: c.email || '', phone: c.phone || '', channel: c.channel || 'directo', notes: c.notes || '', executives: (c.executives || []).map((e) => ({ ...e })) }); setEditClient(c); setError(''); };
+  const openEdit = (c) => { setForm({ name: c.name || '', email: c.email || '', phone: c.phone || '', channel: c.channel || 'directo', notes: c.notes || '', executives: (c.executives || []).map((e) => ({ ...e })), commission_pct: (c.commission_rate === null || c.commission_rate === undefined) ? '' : String(Math.round(c.commission_rate * 1000) / 10) }); setEditClient(c); setError(''); };
 
   const addExec = () => setForm((f) => ({ ...f, executives: [...(f.executives || []), { id: uid(), name: '', phone: '', email: '' }] }));
   const updExec = (idx, patch) => setForm((f) => ({ ...f, executives: f.executives.map((e, i) => i === idx ? { ...e, ...patch } : e) }));
@@ -68,8 +75,14 @@ export default function Clients() {
   const save = async () => {
     setError(''); setSaving(true);
     try {
-      if (editClient && editClient.id) await api.patch(`/clients/${editClient.id}`, form);
-      else await api.post('/clients', form);
+      const { commission_pct, ...rest } = form;
+      let commission_rate = null;
+      if (rest.channel !== 'directo' && commission_pct !== '' && commission_pct !== null && !Number.isNaN(Number(commission_pct))) {
+        commission_rate = Math.max(0, Math.min(100, Number(commission_pct))) / 100;
+      }
+      const payload = { ...rest, commission_rate };
+      if (editClient && editClient.id) await api.patch(`/clients/${editClient.id}`, payload);
+      else await api.post('/clients', payload);
       setEditClient(null); await load();
     } catch (e) { setError(formatApiError(e)); }
     finally { setSaving(false); }
@@ -178,6 +191,15 @@ export default function Clients() {
                   {CHANNELS.map((c) => <option key={c.v} value={c.v}>{c.label}</option>)}
                 </select>
               </div>
+              {form.channel !== 'directo' && (
+                <div data-testid="client-commission-block">
+                  <label className="label-text">Comisión específica (%)</label>
+                  <input type="number" min="0" max="100" step="0.1" className="input-field" value={form.commission_pct}
+                    placeholder={`Global del canal: ${((Number(globalCommissions[form.channel]) || 0) * 100).toLocaleString('es-MX', { maximumFractionDigits: 1 })}%`}
+                    onChange={(e) => setForm((f) => ({ ...f, commission_pct: e.target.value }))} data-testid="client-commission-pct" />
+                  <p className="text-[11px] text-ink-400 mt-1">Sobrescribe el % global del canal solo para este cliente. Déjalo vacío para usar el global ({((Number(globalCommissions[form.channel]) || 0) * 100).toLocaleString('es-MX', { maximumFractionDigits: 1 })}%).</p>
+                </div>
+              )}
               <div><label className="label-text">Dirección / Notas (opcional)</label><textarea rows="2" className="input-field" value={form.notes} onChange={(e) => setForm((f) => ({ ...f, notes: e.target.value }))} data-testid="client-notes" /></div>
 
               {/* Nivel 2 — Ejecutivos */}

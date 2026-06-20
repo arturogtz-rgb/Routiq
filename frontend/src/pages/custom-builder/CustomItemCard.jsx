@@ -1,5 +1,5 @@
 import { Trash2, Sparkles } from 'lucide-react';
-import { UNITS, UNIT_ES, CATEGORIES, CAT_ICON, money } from './constants';
+import { UNITS, UNIT_ES, UNIT_HINT, CATEGORIES, CAT_ICON, money } from './constants';
 
 export function CustomItemCard({ it, idx, currency, updateItem, removeItem, unitPriceFor, itemSubtotal, publicPrice }) {
   const Icon = CAT_ICON[it.category] || Sparkles;
@@ -40,6 +40,7 @@ export function CustomItemCard({ it, idx, currency, updateItem, removeItem, unit
         </div>
         <div><label className="label-text">Cantidad{it.category === 'hospedaje' ? ' (hab./pax)' : ''}</label>
           <input type="number" min="1" className="input-field" value={it.qty} onChange={(e) => updateItem(idx, { qty: Math.max(1, +e.target.value || 1) })} data-testid={`custom-item-qty-${idx}`} />
+          <p className="text-[11px] text-ink-400 mt-1" data-testid={`custom-item-qty-hint-${idx}`}>{UNIT_HINT[it.unit] || ''}</p>
         </div>
       </div>
       {it.category === 'hospedaje' ? (

@@ -624,10 +624,21 @@ async def get_client(client_id: str, user: dict = Depends(require_tenant)):
 @api.patch("/clients/{client_id}")
 async def update_client(client_id: str, payload: ClientUpdate, user: dict = Depends(require_tenant)):
     db = get_db()
-    updates = {k: v for k, v in payload.model_dump(exclude_unset=True).items() if v is not None}
-    if not updates:
+    raw = payload.model_dump(exclude_unset=True)
+    updates = {k: v for k, v in raw.items() if v is not None}
+    # Permitir limpiar el override de comisión (volver al % global) enviando commission_rate=null.
+    unset = {}
+    if "commission_rate" in raw and raw["commission_rate"] is None:
+        unset["commission_rate"] = ""
+        updates.pop("commission_rate", None)
+    if not updates and not unset:
         raise HTTPException(status_code=400, detail="Nada que actualizar")
-    res = await db.clients.update_one({"id": client_id, "tenant_id": user["tenant_id"]}, {"$set": updates})
+    ops = {}
+    if updates:
+        ops["$set"] = updates
+    if unset:
+        ops["$unset"] = unset
+    res = await db.clients.update_one({"id": client_id, "tenant_id": user["tenant_id"]}, ops)
     if res.matched_count == 0:
         raise HTTPException(status_code=404, detail="Cliente no encontrado")
     return await db.clients.find_one({"id": client_id, "tenant_id": user["tenant_id"]}, {"_id": 0})

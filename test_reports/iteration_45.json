@@ -1,0 +1,29 @@
+{
+  "summary": "Iter 45 — (1) UNIT_HINT discreto bajo 'Cantidad' en /app/quotations/new/custom y (2) Comisión específica por cliente (override del % global del canal). Backend pytest 8 passed / 1 skipped (servicios sin catálogo válido). Frontend Playwright: UNIT_HINT cubre las 6 unidades; bloque de comisión oculto en directo y visible en mayorista/agencia/operador con placeholder/hint del % global; persistencia de override (5%) y limpieza ($unset) verificadas tanto en UI como por API.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {"ui_bugs": [], "integration_issues": [], "design_issues": []},
+  "test_report_links": [
+    "/app/backend/tests/test_iteration45_client_commission.py",
+    "/app/test_reports/pytest/iter45.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "/app/backend/routes/quotations.py L27-39 _apply_client_commission: hace deepcopy del pricing_config y sobreescribe SOLO commissions[channel]. Correcto: no muta el config global de la empresa. Aplicado en create_quotation (L95) y update_quotation (L258, L291), cubriendo paquete/servicios/personalizado.",
+    "/app/backend/server.py L624-644 update_client: detecta commission_rate=None en el payload y emite $unset, removiéndolo de $set. Esto es la forma correcta de limpiar el override y volver al global. Validado: tras PATCH null, el GET devuelve documento SIN la clave commission_rate (None) y nuevas cotizaciones usan el global.",
+    "/app/backend/models.py L346,L356 commission_rate Optional[float] ge=0 le=1: el rango 0-1 (fracción) es consistente con pricing_config.commissions. Test test_08 verifica que 1.5 es rechazado (422).",
+    "/app/frontend/src/pages/Clients.jsx L78-83: conversión %→fracción correcta (Math.max(0, Math.min(100, n))/100), envía commission_rate=null cuando vacío para canal !=directo (forzando $unset en backend). Cuando canal=directo, igual envía null porque no se renderiza el campo — comportamiento limpio.",
+    "/app/frontend/src/pages/Clients.jsx L194: campo OCULTO con condicional ({form.channel !== 'directo' && ...}), no solo display:none. Validado en runtime: querySelector devuelve null para 'directo'.",
+    "/app/frontend/src/pages/custom-builder/CustomItemCard.jsx L43: el hint usa data-testid custom-item-qty-hint-{idx} y mapea por UNIT_HINT[it.unit]. Texto exacto coincide con la spec del problema en las 6 unidades.",
+    "Sugerencia menor: el placeholder usa 'Global del canal: 15%' y el hint debajo repite el mismo número. Considerar deduplicar o aprovechar el hint para algo nuevo. NO bloqueante."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_iteration45_client_commission.py (nuevo)"
+  ],
+  "success_rate": {"backend": "100% (8/8 ejecutados, 1 skipped)", "frontend": "100% (UNIT_HINT 6/6 unidades; commission UI: directo/mayorista/agencia/operador; create 5%; persist+reload; clear→$unset verificado por API)"},
+  "test_credentials": "admin@aventurate.mx / Demo2026!",
+  "seed_data_creation": "Tests crean clientes y cotizaciones TEST_iter45 / TEST_UI Mayorista 5pct y los eliminan (cleanup en test_99 y vía script post-UI). Verificado: 0 quedan.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Notas para futuras iteraciones: (1) la pestaña 'CONCEPTOS' del custom builder se alcanza con click directo en el tab pero el botón Siguiente requiere cliente seleccionado primero. (2) Los % globales en pricing_config.commissions de la empresa demo son mayorista=0.15, agencia=0.12 (NO 0.10 como decía el PRD inicial), operador=0.20. El test_06 valida contra el global vivo del backend (no hardcodea). (3) endpoint update client es PATCH /api/clients/{id}, no PUT. (4) personalizado usa custom_items (no items). (5) servicios requiere services del catálogo o no acepta solo custom-only items en este entorno (test skipped).",
+  "rca of the issue": "N/A — ambas features funcionan end-to-end. backend: 8/8 PASS; UI: UNIT_HINT y commission block + persistencia + limpieza verificados."
+}

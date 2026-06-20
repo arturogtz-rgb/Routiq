@@ -24,6 +24,21 @@ log = logging.getLogger("routiq")
 router = APIRouter()
 
 
+def _apply_client_commission(pricing_config: dict, client: dict) -> dict:
+    """Si el cliente tiene un % de comisión específico, sobreescribe el global de su canal.
+    Afecta tanto el precio mayorista (que descuenta su comisión) como la comisión final."""
+    import copy
+    rate = (client or {}).get("commission_rate")
+    if rate is None:
+        return pricing_config
+    channel = (client or {}).get("channel", "directo")
+    cfg = copy.deepcopy(dict(pricing_config or {}))
+    commissions = dict(cfg.get("commissions") or {})
+    commissions[channel] = float(rate)
+    cfg["commissions"] = commissions
+    return cfg
+
+
 async def _check_ai_enabled(tenant_id: str):
     company = await get_db().companies.find_one({"id": tenant_id}, {"_id": 0, "ai_enabled": 1})
     if not bool((company or {}).get("ai_enabled", True)):
@@ -77,6 +92,7 @@ async def create_quotation(payload: QuotationCreate, user: dict = Depends(requir
             raise HTTPException(status_code=400, detail="El ejecutivo seleccionado no pertenece a esta empresa.")
     company = await db.companies.find_one({"id": user["tenant_id"]}, {"_id": 0})
     pricing_config = company.get("pricing_config") or DEFAULT_PRICING_CONFIG
+    pricing_config = _apply_client_commission(pricing_config, client)
     services_sel = [s.model_dump() for s in payload.services]
     services_catalog = await _load_services_catalog(db, user["tenant_id"], services_sel)
 
@@ -239,6 +255,7 @@ async def update_quotation(quotation_id: str, payload: QuotationUpdate, user: di
             client = await db.clients.find_one({"id": q["client_id"], "tenant_id": user["tenant_id"]}, {"_id": 0})
             company = await db.companies.find_one({"id": user["tenant_id"]}, {"_id": 0})
             pricing_config = company.get("pricing_config") or DEFAULT_PRICING_CONFIG
+            pricing_config = _apply_client_commission(pricing_config, client)
             pax = updates.get("pax", q["pax"])
             new_dates = updates.get("dates", q.get("dates"))
             if new_dates and new_dates.get("start") and new_dates.get("end") and new_dates["start"] > new_dates["end"]:
@@ -271,6 +288,7 @@ async def update_quotation(quotation_id: str, payload: QuotationUpdate, user: di
         client = await db.clients.find_one({"id": q["client_id"], "tenant_id": user["tenant_id"]}, {"_id": 0})
         company = await db.companies.find_one({"id": user["tenant_id"]}, {"_id": 0})
         pricing_config = company.get("pricing_config") or DEFAULT_PRICING_CONFIG
+        pricing_config = _apply_client_commission(pricing_config, client)
         hotel = updates.get("hotel_name", q["hotel_selected"])
         pax = updates.get("pax", q["pax"])
         services_sel = updates.get("services", q.get("services", []))
