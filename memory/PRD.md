@@ -350,3 +350,10 @@ Ver `/app/memory/test_credentials.md`. Seed automático en cada startup.
 ### Desglose de hospedaje (transparencia)
 - PDF (desglose detallado) y enlace público `/q/:token` muestran "$X/noche × N habitaciones × N noches".
 - Verificado: público $1,315.79/noche × 2 hab × 3 noches = $7,894.74. Regresión paquete/servicios OK.
+
+## [2026-06-19] Clientes en 2 niveles replicado en Cotización a medida (COMPLETADO ✅, iter_43)
+- `CustomQuotationBuilder.jsx` ahora usa el mismo flujo que Paquete Armado: seleccionar empresa → seleccionar ejecutivo vinculado → campo "Cliente final / Turista" separado.
+- Validación: si la empresa tiene ejecutivos, exige seleccionar uno (frontend canNext + backend 400). Empresas sin ejecutivos: bloque legacy de agencia manual. Cliente directo: sin contactos.
+- Servicios a la carta: YA tenía el flujo (comparte QuotationBuilder con Paquete). Verificado en regresión.
+- Propagación idéntica a PDF y enlace público (contacts.agency = empresa + ejecutivo; traveler por separado) en los 3 tipos.
+- Probado: backend pytest 6/6, frontend 5 escenarios UI.
