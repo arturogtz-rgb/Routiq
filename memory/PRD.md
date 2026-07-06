@@ -371,3 +371,9 @@ Ver `/app/memory/test_credentials.md`. Seed automático en cada startup.
 - (2) Comisión específica por cliente (P2 #1): campo "Comisión específica (%)" en alta/edición de cliente (solo canales != directo). Se guarda como commission_rate (fracción 0-1) y sobrescribe el % global del canal SOLO para ese cliente. Vacío = usa el global; limpiar usa $unset.
 - Aplica a las 3 cotizaciones vía `_apply_client_commission` en quotations.py (create+update): afecta precio mayorista y comisión final. Verificado: mayorista override 5% → commission 50 (vs 150 global).
 - Probado: backend 8/8 pytest (+1 skip de entorno), frontend 100%.
+
+## [2026-07-06] Catálogo y páginas públicas de servicios (COMPLETADO ✅, iter_46)
+- Modelo Servicio ampliado: duration_value, duration_unit (minutos/horas/dias), operating_days [0-6], includes, excludes (image_url ya existía).
+- Backend: catálogo público de servicios incluye id; nuevos endpoints GET /public/company/{slug}/service/{id} y POST .../request (lead con service_id/service_name).
+- Frontend: nueva página detalle /s/:slug/:id (portada, duración, días, precio, incluye/excluye, botones Quiero/Imprimir[@media print sin precios/botones]/Compartir); "Ver más" en /c/:slug/servicios; form de servicio con subir imagen + duración + días de operación (checkboxes + "Todos los días") + incluye/excluye; botón "Compartir servicios" (QR) en /app/packages; Leads muestra etiqueta "Servicio".
+- NO se tocó precios/cotizador/comisiones. Probado: backend 12/12 pytest, frontend end-to-end 100%.
