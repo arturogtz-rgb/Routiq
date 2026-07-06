@@ -32,6 +32,7 @@ import BookingConfirmationPublic from '@/pages/BookingConfirmationPublic';
 import PublicPackage from '@/pages/PublicPackage';
 import PublicCatalog from '@/pages/PublicCatalog';
 import PublicServices from '@/pages/PublicServices';
+import PublicService from '@/pages/PublicService';
 import PublicConditions from '@/pages/PublicConditions';
 import Leads from '@/pages/Leads';
 import CatalogAnalytics from '@/pages/CatalogAnalytics';
@@ -80,6 +81,7 @@ export default function App() {
           <Route path="/p/:slug/:code" element={<PublicPackage />} />
           <Route path="/c/:slug" element={<PublicCatalog />} />
           <Route path="/c/:slug/servicios" element={<PublicServices />} />
+          <Route path="/s/:slug/:id" element={<PublicService />} />
           <Route path="/c/:slug/condiciones" element={<PublicConditions />} />
 
           {/* Company app */}

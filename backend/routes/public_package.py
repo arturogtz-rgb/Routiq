@@ -185,6 +185,7 @@ async def public_company_services(slug: str):
     groups = []
     for key, label in _SVC_CATEGORIES:
         items = [{
+            "id": s.get("id", ""),
             "name": s.get("name", ""), "description": s.get("description", ""),
             "image_url": s.get("image_url", ""), "unit": s.get("unit", "per_group"),
             "public_price": s.get("public_price", 0), "currency": cur,
@@ -192,6 +193,73 @@ async def public_company_services(slug: str):
         if items:
             groups.append({"key": key, "label": label, "items": items})
     return {"company": _public_company_block(company), "groups": groups}
+
+
+@router.get("/public/company/{slug}/service/{service_id}")
+async def public_company_service_detail(slug: str, service_id: str):
+    """Detalle público de un servicio (sin auth) — /s/:slug/:id."""
+    db = get_db()
+    company = await db.companies.find_one({"slug": slug}, {"_id": 0})
+    if not company or company.get("status") == "suspended":
+        raise HTTPException(status_code=404, detail="Empresa no encontrada")
+    s = await db.services.find_one(
+        {"tenant_id": company["id"], "id": service_id, "status": {"$ne": "inactive"}}, {"_id": 0})
+    if not s:
+        raise HTTPException(status_code=404, detail="Servicio no disponible")
+    return {
+        "service": {
+            "id": s.get("id", ""), "name": s.get("name", ""), "category": s.get("category", ""),
+            "description": s.get("description", ""), "image_url": s.get("image_url", ""),
+            "unit": s.get("unit", "per_group"),
+            "public_price": s.get("public_price", 0),
+            "duration_value": s.get("duration_value", 0), "duration_unit": s.get("duration_unit", "horas"),
+            "operating_days": s.get("operating_days", []),
+            "includes": s.get("includes", []), "excludes": s.get("excludes", []),
+            "currency": company.get("base_currency", "MXN"),
+        },
+        "company": _public_company_block(company),
+    }
+
+
+@router.post("/public/company/{slug}/service/{service_id}/request")
+async def request_service(slug: str, service_id: str, payload: PackageRequestInput):
+    db = get_db()
+    if payload.company_website:  # bot honeypot
+        return {"ok": True}
+    if not payload.name.strip():
+        raise HTTPException(status_code=400, detail="El nombre es obligatorio")
+    company = await db.companies.find_one({"slug": slug}, {"_id": 0})
+    if not company:
+        raise HTTPException(status_code=404, detail="Empresa no encontrada")
+    s = await db.services.find_one({"tenant_id": company["id"], "id": service_id}, {"_id": 0})
+    if not s:
+        raise HTTPException(status_code=404, detail="Servicio no disponible")
+    lead = {
+        "id": new_id(), "tenant_id": company["id"],
+        "service_id": s["id"], "service_name": s.get("name", ""),
+        "name": payload.name.strip(), "email": str(payload.email), "phone": payload.phone.strip(),
+        "message": payload.message.strip(), "travel_date": payload.travel_date.strip(),
+        "pax": payload.pax.strip(), "status": "new", "created_at": now_iso(),
+    }
+    await db.quote_requests.insert_one(dict(lead))
+
+    title = f"🌟 Nueva solicitud: {s.get('name','')}"
+    body = f"{lead['name']} solicitó información del servicio {s.get('name','')}. Tel: {lead['phone'] or '—'}."
+    await db.notifications.insert_one({
+        "tenant_id": company["id"], "quotation_id": None, "kind": "lead",
+        "title": title, "body": body, "read": False, "created_at": now_iso(),
+    })
+    to = company.get("notify_email") or company.get("contact_email") or ""
+    if to:
+        html = (f"<h2>{title}</h2><p>{body}</p>"
+                f"<p><b>Correo:</b> {lead['email']}</p>"
+                f"<p><b>Fecha tentativa:</b> {lead['travel_date'] or '—'} · <b>Pax:</b> {lead['pax'] or '—'}</p>"
+                f"<p><b>Mensaje:</b> {lead['message'] or '—'}</p>")
+        try:
+            await notifications.send_email(company, to, title, html)
+        except Exception as e:
+            log.warning("service lead email failed: %s", e)
+    return {"ok": True}
 
 
 @router.get("/public/company/{slug}/conditions")

@@ -297,6 +297,7 @@ class PackageUpdate(BaseModel):
 # ---------- Services (a la carte) ----------
 ServiceCategory = Literal["tour", "traslado", "acceso", "extra"]
 ServiceUnit = Literal["per_person", "per_group", "per_day", "per_access"]
+ServiceDurationUnit = Literal["minutos", "horas", "dias"]
 
 
 class ServiceCreate(BaseModel):
@@ -308,6 +309,11 @@ class ServiceCreate(BaseModel):
     unit: ServiceUnit = "per_group"
     per_person: bool = False  # legacy, kept for back-compat
     image_url: str = ""
+    duration_value: float = 0.0
+    duration_unit: ServiceDurationUnit = "horas"
+    operating_days: List[int] = []  # 0=Lun .. 6=Dom; vacío => todos los días
+    includes: List[str] = []
+    excludes: List[str] = []
     status: str = "active"
 
 
@@ -320,6 +326,11 @@ class ServiceUpdate(BaseModel):
     unit: Optional[ServiceUnit] = None
     per_person: Optional[bool] = None
     image_url: Optional[str] = None
+    duration_value: Optional[float] = None
+    duration_unit: Optional[ServiceDurationUnit] = None
+    operating_days: Optional[List[int]] = None
+    includes: Optional[List[str]] = None
+    excludes: Optional[List[str]] = None
     status: Optional[str] = None
 
 

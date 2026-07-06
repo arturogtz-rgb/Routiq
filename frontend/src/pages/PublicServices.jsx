@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import api, { formatApiError } from '@/lib/api';
-import { Phone, Mail, Loader2, ArrowLeft, Map, Bus, Ticket, Sparkles } from 'lucide-react';
+import { Phone, Mail, Loader2, ArrowLeft, ArrowRight, Map, Bus, Ticket, Sparkles } from 'lucide-react';
 
 const UNIT_ES = { per_person: 'por persona', per_group: 'por grupo', per_day: 'por día', per_access: 'por acceso' };
 const CAT_ICON = { tour: Map, traslado: Bus, acceso: Ticket, extra: Sparkles };
@@ -77,8 +77,8 @@ export default function PublicServices() {
                 {g.items.map((s, i) => {
                   const img = s.image_url ? (s.image_url.startsWith('http') ? s.image_url : `${backend}${s.image_url}`) : null;
                   return (
-                    <div key={i} className="bg-white rounded-2xl shadow-sm border border-ink-100 overflow-hidden" data-testid={`service-pub-card-${g.key}-${i}`}>
-                      {img && <div className="h-40 bg-ink-200 overflow-hidden"><img src={img} alt={s.name} className="w-full h-full object-cover" onError={(e) => { e.currentTarget.parentElement.style.display = 'none'; }} /></div>}
+                    <Link key={i} to={`/s/${slug}/${s.id}`} className="group bg-white rounded-2xl shadow-sm border border-ink-100 overflow-hidden hover:shadow-md transition block" data-testid={`service-pub-card-${g.key}-${i}`}>
+                      {img && <div className="h-40 bg-ink-200 overflow-hidden"><img src={img} alt={s.name} className="w-full h-full object-cover group-hover:scale-105 transition-transform" onError={(e) => { e.currentTarget.parentElement.style.display = 'none'; }} /></div>}
                       <div className="p-5">
                         <h3 className="font-display font-semibold text-lg text-ink-900 leading-tight">{s.name}</h3>
                         {s.description && <p className="text-sm text-ink-500 mt-2 line-clamp-3">{s.description}</p>}
@@ -86,8 +86,9 @@ export default function PublicServices() {
                           <span className="font-display text-xl font-bold" style={{ color: brand }}>{money(s.public_price, s.currency)}</span>
                           <span className="text-xs text-ink-400">{UNIT_ES[s.unit] || ''}</span>
                         </div>
+                        <span className="mt-4 inline-flex items-center gap-1 text-sm font-semibold" style={{ color: brand }} data-testid={`service-pub-more-${g.key}-${i}`}>Ver más <ArrowRight className="w-4 h-4" /></span>
                       </div>
-                    </div>
+                    </Link>
                   );
                 })}
               </div>

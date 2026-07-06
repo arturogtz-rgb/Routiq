@@ -3,7 +3,7 @@ import AppShell from '@/components/AppShell';
 import api, { formatApiError } from '@/lib/api';
 import { useConfirm } from '@/components/ConfirmDialog';
 import { useAuth } from '@/context/AuthContext';
-import { Plus, Pencil, Trash2, X, Save, Sparkles, Bus, Ticket, Map, FileSpreadsheet, Upload, Download, CheckCircle2, AlertTriangle } from 'lucide-react';
+import { Plus, Pencil, Trash2, X, Save, Sparkles, Bus, Ticket, Map, FileSpreadsheet, Upload, Download, CheckCircle2, AlertTriangle, Clock, CalendarDays, Image as ImageIcon, Loader2 } from 'lucide-react';
 
 const CATEGORIES = [
   { key: 'tour', label: 'Tour', icon: Map },
@@ -19,8 +19,10 @@ const UNITS = [
   { key: 'per_access', label: 'Por acceso' },
 ];
 const UNIT_ES = { per_person: 'por persona', per_group: 'por grupo', per_day: 'por día', per_access: 'por acceso' };
+const DUR_UNITS = [{ key: 'minutos', label: 'Minutos' }, { key: 'horas', label: 'Horas' }, { key: 'dias', label: 'Días' }];
+const DAYS = [['Lun', 0], ['Mar', 1], ['Mié', 2], ['Jue', 3], ['Vie', 4], ['Sáb', 5], ['Dom', 6]];
 
-const EMPTY = { name: '', category: 'tour', description: '', net_price: 0, public_price: 0, unit: 'per_group', image_url: '', status: 'active' };
+const EMPTY = { name: '', category: 'tour', description: '', net_price: 0, public_price: 0, unit: 'per_group', image_url: '', duration_value: 0, duration_unit: 'horas', operating_days: [], includes: [], excludes: [], status: 'active' };
 
 function money(v) { return `$${Number(v || 0).toLocaleString('es-MX', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`; }
 
@@ -36,8 +38,38 @@ export default function Services() {
   const [form, setForm] = useState(EMPTY);
   const [saving, setSaving] = useState(false);
   const [importing, setImporting] = useState(false);
+  const [uploading, setUploading] = useState(false);
   const [report, setReport] = useState(null);
   const fileRef = useRef(null);
+  const imgRef = useRef(null);
+
+  const backend = process.env.REACT_APP_BACKEND_URL || '';
+  const imgSrc = (u) => (u ? (u.startsWith('http') ? u : `${backend}${u}`) : '');
+
+  const uploadImage = async (e) => {
+    const file = e.target.files?.[0];
+    if (file) e.target.value = '';
+    if (!file) return;
+    setError(''); setUploading(true);
+    try {
+      const fd = new FormData();
+      fd.append('file', file);
+      const { data } = await api.post('/packages/upload-image', fd, { headers: { 'Content-Type': 'multipart/form-data' } });
+      setForm((f) => ({ ...f, image_url: data.url }));
+    } catch (err) { setError(formatApiError(err)); }
+    finally { setUploading(false); }
+  };
+
+  const allDays = form.operating_days.length === 0;
+  const toggleDay = (d) => setForm((f) => {
+    const has = f.operating_days.includes(d);
+    return { ...f, operating_days: has ? f.operating_days.filter((x) => x !== d) : [...f.operating_days, d].sort((a, b) => a - b) };
+  });
+  const setAllDays = () => setForm((f) => ({ ...f, operating_days: [] }));
+
+  const updList = (key, i, val) => setForm((f) => ({ ...f, [key]: f[key].map((x, j) => (j === i ? val : x)) }));
+  const addList = (key) => setForm((f) => ({ ...f, [key]: [...f[key], ''] }));
+  const delList = (key, i) => setForm((f) => ({ ...f, [key]: f[key].filter((_, j) => j !== i) }));
 
   const downloadTemplate = async () => {
     try {
@@ -88,14 +120,14 @@ export default function Services() {
   useEffect(() => { load(); }, []);
 
   const openNew = () => { setEditing(null); setForm(EMPTY); setShowForm(true); setError(''); };
-  const openEdit = (svc) => { setEditing(svc.id); setForm({ ...EMPTY, ...svc }); setShowForm(true); setError(''); };
+  const openEdit = (svc) => { setEditing(svc.id); setForm({ ...EMPTY, ...svc, operating_days: svc.operating_days || [], includes: svc.includes || [], excludes: svc.excludes || [] }); setShowForm(true); setError(''); };
 
   const suggestedPublic = form.net_price > 0 ? Math.round((form.net_price / (margin || 0.76)) * 100) / 100 : 0;
 
   const save = async () => {
     setError(''); setSaving(true);
     try {
-      const payload = { ...form, net_price: +form.net_price || 0, public_price: +form.public_price || 0 };
+      const payload = { ...form, net_price: +form.net_price || 0, public_price: +form.public_price || 0, duration_value: +form.duration_value || 0, includes: form.includes.filter((x) => (x || '').trim()), excludes: form.excludes.filter((x) => (x || '').trim()) };
       if (editing) await api.patch(`/services/${editing}`, payload);
       else await api.post('/services', payload);
       setShowForm(false);
@@ -144,7 +176,7 @@ export default function Services() {
           const Icon = cat.icon;
           return (
             <div key={svc.id} className="card-surface p-5 flex flex-col" data-testid={`service-card-${svc.id}`}>
-              {svc.image_url ? <img src={svc.image_url} alt={svc.name} className="h-32 w-full object-cover rounded-lg mb-3 border border-ink-100" onError={(e) => { e.currentTarget.style.display = 'none'; }} /> : null}
+              {svc.image_url ? <img src={imgSrc(svc.image_url)} alt={svc.name} className="h-32 w-full object-cover rounded-lg mb-3 border border-ink-100" onError={(e) => { e.currentTarget.style.display = 'none'; }} /> : null}
               <div className="flex items-start justify-between">
                 <span className="pill bg-brand-50 text-brand-500 inline-flex items-center gap-1.5"><Icon className="w-3.5 h-3.5" /> {cat.label}</span>
                 {isAdmin && (
@@ -201,9 +233,65 @@ export default function Services() {
               </div>
               <div><label className="label-text">Descripción</label>
                 <textarea rows="2" className="input-field" value={form.description} onChange={(e) => setForm((f) => ({ ...f, description: e.target.value }))} data-testid="service-desc-input" /></div>
-              <div><label className="label-text">URL de imagen (opcional)</label>
-                <input className="input-field" placeholder="https://..." value={form.image_url || ''} onChange={(e) => setForm((f) => ({ ...f, image_url: e.target.value }))} data-testid="service-image-input" />
-                {form.image_url ? <img src={form.image_url} alt="" className="mt-2 h-24 w-full object-cover rounded-lg border border-ink-100" onError={(e) => { e.currentTarget.style.display = 'none'; }} /> : null}
+
+              <div><label className="label-text">Imagen de portada</label>
+                <div className="flex items-center gap-3">
+                  <button type="button" className="btn-ghost text-sm" onClick={() => imgRef.current?.click()} disabled={uploading} data-testid="service-image-upload-btn">
+                    {uploading ? <Loader2 className="w-4 h-4 animate-spin" /> : <ImageIcon className="w-4 h-4" />} {uploading ? 'Subiendo…' : 'Subir imagen'}
+                  </button>
+                  {form.image_url && <button type="button" className="text-xs text-red-600 hover:underline" onClick={() => setForm((f) => ({ ...f, image_url: '' }))} data-testid="service-image-remove">Quitar</button>}
+                  <input ref={imgRef} type="file" accept="image/*" className="hidden" onChange={uploadImage} data-testid="service-image-file" />
+                </div>
+                <input className="input-field mt-2" placeholder="o pega una URL https://..." value={form.image_url || ''} onChange={(e) => setForm((f) => ({ ...f, image_url: e.target.value }))} data-testid="service-image-input" />
+                {form.image_url ? <img src={imgSrc(form.image_url)} alt="" className="mt-2 h-24 w-full object-cover rounded-lg border border-ink-100" onError={(e) => { e.currentTarget.style.display = 'none'; }} /> : null}
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div><label className="label-text">Duración</label>
+                  <input type="number" min="0" step="0.5" className="input-field" value={form.duration_value} onChange={(e) => setForm((f) => ({ ...f, duration_value: e.target.value }))} data-testid="service-duration-value" /></div>
+                <div><label className="label-text">Unidad de duración</label>
+                  <select className="input-field" value={form.duration_unit} onChange={(e) => setForm((f) => ({ ...f, duration_unit: e.target.value }))} data-testid="service-duration-unit">
+                    {DUR_UNITS.map((u) => <option key={u.key} value={u.key}>{u.label}</option>)}
+                  </select>
+                </div>
+              </div>
+
+              <div>
+                <label className="label-text">Días de operación</label>
+                <div className="flex flex-wrap gap-2" data-testid="service-operating-days">
+                  <button type="button" onClick={setAllDays} className={`px-3 py-1.5 rounded-full text-sm font-medium border transition-colors ${allDays ? 'border-brand-500 bg-brand-50 text-brand-700' : 'border-ink-100 text-ink-500 hover:border-brand-300'}`} data-testid="service-day-all">Todos los días</button>
+                  {DAYS.map(([label, d]) => (
+                    <button type="button" key={d} onClick={() => toggleDay(d)} className={`px-3 py-1.5 rounded-full text-sm font-medium border transition-colors ${form.operating_days.includes(d) ? 'border-brand-500 bg-brand-50 text-brand-700' : 'border-ink-100 text-ink-500 hover:border-brand-300'}`} data-testid={`service-day-${d}`}>{label}</button>
+                  ))}
+                </div>
+                <p className="text-[11px] text-ink-400 mt-1">Sin selección = disponible todos los días.</p>
+              </div>
+
+              <div className="grid sm:grid-cols-2 gap-4">
+                <div>
+                  <label className="label-text">Incluye</label>
+                  <div className="space-y-2" data-testid="service-includes">
+                    {form.includes.map((x, i) => (
+                      <div key={i} className="flex gap-2">
+                        <input className="input-field" value={x} placeholder="Ej. Transporte" onChange={(e) => updList('includes', i, e.target.value)} data-testid={`service-includes-input-${i}`} />
+                        <button type="button" className="text-red-600 hover:text-red-800 px-1" onClick={() => delList('includes', i)} data-testid={`service-includes-remove-${i}`}><Trash2 className="w-4 h-4" /></button>
+                      </div>
+                    ))}
+                    <button type="button" className="btn-ghost text-xs" onClick={() => addList('includes')} data-testid="service-includes-add"><Plus className="w-4 h-4" /> Agregar</button>
+                  </div>
+                </div>
+                <div>
+                  <label className="label-text">No incluye</label>
+                  <div className="space-y-2" data-testid="service-excludes">
+                    {form.excludes.map((x, i) => (
+                      <div key={i} className="flex gap-2">
+                        <input className="input-field" value={x} placeholder="Ej. Propinas" onChange={(e) => updList('excludes', i, e.target.value)} data-testid={`service-excludes-input-${i}`} />
+                        <button type="button" className="text-red-600 hover:text-red-800 px-1" onClick={() => delList('excludes', i)} data-testid={`service-excludes-remove-${i}`}><Trash2 className="w-4 h-4" /></button>
+                      </div>
+                    ))}
+                    <button type="button" className="btn-ghost text-xs" onClick={() => addList('excludes')} data-testid="service-excludes-add"><Plus className="w-4 h-4" /> Agregar</button>
+                  </div>
+                </div>
               </div>
               <div className="grid grid-cols-2 gap-3">
                 <div><label className="label-text">Precio neto (costo)</label>

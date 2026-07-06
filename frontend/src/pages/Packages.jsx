@@ -24,6 +24,7 @@ export default function Packages() {
   const [slug, setSlug] = useState('');
   const [copiedCode, setCopiedCode] = useState('');
   const [shareCatalog, setShareCatalog] = useState(false);
+  const [shareServices, setShareServices] = useState(false);
   const fileRef = useRef(null);
 
   const load = async () => {
@@ -126,6 +127,9 @@ export default function Packages() {
           <div className="flex flex-wrap items-center gap-2">
             <button className="btn-ghost text-sm" onClick={() => setShareCatalog(true)} disabled={!slug} data-testid="share-catalog-btn">
               <QrCode className="w-4 h-4" /> Compartir catálogo
+            </button>
+            <button className="btn-ghost text-sm" onClick={() => setShareServices(true)} disabled={!slug} data-testid="share-services-btn">
+              <QrCode className="w-4 h-4" /> Compartir servicios
             </button>
             <button className="btn-ghost text-sm" onClick={downloadTemplate} data-testid="download-template-btn">
               <FileSpreadsheet className="w-4 h-4" /> Plantilla Excel
@@ -324,6 +328,8 @@ export default function Packages() {
 
       <ShareCatalogModal open={shareCatalog} onClose={() => setShareCatalog(false)}
         url={slug ? `${window.location.origin}/c/${slug}` : ''} companyName={slug} />
+      <ShareCatalogModal open={shareServices} onClose={() => setShareServices(false)}
+        url={slug ? `${window.location.origin}/c/${slug}/servicios` : ''} companyName={slug} title="Compartir servicios" subtitle="Difunde tu catálogo de servicios (tours, traslados, accesos y extras). Tus clientes podrán ver el detalle y solicitar cotización 24/7." />
     </AppShell>
   );
 }

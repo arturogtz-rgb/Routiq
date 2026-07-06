@@ -1,0 +1,30 @@
+{
+  "summary": "Iter 46 — Catálogo/páginas públicas de servicios: form completo (imagen, duración, días, incluye/excluye), detalle público /s/:slug/:id, lead con etiqueta 'Servicio', 'Compartir servicios' (QR) en /app/packages e 'Imprimir' en paquete público. Backend pytest 12/12 PASS. Frontend Playwright end-to-end PASS: crear servicio → persistir todos los campos al reabrir; 'Todos los días' limpia operating_days (visual+backend); detalle público renderiza imagen, título, descripción, duración '4 horas', 'Todos los días', precio $1,052.63 MXN por grupo, botones Compartir/Imprimir/Quiero este servicio; submit del lead muestra éxito y aparece en /app/leads con pill 'Servicio' + nombre del servicio; modal 'Compartir servicios' contiene URL https://.../c/aventurate/servicios; catálogo público /c/:slug/servicios muestra logo y 6 links 'Ver más' que navegan a /s/:slug/:id; 'Imprimir' existe en /p/:slug/:code. Regresión: /public/company/{slug}, /catalog/export y /packages/upload-image siguen operativos.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {"ui_bugs": [], "integration_issues": [], "design_issues": []},
+  "test_report_links": [
+    "/app/backend/tests/test_iteration46_services_pub_detail.py",
+    "/app/test_reports/pytest/iter46.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "/app/backend/routes/public_package.py L174-195 public_company_services: ahora incluye `id` en cada item (necesario para 'Ver más'). El helper devuelve solo campos públicos (no expone net_price/tenant_id) — correcto.",
+    "/app/backend/routes/public_package.py L198-221 public_company_service_detail: filtra por status!=inactive y por tenant, expone duration_value/duration_unit/operating_days/includes/excludes/public_price. Devuelve 404 para IDs no existentes o inactivos. Bien.",
+    "/app/backend/routes/public_package.py L224-262 request_service: reutiliza PackageRequestInput con honeypot company_website; crea lead con service_id/service_name (no package_id) — Leads.jsx L112-113 detecta service_id para renderizar pill 'Servicio' + service_name. Coherente.",
+    "/app/backend/models.py L300 ServiceDurationUnit Literal['minutos','horas','dias']: consistente con UI DUR_UNITS. operating_days L314 usa 0-6 sin validación de rango — sugerencia menor: agregar Field(ge=0, le=6) en items para rechazar valores fuera de rango, pero UI ya lo restringe.",
+    "/app/frontend/src/pages/PublicService.jsx L64-66: operating_days vacío ⇒ 'Todos los días' (mismo criterio que backend/form). L70-77 encabezado @media print con datos de empresa + hero solo para papel; L80-91 header con logo oculto en print (print:hidden). L94-135 hero+precio+CTA todos con print:hidden. Impresión limpia (sin precios/botones) verificada en el markup — no probé window.print() por policy de headless.",
+    "/app/frontend/src/pages/PublicServices.jsx L80-90: tarjeta ahora es <Link to='/s/:slug/:id'> con data-testid service-pub-card-{key}-{i} y sub-link 'Ver más' con service-pub-more-{key}-{i}. Correcto y navegable.",
+    "/app/frontend/src/pages/Services.jsx L49-61 uploadImage: usa /packages/upload-image y setea image_url con la ruta relativa devuelta por el backend. L63-68 allDays/toggleDay/setAllDays: pulsar 'Todos los días' asigna [] (vacío) que el backend interpreta como todos los días. Cumple la spec.",
+    "/app/frontend/src/pages/Packages.jsx L131-133 share-services-btn + L331-332 ShareCatalogModal con url /c/:slug/servicios y title/subtitle específicos: correcta reutilización del componente.",
+    "/app/frontend/src/pages/Leads.jsx L112-113 y L119: rendering condicional por service_id con pill emerald 'Servicio' + service_name; 'Cotizar' navega a /app/quotations/new?lead={id} (sin package_id). Correcto.",
+    "Sugerencia menor (no bloqueante): PublicService L107-108 muestra 'duración' en el side header pero L149 lo repite dentro del bloque grid. Diseño redundante pero intencional para print (donde el side desaparece por print:hidden). Aceptable."
+  ],
+  "updated_files": ["/app/backend/tests/test_iteration46_services_pub_detail.py (nuevo)"],
+  "success_rate": {"backend": "100% (12/12)", "frontend": "100% (form persistencia+all days, detalle público, lead+etiqueta, share-services, ver más, print-package)"},
+  "test_credentials": "admin@aventurate.mx / Demo2026! (slug=aventurate)",
+  "seed_data_creation": "Tests crearon TEST_iter46 Tour (pytest) y TEST_UI iter46 Tour (Playwright) + 3 leads (test_iter46/test_ui46/test_ui46_v2 @example.com). Todo eliminado (servicios DELETE) o archivado (leads PATCH status=archived). Verificado: 0 servicios TEST_ restantes.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "El backend POST /api/services devuelve 201 (no 200). Endpoint público de detalle: GET /api/public/company/{slug}/service/{id} — expone id, name, description, image_url, duration_value/unit, operating_days, includes/excludes, public_price. POST /api/public/company/{slug}/service/{id}/request crea lead con service_id/service_name (no package_id). ShareCatalogModal se reutiliza para 'Compartir servicios' con props title/subtitle y url apuntando a /c/:slug/servicios; el URL se lee en el <input data-testid=share-catalog-url>, no en text_content. Slug demo = aventurate. Códigos de paquete demo activos: GDL-TEQ-3N, PV-LUX-6N. Al hacer 'window.print()' real, la impresión oculta precios/botones vía Tailwind print:hidden.",
+  "rca of the issue": "N/A — feature 100% funcional en backend y UI. Solo hubo un falso negativo temporal en la verificación del URL del modal de compartir servicios (buscaba texto en body, cuando el URL está en el value de un <input>); resuelto usando page.input_value('[data-testid=share-catalog-url]'). Sin bugs."
+}

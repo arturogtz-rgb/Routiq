@@ -2,7 +2,7 @@ import { useRef, useState } from 'react';
 import { QRCodeCanvas } from 'qrcode.react';
 import { Copy, Check, Download, X, MessageCircle, QrCode } from 'lucide-react';
 
-export const ShareCatalogModal = ({ open, onClose, url, companyName }) => {
+export const ShareCatalogModal = ({ open, onClose, url, companyName, title = 'Compartir catálogo', subtitle = 'Difunde el catálogo completo de tu empresa. Tus clientes verán todos los paquetes activos y podrán solicitar cotización 24/7.' }) => {
   const qrWrapRef = useRef(null);
   const [copied, setCopied] = useState(false);
   if (!open) return null;
@@ -27,10 +27,10 @@ export const ShareCatalogModal = ({ open, onClose, url, companyName }) => {
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-ink-900/50" onClick={onClose}>
       <div className="bg-white rounded-2xl p-6 w-full max-w-md" onClick={(e) => e.stopPropagation()} data-testid="share-catalog-modal">
         <div className="flex items-center justify-between mb-1">
-          <h3 className="font-display text-xl font-semibold text-ink-900 flex items-center gap-2"><QrCode className="w-5 h-5 text-brand-500" /> Compartir catálogo</h3>
+          <h3 className="font-display text-xl font-semibold text-ink-900 flex items-center gap-2"><QrCode className="w-5 h-5 text-brand-500" /> {title}</h3>
           <button onClick={onClose} className="text-ink-400 hover:text-ink-700" data-testid="share-catalog-close"><X className="w-5 h-5" /></button>
         </div>
-        <p className="text-sm text-ink-500 mb-4">Difunde el catálogo completo de tu empresa. Tus clientes verán todos los paquetes activos y podrán solicitar cotización 24/7.</p>
+        <p className="text-sm text-ink-500 mb-4">{subtitle}</p>
 
         <div ref={qrWrapRef} className="flex justify-center bg-cream rounded-2xl py-6">
           <QRCodeCanvas value={url} size={180} level="M" includeMargin marginSize={2} fgColor="#0f2f52" data-testid="share-catalog-qr" />

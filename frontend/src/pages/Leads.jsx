@@ -35,7 +35,7 @@ export default function Leads() {
 
   const waLink = (l) => {
     const phone = (l.phone || '').replace(/[^\d]/g, '');
-    const text = encodeURIComponent(`Hola ${l.name}, gracias por tu interés en "${l.package_name}". Te comparto tu cotización personalizada:`);
+    const text = encodeURIComponent(`Hola ${l.name}, gracias por tu interés en "${l.package_name || l.service_name || ''}". Te comparto tu cotización personalizada:`);
     return `https://wa.me/${phone}?text=${text}`;
   };
 
@@ -109,12 +109,14 @@ export default function Leads() {
                   {l.travel_date && <span className="flex items-center gap-1"><Calendar className="w-3.5 h-3.5" /> {formatDateEs(l.travel_date)}</span>}
                   {l.pax && <span className="flex items-center gap-1"><Users className="w-3.5 h-3.5" /> {l.pax}</span>}
                 </p>
-                <p className="text-sm text-ink-700 mt-2"><span className="pill bg-brand-50 text-brand-500 font-mono text-[10px] mr-2">{l.package_code}</span>{l.package_name}</p>
+                <p className="text-sm text-ink-700 mt-2">{l.service_id
+                  ? <><span className="pill bg-emerald-50 text-emerald-600 text-[10px] mr-2">Servicio</span>{l.service_name}</>
+                  : <><span className="pill bg-brand-50 text-brand-500 font-mono text-[10px] mr-2">{l.package_code}</span>{l.package_name}</>}</p>
                 {l.message && <p className="text-sm text-ink-500 mt-2 italic">“{l.message}”</p>}
                 <p className="text-[11px] text-ink-300 mt-2">{(l.created_at || '').slice(0, 16).replace('T', ' ')}</p>
               </div>
               <div className="flex flex-wrap items-center gap-2 shrink-0">
-                <button onClick={() => navigate(`/app/quotations/new?package=${l.package_id}&lead=${l.id}`)} className="btn-primary text-sm" data-testid={`lead-quote-${l.id}`}>
+                <button onClick={() => navigate(l.service_id ? `/app/quotations/new?lead=${l.id}` : `/app/quotations/new?package=${l.package_id}&lead=${l.id}`)} className="btn-primary text-sm" data-testid={`lead-quote-${l.id}`}>
                   <FileText className="w-4 h-4" /> Crear cotización
                 </button>
                 {l.phone && <a href={waLink(l)} target="_blank" rel="noreferrer" className="btn-secondary text-sm" data-testid={`lead-wa-${l.id}`}><MessageCircle className="w-4 h-4" /> WhatsApp</a>}
