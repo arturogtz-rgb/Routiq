@@ -275,7 +275,7 @@ export default function WhatsAppInbox() {
                 {messages.map((m) => (
                   <div key={m.id} className={`flex ${m.from_me ? 'justify-end' : 'justify-start'}`}>
                     <div className={`max-w-[75%] rounded-2xl px-4 py-2 text-sm ${m.from_me ? 'bg-brand-500 text-white rounded-br-sm' : 'bg-white text-ink-900 border border-ink-100 rounded-bl-sm'}`}>
-                      <p className="whitespace-pre-wrap break-words">{m.text}</p>
+                      <p className="whitespace-pre-wrap break-words">{m.text ? m.text : <span className={`italic ${m.from_me ? 'text-brand-50/70' : 'text-ink-300'}`}>(mensaje sin texto)</span>}</p>
                       <p className={`text-[10px] mt-1 ${m.from_me ? 'text-brand-50/80' : 'text-ink-400'}`}>
                         {m.timestamp ? new Date(m.timestamp).toLocaleString('es-MX', { hour: '2-digit', minute: '2-digit' }) : ''}
                       </p>

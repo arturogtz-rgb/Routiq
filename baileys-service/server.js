@@ -95,11 +95,36 @@ async function startSession(sessionId) {
 
   const { state, saveCreds } = await useMultiFileAuthState(safeDir(sessionId));
   const { version } = await fetchLatestBaileysVersion();
-  const sock = makeWASocket({ version, auth: state, logger, printQRInTerminal: false, syncFullHistory: false });
+  const sock = makeWASocket({ version, auth: state, logger, printQRInTerminal: false, syncFullHistory: true });
   s.sock = sock;
   s.starting = false;
 
   sock.ev.on('creds.update', saveCreds);
+
+  // On (re)connect WhatsApp pushes a history snapshot. Re-forward each message so
+  // the backend can HEAL records previously stored with empty text (matched by
+  // message_id). Only forwards messages that resolve to a non-empty text.
+  sock.ev.on('messaging-history.set', async ({ messages }) => {
+    if (!Array.isArray(messages) || messages.length === 0) return;
+    let healed = 0;
+    for (const m of messages) {
+      const jid = m.key?.remoteJid || '';
+      if (!jid || jid === 'status@broadcast') continue;
+      const text = extractText(m.message);
+      if (!text) continue;
+      await forwardWebhook('message', {
+        session_id: sessionId,
+        chat_id: jid,
+        message_id: m.key?.id || '',
+        from_me: !!m.key?.fromMe,
+        text,
+        push_name: m.pushName || '',
+        timestamp: (m.messageTimestamp ? Number(m.messageTimestamp) : Math.floor(Date.now() / 1000)),
+      });
+      healed++;
+    }
+    logger.warn(`history sync: forwarded ${healed}/${messages.length} messages for ${sessionId}`);
+  });
 
   sock.ev.on('connection.update', async (update) => {
     const { connection, lastDisconnect, qr } = update;

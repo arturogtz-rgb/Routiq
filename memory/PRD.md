@@ -383,3 +383,9 @@ Ver `/app/memory/test_credentials.md`. Seed automático en cada startup.
 - Fix 1 (baileys-service): helper `extractText()` que desenvuelve ephemeral/viewOnce/edited/documentWithCaption y cubre extendedText, captions, botones/listas/reacciones + placeholders para media (📷/🎥/🎙️/📄/📍/👤). Verificado con test unitario node.
 - Fix 2 (backend webhook /whatsapp/webhook): ahora `$set` de text/contact_name cuando llegan no vacíos (fuera de $setOnInsert para evitar conflicto) → sana registros previamente vacíos cuando el mensaje se reenvía (reconexión/entrega offline). Verificado por curl e2e (mensaje vacío → sanado a texto real).
 - IMPORTANTE: el microservicio Baileys se despliega por separado; requiere REDEPLOY del servicio Baileys para que el Fix 1 tome efecto. Mensajes históricos ya guardados vacíos se sanan al reconectar el número.
+
+## [2026-07-07b] WhatsApp Inbox — recuperación de mensajes históricos vacíos
+- Aclaración: el contenido crudo de Baileys NO se guardó en Mongo (solo el texto ya extraído). Por eso NO se puede re-procesar desde Mongo; hay que re-obtener el texto DESDE Baileys.
+- Fix: handler `messaging-history.set` en baileys-service que, al (re)conectar, reenvía el historial reciente con `extractText()`; el webhook `/whatsapp/webhook` sana los registros vacíos por `message_id` ($set text/contact). `syncFullHistory: true`.
+- Frontend: placeholder "(mensaje sin texto)" para burbujas sin texto (claridad hasta que sanen).
+- CRÍTICO: requiere REDEPLOY del microservicio Baileys. Tras redeploy, RECONECTAR el número (o al reconectar automáticamente) dispara el history-set y sana los mensajes visibles. Si solo se redeployó el backend, el fix de extractText nunca tomó efecto (explica que mensajes nuevos tampoco muestren texto).
