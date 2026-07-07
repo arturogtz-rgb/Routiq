@@ -253,16 +253,27 @@ async def whatsapp_webhook(body: dict = Body(...), x_baileys_secret: str | None 
         ts = body.get("timestamp")
         iso = datetime.fromtimestamp(int(ts), tz=timezone.utc).isoformat() if ts else now_iso()
         message_id = body.get("message_id", "") or new_id()
-        doc = {
+        text = body.get("text", "")
+        push = body.get("push_name", "")
+        set_on_insert = {
             "id": new_id(), "tenant_id": tenant_id, "number_id": number_id,
             "chat_id": body.get("chat_id", ""), "message_id": message_id,
-            "from_me": bool(body.get("from_me")), "text": body.get("text", ""),
-            "contact_name": body.get("push_name", ""),
+            "from_me": bool(body.get("from_me")),
             "timestamp": iso, "read": bool(body.get("from_me")), "created_at": now_iso(),
         }
+        # Set text/contact only when present so a re-delivered message can heal
+        # a previously-empty record (kept out of $setOnInsert to avoid conflicts).
+        set_fields = {}
+        if text:
+            set_fields["text"] = text
+        if push:
+            set_fields["contact_name"] = push
+        update = {"$setOnInsert": set_on_insert}
+        if set_fields:
+            update["$set"] = set_fields
         await db.whatsapp_messages.update_one(
             {"tenant_id": tenant_id, "number_id": number_id, "message_id": message_id},
-            {"$setOnInsert": doc}, upsert=True,
+            update, upsert=True,
         )
         return {"ok": True}
 

@@ -377,3 +377,9 @@ Ver `/app/memory/test_credentials.md`. Seed automático en cada startup.
 - Backend: catálogo público de servicios incluye id; nuevos endpoints GET /public/company/{slug}/service/{id} y POST .../request (lead con service_id/service_name).
 - Frontend: nueva página detalle /s/:slug/:id (portada, duración, días, precio, incluye/excluye, botones Quiero/Imprimir[@media print sin precios/botones]/Compartir); "Ver más" en /c/:slug/servicios; form de servicio con subir imagen + duración + días de operación (checkboxes + "Todos los días") + incluye/excluye; botón "Compartir servicios" (QR) en /app/packages; Leads muestra etiqueta "Servicio".
 - NO se tocó precios/cotizador/comisiones. Probado: backend 12/12 pytest, frontend end-to-end 100%.
+
+## [2026-07-07] Fix WhatsApp Inbox — mensajes sin contenido (COMPLETADO ✅)
+- Causa raíz: la extracción de texto en el microservicio Baileys (`baileys-service/server.js`) solo leía conversation/extendedText/caption y NO desenvolvía mensajes contenedor (ephemeralMessage/viewOnce/edited) — muy común en producción con mensajes temporales/desaparecen. Resultado: text="" → burbujas con hora pero sin texto.
+- Fix 1 (baileys-service): helper `extractText()` que desenvuelve ephemeral/viewOnce/edited/documentWithCaption y cubre extendedText, captions, botones/listas/reacciones + placeholders para media (📷/🎥/🎙️/📄/📍/👤). Verificado con test unitario node.
+- Fix 2 (backend webhook /whatsapp/webhook): ahora `$set` de text/contact_name cuando llegan no vacíos (fuera de $setOnInsert para evitar conflicto) → sana registros previamente vacíos cuando el mensaje se reenvía (reconexión/entrega offline). Verificado por curl e2e (mensaje vacío → sanado a texto real).
+- IMPORTANTE: el microservicio Baileys se despliega por separado; requiere REDEPLOY del servicio Baileys para que el Fix 1 tome efecto. Mensajes históricos ya guardados vacíos se sanan al reconectar el número.

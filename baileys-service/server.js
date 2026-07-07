@@ -33,6 +33,48 @@ function safeDir(sessionId) {
   return `${AUTH_DIR}/${sessionId.replace(/[^a-zA-Z0-9_-]/g, '_')}`;
 }
 
+// Robust text extraction. Unwraps ephemeral / view-once / edited wrappers and
+// covers the common message subtypes; falls back to a media placeholder so the
+// bubble never renders empty in the inbox.
+function extractText(message) {
+  let msg = message || {};
+  // Unwrap container messages (disappearing / view-once / edited / doc+caption).
+  for (let i = 0; i < 5; i++) {
+    const inner =
+      msg.ephemeralMessage?.message ||
+      msg.viewOnceMessage?.message ||
+      msg.viewOnceMessageV2?.message ||
+      msg.viewOnceMessageV2Extension?.message ||
+      msg.documentWithCaptionMessage?.message ||
+      msg.editedMessage?.message ||
+      msg.protocolMessage?.editedMessage;
+    if (inner) { msg = inner; continue; }
+    break;
+  }
+  const text =
+    msg.conversation ||
+    msg.extendedTextMessage?.text ||
+    msg.imageMessage?.caption ||
+    msg.videoMessage?.caption ||
+    msg.documentMessage?.caption ||
+    msg.documentMessage?.fileName ||
+    msg.buttonsResponseMessage?.selectedDisplayText ||
+    msg.templateButtonReplyMessage?.selectedDisplayText ||
+    msg.listResponseMessage?.title ||
+    msg.reactionMessage?.text ||
+    '';
+  if (text) return text;
+  // Media / special messages without text → placeholder label.
+  if (msg.imageMessage) return '📷 Imagen';
+  if (msg.videoMessage) return '🎥 Video';
+  if (msg.audioMessage || msg.pttMessage) return '🎙️ Mensaje de voz';
+  if (msg.documentMessage) return '📄 Documento';
+  if (msg.stickerMessage) return '🄰 Sticker';
+  if (msg.locationMessage || msg.liveLocationMessage) return '📍 Ubicación';
+  if (msg.contactMessage || msg.contactsArrayMessage) return '👤 Contacto';
+  return '';
+}
+
 async function forwardWebhook(event, body) {
   if (!WEBHOOK_URL) return;
   try {
@@ -86,11 +128,7 @@ async function startSession(sessionId) {
     for (const m of messages) {
       const jid = m.key?.remoteJid || '';
       if (jid === 'status@broadcast') continue;
-      const text =
-        m.message?.conversation ||
-        m.message?.extendedTextMessage?.text ||
-        m.message?.imageMessage?.caption ||
-        m.message?.videoMessage?.caption || '';
+      const text = extractText(m.message);
       await forwardWebhook('message', {
         session_id: sessionId,
         chat_id: jid,
