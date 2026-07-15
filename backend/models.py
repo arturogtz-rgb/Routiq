@@ -315,6 +315,7 @@ class ServiceCreate(BaseModel):
     operating_days: List[int] = []  # 0=Lun .. 6=Dom; vacío => todos los días
     includes: List[str] = []
     excludes: List[str] = []
+    is_private: bool = False  # oculto del catálogo público; visible solo en el buscador interno al cotizar
     status: str = "active"
 
 
@@ -332,6 +333,7 @@ class ServiceUpdate(BaseModel):
     operating_days: Optional[List[int]] = None
     includes: Optional[List[str]] = None
     excludes: Optional[List[str]] = None
+    is_private: Optional[bool] = None
     status: Optional[str] = None
 
 

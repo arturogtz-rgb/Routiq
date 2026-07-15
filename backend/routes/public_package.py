@@ -179,7 +179,7 @@ async def public_company_services(slug: str):
     if not company or company.get("status") == "suspended":
         raise HTTPException(status_code=404, detail="Empresa no encontrada")
     services = await db.services.find(
-        {"tenant_id": company["id"], "status": {"$ne": "inactive"}}, {"_id": 0}
+        {"tenant_id": company["id"], "status": {"$ne": "inactive"}, "is_private": {"$ne": True}}, {"_id": 0}
     ).sort("name", 1).to_list(1000)
     cur = company.get("base_currency", "MXN")
     groups = []
@@ -203,7 +203,7 @@ async def public_company_service_detail(slug: str, service_id: str):
     if not company or company.get("status") == "suspended":
         raise HTTPException(status_code=404, detail="Empresa no encontrada")
     s = await db.services.find_one(
-        {"tenant_id": company["id"], "id": service_id, "status": {"$ne": "inactive"}}, {"_id": 0})
+        {"tenant_id": company["id"], "id": service_id, "status": {"$ne": "inactive"}, "is_private": {"$ne": True}}, {"_id": 0})
     if not s:
         raise HTTPException(status_code=404, detail="Servicio no disponible")
     return {
@@ -231,7 +231,7 @@ async def request_service(slug: str, service_id: str, payload: PackageRequestInp
     company = await db.companies.find_one({"slug": slug}, {"_id": 0})
     if not company:
         raise HTTPException(status_code=404, detail="Empresa no encontrada")
-    s = await db.services.find_one({"tenant_id": company["id"], "id": service_id}, {"_id": 0})
+    s = await db.services.find_one({"tenant_id": company["id"], "id": service_id, "is_private": {"$ne": True}}, {"_id": 0})
     if not s:
         raise HTTPException(status_code=404, detail="Servicio no disponible")
     lead = {

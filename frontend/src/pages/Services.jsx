@@ -22,7 +22,7 @@ const UNIT_ES = { per_person: 'por persona', per_group: 'por grupo', per_day: 'p
 const DUR_UNITS = [{ key: 'minutos', label: 'Minutos' }, { key: 'horas', label: 'Horas' }, { key: 'dias', label: 'Días' }];
 const DAYS = [['Lun', 0], ['Mar', 1], ['Mié', 2], ['Jue', 3], ['Vie', 4], ['Sáb', 5], ['Dom', 6]];
 
-const EMPTY = { name: '', category: 'tour', description: '', net_price: 0, public_price: 0, unit: 'per_group', image_url: '', duration_value: 0, duration_unit: 'horas', operating_days: [], includes: [], excludes: [], status: 'active' };
+const EMPTY = { name: '', category: 'tour', description: '', net_price: 0, public_price: 0, unit: 'per_group', image_url: '', duration_value: 0, duration_unit: 'horas', operating_days: [], includes: [], excludes: [], is_private: false, status: 'active' };
 
 function money(v) { return `$${Number(v || 0).toLocaleString('es-MX', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`; }
 
@@ -186,7 +186,9 @@ export default function Services() {
                   </div>
                 )}
               </div>
-              <h3 className="font-display font-semibold text-ink-900 mt-3">{svc.name}</h3>
+              <h3 className="font-display font-semibold text-ink-900 mt-3">{svc.name}
+                {svc.is_private && <span className="ml-2 pill bg-ink-100 text-ink-600 text-[10px] align-middle" data-testid={`service-private-badge-${svc.id}`}>Privado</span>}
+              </h3>
               {svc.description && <p className="text-sm text-ink-500 mt-1 flex-1">{svc.description}</p>}
               <div className="mt-4 pt-3 border-t border-ink-100 flex items-end justify-between">
                 <div>
@@ -266,6 +268,14 @@ export default function Services() {
                 </div>
                 <p className="text-[11px] text-ink-400 mt-1">Sin selección = disponible todos los días.</p>
               </div>
+
+              <label className="flex items-center gap-3 rounded-xl border border-ink-100 p-3 cursor-pointer" data-testid="service-private-toggle">
+                <input type="checkbox" className="w-4 h-4 accent-brand-500" checked={!!form.is_private} onChange={(e) => setForm((f) => ({ ...f, is_private: e.target.checked }))} data-testid="service-private-checkbox" />
+                <span>
+                  <span className="block text-sm font-medium text-ink-900">Servicio privado</span>
+                  <span className="block text-[11px] text-ink-400">No aparece en el catálogo público; sí está disponible al cotizar internamente.</span>
+                </span>
+              </label>
 
               <div className="grid sm:grid-cols-2 gap-4">
                 <div>

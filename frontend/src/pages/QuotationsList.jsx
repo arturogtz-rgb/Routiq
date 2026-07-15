@@ -66,6 +66,18 @@ export default function QuotationsList() {
         </button>
       </div>
 
+      {onlyPaid && (
+        <div className="card-surface mb-6 px-6 py-4 flex items-center justify-between bg-emerald-50 border border-emerald-200" data-testid="paid-revenue-kpi">
+          <div>
+            <p className="text-xs uppercase tracking-widest font-bold text-emerald-700">Ingresos confirmados</p>
+            <p className="text-ink-500 text-sm">{filtered.length} reserva(s) pagada(s)</p>
+          </div>
+          <p className="font-display text-3xl font-bold text-emerald-700" data-testid="paid-revenue-total">
+            {money(filtered.reduce((sum, x) => sum + (Number(x.amount_paid) || 0), 0), filtered[0]?.currency || 'MXN')}
+          </p>
+        </div>
+      )}
+
       <div className="card-surface overflow-hidden" data-testid="quotations-table">
         <div className="hidden md:grid grid-cols-12 px-6 py-3 border-b border-ink-100 text-xs uppercase tracking-widest font-bold text-ink-400">
           <div className="col-span-2">Código</div><div className="col-span-2">Cliente</div>
