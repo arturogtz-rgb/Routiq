@@ -389,3 +389,13 @@ Ver `/app/memory/test_credentials.md`. Seed automático en cada startup.
 - Fix: handler `messaging-history.set` en baileys-service que, al (re)conectar, reenvía el historial reciente con `extractText()`; el webhook `/whatsapp/webhook` sana los registros vacíos por `message_id` ($set text/contact). `syncFullHistory: true`.
 - Frontend: placeholder "(mensaje sin texto)" para burbujas sin texto (claridad hasta que sanen).
 - CRÍTICO: requiere REDEPLOY del microservicio Baileys. Tras redeploy, RECONECTAR el número (o al reconectar automáticamente) dispara el history-set y sana los mensajes visibles. Si solo se redeployó el backend, el fix de extractText nunca tomó efecto (explica que mensajes nuevos tampoco muestren texto).
+
+## [2026-07-15] Lote A — Quick wins (COMPLETADO ✅, iter_47)
+- 2.1 Lista de cotizaciones: columnas "Cliente final" (contacts.traveler) y "Agente" (created_by→nombre, resuelto en backend list/get); paquete como subtítulo bajo el cliente.
+- 2.2 Estado "Ganada" con pill dorado/ámbar (bg-amber-400) distinto del verde.
+- 5.2 botón "Siguiente" arriba + 5.3 filtro por categoría — SOLO en Servicios a la carta (Paquete armado intacto, verificado).
+- 6.1 Detalle: "Ejecutivo: <nombre> · Elaborada el <fecha>".
+- 9.2 Encabezados de columna en editor de Servicios confirmados.
+- 10.1 layout del título del PDF de Confirmación (sin encimarse); 10.2 título de sección dinámico por tipo; 10.3 condiciones como enlace clickeable (no texto completo).
+- 9.1 verificado (no desarrollo): backend exige estado 'ganada' para guardar confirmación.
+- Probado: backend 5/5, frontend 7/7. Sin tocar precios ni Paquete armado.
