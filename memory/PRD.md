@@ -399,3 +399,13 @@ Ver `/app/memory/test_credentials.md`. Seed automático en cada startup.
 - 10.1 layout del título del PDF de Confirmación (sin encimarse); 10.2 título de sección dinámico por tipo; 10.3 condiciones como enlace clickeable (no texto completo).
 - 9.1 verificado (no desarrollo): backend exige estado 'ganada' para guardar confirmación.
 - Probado: backend 5/5, frontend 7/7. Sin tocar precios ni Paquete armado.
+
+## [2026-07-15] Lote B + dorado Kanban (COMPLETADO ✅, iter_48)
+- Dashboard: pill "Ganada" dorado/ámbar (consistente con lista).
+- H1/10.4: ejecutivo real en Confirmación de Reserva = usuario que la elaboró (created_by→users). PDF y prefill muestran nombre del ejecutivo + empresa (tenant) + correo del ejecutivo (no contacto de agencia). Inyectado en _ctx_for_confirmation para sanar confirmaciones previas.
+- 2.3/2.4: toggle "Reservas pagadas" (payment_status='paid') + badge "Pagado" en filas.
+- 3.1: pago manual con selector de método (transfer/cash/card/other) y fecha editable → paid_at persistido.
+- 4.2: agregar ejecutivo al vuelo en nueva cotización (clientes no-directo), persistido vía PATCH /clients.
+- 7.1: PDF de cotización muestra nombre del paquete en "Detalles de la reservación" y en desglose/conceptos.
+- H2: solo logging mejorado del captcha Turnstile (diagnóstico hostname-mismatch / invalid-secret / token vencido). El ajuste de dominio/secret se hace en el panel de Cloudflare (dominio prod: routiq.com.mx).
+- Probado: backend 8/8, frontend 6/6. Precios y Paquete armado intactos.
