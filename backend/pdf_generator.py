@@ -600,13 +600,13 @@ def generate_booking_confirmation_pdf(company: dict, quotation: dict, confirmati
         f"{_xml_escape(company.get('contact_phone',''))}<br/>{_xml_escape(company.get('contact_email',''))}<br/>{_xml_escape(company.get('address',''))}</font>",
         s["body"])
     title_text = Paragraph(
-        f"<b><font color='#185FA5' size=15>CONFIRMACIÓN DE RESERVA</font></b><br/><font size=10>{_xml_escape(confirmation.get('code',''))}</font>"
+        f"<b><font color='#185FA5' size=13>CONFIRMACIÓN DE RESERVA</font></b><br/><font size=10>{_xml_escape(confirmation.get('code',''))}</font>"
         f"<br/><font size=8.5 color='#475569'>{_fmt_date(confirmation.get('created_at',''))}</font>",
         s["body"])
     if logo_cell:
-        header = Table([[logo_cell, company_text, title_text]], colWidths=[3.5 * cm, 9.0 * cm, 5.5 * cm])
+        header = Table([[logo_cell, company_text, title_text]], colWidths=[3.0 * cm, 8.4 * cm, 6.1 * cm])
     else:
-        header = Table([[company_text, title_text]], colWidths=[12.0 * cm, 6.0 * cm])
+        header = Table([[company_text, title_text]], colWidths=[11.0 * cm, 7.0 * cm])
     header.setStyle(TableStyle([
         ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
         ("ALIGN", (-1, 0), (-1, 0), "RIGHT"),
@@ -633,7 +633,14 @@ def generate_booking_confirmation_pdf(company: dict, quotation: dict, confirmati
 
     services = confirmation.get("services") or []
     if services:
-        story.append(Paragraph("Servicios confirmados", s["h2"]))
+        qtype = quotation.get("type", "paquete")
+        if qtype == "servicios":
+            sec_label = "Servicios a la carta"
+        elif qtype == "personalizado":
+            sec_label = quotation.get("custom_title") or "Programa personalizado"
+        else:
+            sec_label = (quotation.get("package_snapshot") or {}).get("name") or "Paquete"
+        story.append(Paragraph(f"Servicios confirmados · {_xml_escape(sec_label)}", s["h2"]))
         rows = [[x.get("date", ""), x.get("service", ""), x.get("details", ""), x.get("persons", ""), x.get("observations", "")] for x in services]
         story.append(_grid_table(["Fecha", "Servicio", "Detalles", "Pers.", "Observaciones"], rows, [2.3, 3.5, 4.2, 1.4, 5.0]))
         story.append(Spacer(1, 10))
@@ -689,17 +696,15 @@ def generate_booking_confirmation_pdf(company: dict, quotation: dict, confirmati
         story.append(Paragraph("<i>También puedes pagar con tarjeta de crédito/débito de forma segura; solicita el enlace de pago a tu ejecutivo.</i>", s["soft"]))
         story.append(Spacer(1, 8))
 
-    # Políticas de cancelación + condiciones generales (completas)
-    gen = (company.get("general_conditions") or "").strip()
-    pol = (company.get("cancellation_policy") or "").strip()
-    if gen:
-        story.append(Paragraph("Condiciones generales", s["h2"]))
-        for fl in _richtext_flowables(gen, s):
-            story.append(fl)
-    if pol:
-        story.append(Paragraph("Políticas de cancelación", s["h2"]))
-        for fl in _richtext_flowables(pol, s):
-            story.append(fl)
+    # Enlace clickeable a condiciones generales y políticas de cancelación (en vez del texto completo)
+    slug = company.get("slug", "")
+    if (company.get("general_conditions") or company.get("cancellation_policy")) and slug:
+        cond_url = f"{base_url}/c/{slug}/condiciones" if base_url else f"https://routiq.com.mx/c/{slug}/condiciones"
+        story.append(Spacer(1, 6))
+        story.append(Paragraph(
+            f'<a href="{cond_url}"><font color="#185FA5"><u>Consultar condiciones generales y políticas de cancelación</u></font></a>',
+            s["soft"],
+        ))
 
     if not company.get("white_label"):
         story.append(Spacer(1, 14))

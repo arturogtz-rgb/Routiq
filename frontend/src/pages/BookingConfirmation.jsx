@@ -164,6 +164,16 @@ export default function BookingConfirmation() {
             <button onClick={() => addRow('services', EMPTY_SVC)} className="btn-ghost text-sm" data-testid="add-service-row"><Plus className="w-4 h-4" /> Fila</button>
           </div>
           <div className="space-y-3">
+            {form.services.length > 0 && (
+              <div className="hidden md:grid grid-cols-12 gap-2 px-1 text-xs uppercase tracking-widest font-bold text-ink-400" data-testid="service-row-headers">
+                <div className="col-span-2">Fecha</div>
+                <div className="col-span-3">Servicio</div>
+                <div className="col-span-3">Detalles</div>
+                <div className="col-span-1">Pers.</div>
+                <div className="col-span-2">Observaciones</div>
+                <div className="col-span-1"></div>
+              </div>
+            )}
             {form.services.map((r, i) => (
               <div key={i} className="grid md:grid-cols-12 gap-2 items-start" data-testid={`service-row-${i}`}>
                 <input className="input-field md:col-span-2" placeholder="Fecha" value={r.date} onChange={(e) => updRow('services', i, { date: e.target.value })} data-testid={`svc-date-${i}`} />

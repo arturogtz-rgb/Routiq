@@ -59,8 +59,15 @@ async def list_quotations(state: str | None = None, archived: bool = False, user
     if state:
         q["state"] = state
     items = await db.quotations.find(q, {"_id": 0}).sort("created_at", -1).to_list(500)
+    # Resolve the elaborating executive (created_by) -> display name for the list.
+    uids = list({it.get("created_by") for it in items if it.get("created_by")})
+    umap = {}
+    if uids:
+        async for u in db.users.find({"id": {"$in": uids}}, {"_id": 0, "id": 1, "name": 1, "email": 1}):
+            umap[u["id"]] = u.get("name") or u.get("email") or ""
     now = datetime.now(timezone.utc)
     for it in items:
+        it["agent_name"] = umap.get(it.get("created_by"), "")
         try:
             last = datetime.fromisoformat(it.get("last_activity_at", it.get("created_at")))
             it["days_idle"] = (now - last).days
@@ -75,6 +82,12 @@ async def get_quotation(quotation_id: str, user: dict = Depends(require_tenant))
     q = await db.quotations.find_one({"id": quotation_id, "tenant_id": user["tenant_id"]}, {"_id": 0})
     if not q:
         raise HTTPException(status_code=404, detail="Cotización no encontrada")
+    # Resolve elaborating executive (created_by) -> name/email for display.
+    if q.get("created_by"):
+        u = await db.users.find_one({"id": q["created_by"]}, {"_id": 0, "name": 1, "email": 1})
+        if u:
+            q["agent_name"] = u.get("name") or u.get("email") or ""
+            q["agent_email"] = u.get("email") or ""
     return q
 
 

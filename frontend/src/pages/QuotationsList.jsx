@@ -11,7 +11,7 @@ const STATE_LABELS = {
 const STATE_TONES = {
   nueva_consulta: 'bg-ink-100 text-ink-700', cotizando: 'bg-brand-50 text-brand-500',
   enviada: 'bg-blue-100 text-blue-700', negociacion: 'bg-peach-100 text-amber-800',
-  ganada: 'bg-mint-100 text-emerald-700', perdida: 'bg-red-100 text-red-700',
+  ganada: 'bg-amber-400 text-amber-950 ring-1 ring-amber-500 font-bold', perdida: 'bg-red-100 text-red-700',
 };
 function money(v, c = 'MXN') { return `$${Number(v || 0).toLocaleString('es-MX')} ${c}`; }
 
@@ -63,8 +63,9 @@ export default function QuotationsList() {
 
       <div className="card-surface overflow-hidden" data-testid="quotations-table">
         <div className="hidden md:grid grid-cols-12 px-6 py-3 border-b border-ink-100 text-xs uppercase tracking-widest font-bold text-ink-400">
-          <div className="col-span-2">Código</div><div className="col-span-3">Cliente</div>
-          <div className="col-span-3">Paquete</div><div className="col-span-2">Estado</div>
+          <div className="col-span-2">Código</div><div className="col-span-2">Cliente</div>
+          <div className="col-span-2">Cliente final</div><div className="col-span-2">Agente</div>
+          <div className="col-span-2">Estado</div>
           <div className="col-span-2 text-right">Total</div>
         </div>
         {filtered.map((x) => (
@@ -72,8 +73,12 @@ export default function QuotationsList() {
             data-testid={`row-${x.code}`}
             className="grid grid-cols-12 gap-2 px-6 py-4 border-b border-ink-100 last:border-0 hover:bg-brand-50/40 transition-colors">
             <div className="col-span-12 md:col-span-2 font-mono text-sm text-brand-500 font-semibold">{x.code}</div>
-            <div className="col-span-6 md:col-span-3 text-sm text-ink-900 font-medium">{x.client_snapshot?.name}</div>
-            <div className="col-span-6 md:col-span-3 text-sm text-ink-500 truncate">{x.package_snapshot?.name || 'Servicios a la carta'}</div>
+            <div className="col-span-6 md:col-span-2 text-sm text-ink-900 font-medium">
+              {x.client_snapshot?.name}
+              <span className="block text-xs text-ink-400 font-normal truncate">{x.package_snapshot?.name || 'Servicios a la carta'}</span>
+            </div>
+            <div className="col-span-6 md:col-span-2 text-sm text-ink-700 truncate" data-testid={`row-traveler-${x.code}`}>{x.contacts?.traveler?.name || '—'}</div>
+            <div className="col-span-6 md:col-span-2 text-sm text-ink-500 truncate" data-testid={`row-agent-${x.code}`}>{x.agent_name || '—'}</div>
             <div className="col-span-6 md:col-span-2"><span className={`pill ${STATE_TONES[x.state]}`}>{STATE_LABELS[x.state]}</span></div>
             <div className="col-span-6 md:col-span-2 md:text-right font-display font-semibold text-ink-900">{money(x.total, x.currency)}</div>
           </Link>

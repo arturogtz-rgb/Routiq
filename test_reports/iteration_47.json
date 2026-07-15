@@ -1,0 +1,32 @@
+{
+  "summary": "Iter 47 — Lote A (UI + PDF confirmación): 2.1 columnas 'Cliente final' + 'Agente' con paquete como subtítulo bajo el cliente en /app/quotations; 2.2 pill 'Ganada' con bg-amber-400 (dorado) + ring-amber-500 font-bold; 6.1 detalle muestra 'Ejecutivo: <nombre> · Elaborada el <fecha>'; 5.2 botón Siguiente arriba (builder-next-top) SOLO en flujo 'Servicios a la carta'; 5.3 filtro por categoría (todos/acceso/extra/tour/traslado) con activación visual (bg-brand-50) y filtrado funcional; 9.2 encabezados de columna en editor de Servicios confirmados con Fecha/Servicio/Detalles/Pers./Observaciones; 9.1 backend exige estado 'ganada' para POST booking-confirmation (400 si no); 10.1 título 'CONFIRMACIÓN DE RESERVA' en columna derecha del header con separación x>=108pt del nombre de empresa (sin encimarse); 10.2 título de sección dinámico 'Servicios confirmados · <nombre paquete|Servicios a la carta|Programa personalizado>'; 10.3 enlace clickeable 'Consultar condiciones generales y políticas de cancelación' apuntando a /c/<slug>/condiciones (verificado con annotation URI). Regresión Paquete armado: sin filter ni top-next. Backend pytest 5/5 PASS. Frontend Playwright PASS en 7 casos.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {"ui_bugs": [], "integration_issues": [], "design_issues": []},
+  "test_report_links": [
+    "/app/backend/tests/test_iteration47_lote_a_ui.py",
+    "/app/test_reports/pytest/iter47.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "/app/backend/routes/quotations.py L61-76 list_quotations: agrega agent_name resolviendo created_by→users (una sola query batch con $in). Correcto y eficiente. También calcula days_idle. Nota menor: si created_by es None (cotización huérfana), agent_name queda '' — el UI ya lo maneja con '—'.",
+    "/app/backend/routes/quotations.py L86-91 get_quotation: enriquece con agent_name y agent_email desde users. Bien; usar name || email como fallback.",
+    "/app/backend/routes/booking.py L106-107: validación de estado 'ganada' devuelve 400 con mensaje en español. Correcto para 9.1. GET (L36-96) devuelve borrador prellenado (_prefill=True) con contactos + hospedaje + servicios inferidos del paquete.",
+    "/app/backend/pdf_generator.py L602-609 generate_booking_confirmation_pdf: header table con 3 columnas (logo|company|title) o 2 (company|title). Título usa font-size 13pt en columna de 6.1cm (con logo) o 7cm (sin) — 'CONFIRMACIÓN DE RESERVA' entra en 2 líneas por espacio de la columna, sin encimarse con el nombre de empresa (verificado: company termina en x=272 y título arranca en x=381, gap ~1.5in). Layout OK (10.1).",
+    "/app/backend/pdf_generator.py L634-643 sec_label dinámico por quotation.type: servicios→'Servicios a la carta', personalizado→custom_title||'Programa personalizado', paquete→package_snapshot.name||'Paquete'. Cumple 10.2. Extraído del PDF: 'Servicios confirmados · Guadalajara Clásica + Tequila 4 días'.",
+    "/app/backend/pdf_generator.py L699-707 enlace de condiciones: usa <a href> con base_url dinámico y slug del company; incluye annotation URI verificada en pdfplumber. Cumple 10.3.",
+    "/app/frontend/src/pages/QuotationsList.jsx L14 STATE_TONES.ganada='bg-amber-400 text-amber-950 ring-1 ring-amber-500 font-bold': dorado claramente distinguible del verde (bg-mint-100/emerald). Cumple 2.2. L65-70 headers de tabla ('Cliente final' + 'Agente') visibles solo en md:grid.",
+    "/app/frontend/src/pages/QuotationsList.jsx L76-81: paquete como subtítulo bajo Cliente ('Servicios a la carta' cuando no hay package_snapshot.name). Data-testids row-traveler-{code} y row-agent-{code}. Correcto.",
+    "/app/frontend/src/pages/QuotationDetail.jsx L263: line 'Ejecutivo: <bold>{q.agent_name || —}</bold> · Elaborada el {formatDateEs(created_at)}' con data-testid quotation-agent-date. Cumple 6.1.",
+    "/app/frontend/src/pages/QuotationBuilder.jsx L820-860: paso 'servicios' (solo aparece cuando type='servicios') incluye builder-next-top en el header del paso + servicios-cat-filter con chips por categoría. renderServicesGrid(list) parametrizado para recibir la lista filtrada. Cumple 5.2/5.3.",
+    "/app/frontend/src/pages/BookingConfirmation.jsx L167-176: header row grid-cols-12 hidden md:grid con data-testid service-row-headers. Alineación perfecta con las filas de servicio (mismo grid). Cumple 9.2.",
+    "Nota sin acción: BookingConfirmation.jsx expone 'Servicios confirmados' fijo (no dinámico como el PDF). Esto es aceptable en UI porque es el editor; el título dinámico solo debe aparecer en el PDF final. Si en el futuro se quiere consistencia, agregar `· ${sec_label}` al h2 sería fácil."
+  ],
+  "updated_files": ["/app/backend/tests/test_iteration47_lote_a_ui.py (nuevo)"],
+  "success_rate": {"backend": "100% (5/5)", "frontend": "100% (7/7 casos: 2.1 cols+data, 2.2 pill dorado, 6.1 ejecutivo+fecha, 5.2 next-top, 5.3 filtro+categorías, 9.2 headers, regresión Paquete)"},
+  "test_credentials": "admin@aventurate.mx / Demo2026!",
+  "seed_data_creation": "El test PDF puede transicionar temporalmente una cotización a 'ganada' y la revierte al final. En este entorno ya existían 2 cotizaciones 'ganada' (COT-2026056, COT-2026006) así que no hubo transición temporal ni datos nuevos creados. Guardó una booking_confirmation para COT-2026056 (idempotente: si ya existía, hace update).",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Confirmación de Reserva: POST /api/quotations/{id}/booking-confirmation → 400 si state != 'ganada'; GET devuelve borrador con _prefill=True. PDF en GET /api/booking-confirmations/{conf_id}/pdf. Enlace de condiciones en el PDF requiere company.slug (aventurate); annotation URI verificable con pdfplumber page.annots. STATE_TONES.ganada usa bg-amber-400 (dorado); el resto de estados usa tonos brand/blue/peach/mint/red. En QuotationBuilder, el paso 'servicios' solo existe cuando type='servicios' (Servicios a la carta); Paquete armado usa step 'services' (extras) sin filtro. Categorías del catálogo demo: acceso/extra/tour/traslado. 'Todos' es la etiqueta 'Todas' en UI.",
+  "rca of the issue": "N/A — todos los aceptance criteria del Lote A pasaron backend (5/5 pytest) y frontend (Playwright end-to-end). PDF verificado con pdfplumber (texto + hyperlink annotations)."
+}

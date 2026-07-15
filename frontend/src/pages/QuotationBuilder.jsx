@@ -25,6 +25,7 @@ export default function QuotationBuilder() {
   const editing = !!id;
   const [search] = useSearchParams();
   const [step, setStep] = useState(0);
+  const [svcCat, setSvcCat] = useState('todos');
   const [clients, setClients] = useState([]);
   const [packages, setPackages] = useState([]);
   const [services, setServices] = useState([]);
@@ -384,12 +385,12 @@ export default function QuotationBuilder() {
     finally { setLoading(false); }
   };
 
-  const renderServicesGrid = () => (
+  const renderServicesGrid = (list = services) => (
     services.length === 0 ? (
       <p className="text-ink-400 text-sm italic">No hay servicios en el catálogo. Pídele a un admin que los cree en la sección Servicios.</p>
     ) : (
       <div className="grid md:grid-cols-2 gap-3">
-        {services.map((svc) => {
+        {list.map((svc) => {
           const selected = isServiceSelected(svc.id);
           const sel = (form.services || []).find((s) => s.service_id === svc.id);
           return (
@@ -818,9 +819,14 @@ export default function QuotationBuilder() {
         {/* Step: Servicios (servicios-only flow) */}
         {cur === 'servicios' && (
           <div className="space-y-5" data-testid="step-servicios-panel">
-            <div>
-              <h2 className="font-display text-xl font-semibold text-ink-900">Servicios y personas</h2>
-              <p className="text-ink-500 text-sm mt-1">Cotiza tours, traslados y extras sin paquete base. Indica el número de personas.</p>
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <h2 className="font-display text-xl font-semibold text-ink-900">Servicios y personas</h2>
+                <p className="text-ink-500 text-sm mt-1">Cotiza tours, traslados y extras sin paquete base. Indica el número de personas.</p>
+              </div>
+              <button disabled={!canNext()} onClick={() => setStep((s) => s + 1)} className="btn-primary shrink-0" data-testid="builder-next-top">
+                Siguiente <ArrowRight className="w-4 h-4" />
+              </button>
             </div>
             <div className="grid md:grid-cols-3 gap-4">
               <div><label className="label-text">Número de personas</label>
@@ -831,7 +837,16 @@ export default function QuotationBuilder() {
               <div><label className="label-text">Fecha fin (opcional)</label>
                 <input type="date" className="input-field" value={form.dates.end} onChange={(e) => setForm((f) => ({ ...f, dates: { ...f.dates, end: e.target.value } }))} data-testid="servicios-date-end" /></div>
             </div>
-            {renderServicesGrid()}
+            {services.length > 0 && (
+              <div className="flex flex-wrap gap-2" data-testid="servicios-cat-filter">
+                {['todos', ...Array.from(new Set(services.map((s) => s.category)))].map((c) => (
+                  <button key={c} type="button" onClick={() => setSvcCat(c)}
+                    className={`px-3 py-1.5 rounded-full text-sm font-medium border capitalize transition-colors ${svcCat === c ? 'border-brand-500 bg-brand-50 text-brand-700' : 'border-ink-100 text-ink-500 hover:border-brand-300'}`}
+                    data-testid={`servicios-cat-${c}`}>{c === 'todos' ? 'Todas' : c}</button>
+                ))}
+              </div>
+            )}
+            {renderServicesGrid(svcCat === 'todos' ? services : services.filter((s) => s.category === svcCat))}
             {servicesSubtotal > 0 && (
               <div className="rounded-xl bg-mint-100 text-emerald-800 px-4 py-3 text-sm font-medium" data-testid="services-subtotal">
                 Servicios seleccionados: {money(servicesSubtotal)}

@@ -260,6 +260,7 @@ export default function QuotationDetail() {
           </p>
           <h1 className="font-display text-3xl font-semibold text-ink-900 mt-1">{q.package_snapshot?.name || 'Servicios a la carta'}</h1>
           <p className="text-ink-500 mt-1">Cliente: <span className="text-ink-900 font-medium">{q.client_snapshot?.name}</span></p>
+          <p className="text-ink-500 mt-0.5 text-sm" data-testid="quotation-agent-date">Ejecutivo: <span className="text-ink-900 font-medium">{q.agent_name || '—'}</span> · Elaborada el {formatDateEs(q.created_at)}</p>
         </div>
         <div className="flex flex-wrap gap-2">
           <button onClick={() => navigate(q.type === 'personalizado' ? `/app/quotations/custom/${id}/edit` : `/app/quotations/${id}/edit`)} className="btn-secondary text-sm" data-testid="edit-quotation-btn">
