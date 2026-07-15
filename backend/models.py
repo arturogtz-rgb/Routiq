@@ -196,6 +196,7 @@ class ManualPaymentInput(BaseModel):
     amount: float = Field(gt=0)
     method: Literal["transfer", "cash", "card", "other"] = "transfer"
     note: str = ""
+    date: Optional[str] = None  # fecha del pago (YYYY-MM-DD); si no viene se usa la fecha actual.
 
 
 class SendPaymentInput(BaseModel):
@@ -501,6 +502,7 @@ class BookingConfirmationSave(BaseModel):
     agent_name: str = ""
     agent_phone: str = ""
     agent_company: str = ""
+    agent_email: str = ""
     reservation_date: str = ""
     passenger_name: str = ""
     passenger_phone: str = ""

@@ -262,6 +262,43 @@ export default function QuotationBuilder() {
     contacts: { ...f.contacts, agency: { name: (clients.find((c) => c.id === f.client_id) || {}).name || '', contact: ex.name || '', email: ex.email || '', phone: ex.phone || '' } },
   }));
 
+  // 4.2 — agregar ejecutivo al vuelo (para clientes no-directo / mayoristas).
+  const [showAddExec, setShowAddExec] = useState(false);
+  const [newExec, setNewExec] = useState({ name: '', phone: '', email: '' });
+  const [savingExec, setSavingExec] = useState(false);
+  const saveNewExecutive = async () => {
+    if (!client || !newExec.name.trim()) return;
+    setSavingExec(true);
+    try {
+      const ex = { id: Math.random().toString(16).slice(2, 14), name: newExec.name.trim(), phone: newExec.phone.trim(), email: newExec.email.trim() };
+      const executives = [...(client.executives || []), ex];
+      const { data } = await api.patch(`/clients/${client.id}`, { executives });
+      setClients((cs) => cs.map((c) => (c.id === client.id ? data : c)));
+      selectExecutive(ex);
+      setNewExec({ name: '', phone: '', email: '' });
+      setShowAddExec(false);
+    } finally { setSavingExec(false); }
+  };
+  const AddExecutiveControl = () => (
+    <div data-testid="add-executive-control">
+      {!showAddExec ? (
+        <button type="button" className="btn-ghost text-xs" onClick={() => setShowAddExec(true)} data-testid="add-executive-toggle"><Plus className="w-4 h-4" /> Agregar ejecutivo</button>
+      ) : (
+        <div className="rounded-lg border border-brand-200 bg-brand-50/40 p-3 space-y-2">
+          <input className="input-field text-sm" placeholder="Nombre del ejecutivo" value={newExec.name} onChange={(e) => setNewExec((n) => ({ ...n, name: e.target.value }))} data-testid="add-executive-name" />
+          <div className="grid grid-cols-2 gap-2">
+            <input className="input-field text-sm" placeholder="Teléfono" value={newExec.phone} onChange={(e) => setNewExec((n) => ({ ...n, phone: e.target.value }))} data-testid="add-executive-phone" />
+            <input className="input-field text-sm" placeholder="Correo" value={newExec.email} onChange={(e) => setNewExec((n) => ({ ...n, email: e.target.value }))} data-testid="add-executive-email" />
+          </div>
+          <div className="flex gap-2">
+            <button type="button" className="btn-primary text-xs" disabled={!newExec.name.trim() || savingExec} onClick={saveNewExecutive} data-testid="add-executive-save">Guardar</button>
+            <button type="button" className="btn-ghost text-xs" onClick={() => { setShowAddExec(false); setNewExec({ name: '', phone: '', email: '' }); }}>Cancelar</button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+
   const goToStep = (i) => setStep(i);
 
   const addRoom = (ocupacion) => setForm((f) => ({ ...f, pax: { ...f.pax, rooms: [...(f.pax.rooms || []), { ocupacion, count: 1 }] } }));
@@ -543,6 +580,7 @@ export default function QuotationBuilder() {
                     ))}
                   </div>
                   <p className="text-xs text-ink-400">En el PDF y el enlace: <b>{client.name}</b> + el ejecutivo seleccionado (teléfono y correo).</p>
+                  {AddExecutiveControl()}
                 </div>
                 <div className="rounded-xl border border-ink-100 p-4 space-y-3">
                   <p className="font-semibold text-ink-900 flex items-center gap-2"><Users className="w-4 h-4 text-brand-500" /> Cliente final / Turista</p>
@@ -562,6 +600,10 @@ export default function QuotationBuilder() {
                   <div className="grid grid-cols-2 gap-2">
                     <div><label className="label-text">Teléfono</label><input className="input-field" value={form.contacts.agency.phone} onChange={(e) => setContact('agency', 'phone', e.target.value)} data-testid="contact-agency-phone" /></div>
                     <div><label className="label-text">Correo</label><input className="input-field" value={form.contacts.agency.email} onChange={(e) => setContact('agency', 'email', e.target.value)} data-testid="contact-agency-email" /></div>
+                  </div>
+                  <div className="pt-2 border-t border-ink-100">
+                    <p className="text-xs text-ink-400 mb-1.5">¿Manejas ejecutivos para esta empresa? Agrégalos y quedarán guardados.</p>
+                    {AddExecutiveControl()}
                   </div>
                 </div>
                 <div className="rounded-xl border border-ink-100 p-4 space-y-3">

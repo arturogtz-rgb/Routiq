@@ -17,7 +17,7 @@ export default function BookingConfirmation() {
   const [saving, setSaving] = useState(false);
   const [sending, setSending] = useState(false);
   const [form, setForm] = useState({
-    agent_name: '', agent_phone: '', agent_company: '', reservation_date: '',
+    agent_name: '', agent_phone: '', agent_company: '', agent_email: '', reservation_date: '',
     passenger_name: '', passenger_phone: '', num_persons: '',
     services: [{ ...EMPTY_SVC }], lodging: [{ ...EMPTY_LODGING }],
     general_observations: '', price_per_person: 0, total_amount: 0,
@@ -42,7 +42,7 @@ export default function BookingConfirmation() {
           setConf(existing);
           setForm({
             agent_name: existing.agent_name || '', agent_phone: existing.agent_phone || '',
-            agent_company: existing.agent_company || '', reservation_date: existing.reservation_date || '',
+            agent_company: existing.agent_company || '', agent_email: existing.agent_email || '', reservation_date: existing.reservation_date || '',
             passenger_name: existing.passenger_name || '', passenger_phone: existing.passenger_phone || '',
             num_persons: existing.num_persons || paxStr,
             services: existing.services?.length ? existing.services : [{ ...EMPTY_SVC }],
@@ -54,7 +54,7 @@ export default function BookingConfirmation() {
           const p = cr.data;
           setForm({
             agent_name: p.agent_name || '', agent_phone: p.agent_phone || '',
-            agent_company: p.agent_company || '', reservation_date: p.reservation_date || '',
+            agent_company: p.agent_company || '', agent_email: p.agent_email || '', reservation_date: p.reservation_date || '',
             passenger_name: p.passenger_name || '', passenger_phone: p.passenger_phone || '',
             num_persons: p.num_persons || paxStr,
             services: p.services?.length ? p.services : [{ ...EMPTY_SVC }],
@@ -146,7 +146,7 @@ export default function BookingConfirmation() {
         <div className="card-surface p-6 mb-5">
           <h2 className="font-display font-semibold text-lg text-ink-900 mb-4">Datos generales</h2>
           <div className="grid md:grid-cols-3 gap-4">
-            {[['agent_name', 'Agente / Cliente'], ['agent_phone', 'Teléfono'], ['agent_company', 'Empresa'],
+            {[['agent_name', 'Ejecutivo'], ['agent_email', 'Correo del ejecutivo'], ['agent_company', 'Empresa'], ['agent_phone', 'Teléfono'],
               ['reservation_date', 'Fecha de reservación'], ['passenger_name', 'Pasajero final'], ['passenger_phone', 'Teléfono del pasajero'],
               ['num_persons', 'Número de personas']].map(([k, label]) => (
               <div key={k}>

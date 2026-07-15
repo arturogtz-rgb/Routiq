@@ -349,6 +349,8 @@ def generate_quotation_pdf(company: dict, quotation: dict, package: dict, client
     if extra_nights > 0:
         nights_label += f"  ({package.get('nights','')} del paquete + {extra_nights} extra)"
     meta_rows = []
+    if not is_services and package.get("name"):
+        meta_rows.append(["Paquete", package.get("name", "")])
     if quotation.get("hotel_selected"):
         meta_rows.append(["Hotel", quotation.get("hotel_selected", "")])
     if d_start or d_end:
@@ -425,6 +427,8 @@ def generate_quotation_pdf(company: dict, quotation: dict, package: dict, client
     items = quotation.get("items", [])
     if show_breakdown:
         story.append(Paragraph("Desglose de precios", s["h2"]))
+        if not is_services and package.get("name"):
+            story.append(Paragraph(f"<b>Paquete:</b> {_xml_escape(package.get('name',''))}", s["soft"]))
         rows = [["Fecha", "Servicio", "Detalle", "Cant.", "$ unitario", "Subtotal"]]
         for it in items:
             fecha = _fmt_concept_when(it) or "—"
@@ -453,6 +457,8 @@ def generate_quotation_pdf(company: dict, quotation: dict, package: dict, client
         story.append(price_table)
     else:
         story.append(Paragraph("Conceptos incluidos", s["h2"]))
+        if not is_services and package.get("name"):
+            story.append(Paragraph(f"<b>Paquete:</b> {_xml_escape(package.get('name',''))}", s["soft"]))
         for it in items:
             story.append(Paragraph(f"• {_xml_escape(it.get('label',''))}", s["body"]))
     story.append(Spacer(1, 8))
@@ -619,11 +625,12 @@ def generate_booking_confirmation_pdf(company: dict, quotation: dict, confirmati
     story.append(header)
     story.append(Spacer(1, 6))
 
-    # Header table (datos del agente/pasajero)
+    # Header table (datos del ejecutivo/pasajero)
     story.append(_kv_table([
-        ("Agente / Cliente", confirmation.get("agent_name") or client.get("name", "")),
-        ("Teléfono", confirmation.get("agent_phone", "")),
+        ("Ejecutivo", confirmation.get("agent_name", "")),
         ("Empresa", confirmation.get("agent_company", "")),
+        ("Correo del ejecutivo", confirmation.get("agent_email", "")),
+        ("Teléfono", confirmation.get("agent_phone", "")),
         ("Fecha de reservación", confirmation.get("reservation_date", "")),
         ("Pasajero final", confirmation.get("passenger_name", "")),
         ("Teléfono del pasajero", confirmation.get("passenger_phone", "")),

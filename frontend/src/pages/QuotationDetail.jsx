@@ -44,6 +44,8 @@ export default function QuotationDetail() {
   const [clientPhone, setClientPhone] = useState('');
   const [companyName, setCompanyName] = useState('Routiq');
   const [payAmount, setPayAmount] = useState('');
+  const [payMethod, setPayMethod] = useState('transfer');
+  const [payDate, setPayDate] = useState(new Date().toISOString().slice(0, 10));
   const [payMsg, setPayMsg] = useState('');
   const [sendingEmail, setSendingEmail] = useState(false);
   // WhatsApp link
@@ -197,7 +199,7 @@ export default function QuotationDetail() {
     if (!amt || amt <= 0) return;
     setPayMsg('');
     try {
-      await api.patch(`/quotations/${id}/mark-paid`, { amount: amt, method: 'transfer', note: 'Registrado manualmente' });
+      await api.patch(`/quotations/${id}/mark-paid`, { amount: amt, method: payMethod, date: payDate, note: 'Registrado manualmente' });
       setPayAmount('');
       await load();
     } catch (e) { setPayMsg(formatApiError(e)); }
@@ -528,7 +530,16 @@ export default function QuotationDetail() {
               </div>
               {q.payment_status !== 'paid' && (
                 <div className="mt-3" data-testid="mark-paid-control">
-                  <p className="text-xs text-ink-500 mb-1.5">Registrar pago recibido (transferencia/efectivo):</p>
+                  <p className="text-xs text-ink-500 mb-1.5">Registrar pago recibido:</p>
+                  <div className="grid grid-cols-2 gap-2 mb-2">
+                    <select className="input-field text-sm" value={payMethod} onChange={(e) => setPayMethod(e.target.value)} data-testid="mark-paid-method">
+                      <option value="transfer">Transferencia</option>
+                      <option value="cash">Efectivo</option>
+                      <option value="card">Tarjeta</option>
+                      <option value="other">Otro</option>
+                    </select>
+                    <input type="date" className="input-field text-sm" value={payDate} onChange={(e) => setPayDate(e.target.value)} data-testid="mark-paid-date" />
+                  </div>
                   <div className="flex gap-2">
                     <input type="number" min="0" step="0.01" className="input-field text-sm flex-1" placeholder="Monto" value={payAmount}
                       onChange={(e) => setPayAmount(e.target.value)} data-testid="mark-paid-amount" />

@@ -18,7 +18,7 @@ const STATE_TONES = {
   cotizando: 'bg-brand-50 text-brand-500',
   enviada: 'bg-blue-100 text-blue-700',
   negociacion: 'bg-peach-100 text-amber-800',
-  ganada: 'bg-mint-100 text-emerald-700',
+  ganada: 'bg-amber-400 text-amber-950 ring-1 ring-amber-500 font-bold',
   perdida: 'bg-red-100 text-red-700',
 };
 

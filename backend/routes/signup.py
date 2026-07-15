@@ -56,11 +56,23 @@ async def _verify_turnstile(token: str | None, ip: str) -> bool:
             data = resp.json()
             ok = bool(data.get("success", False))
             if not ok:
-                # error-codes diagnose el problema exacto: invalid-input-secret (secret
-                # equivocado), invalid-input-response (token vencido/reusado),
-                # hostname-mismatch (dominio no permitido en el widget), etc.
-                log.warning("Turnstile rechazó (success=false): error-codes=%s hostname=%s",
-                            data.get("error-codes"), data.get("hostname"))
+                # error-codes diagnostica el problema exacto:
+                #   invalid-input-secret     -> el TURNSTILE_SECRET_KEY es incorrecto
+                #   invalid-input-response   -> token vencido/reusado (recargar widget)
+                #   hostname-mismatch        -> el dominio (routiq.com.mx) no está permitido en el widget de Cloudflare
+                #   timeout-or-duplicate     -> token reutilizado
+                codes = data.get("error-codes") or []
+                hint = ""
+                if "hostname-mismatch" in codes:
+                    hint = " => Revisa el dominio permitido del widget en el panel de Cloudflare Turnstile (debe incluir routiq.com.mx)."
+                elif "invalid-input-secret" in codes:
+                    hint = " => El TURNSTILE_SECRET_KEY del backend no corresponde al widget (site key)."
+                elif any(c in codes for c in ("invalid-input-response", "timeout-or-duplicate")):
+                    hint = " => Token vencido/reusado; el frontend debe recargar el captcha."
+                log.warning("Turnstile rechazó (success=false): error-codes=%s hostname=%s ip=%s%s",
+                            codes, data.get("hostname"), ip, hint)
+            else:
+                log.info("Turnstile OK hostname=%s", data.get("hostname"))
             return ok
     except Exception:
         log.exception("Turnstile verify failed")

@@ -20,12 +20,33 @@ def _base_url(request: Request) -> str:
     return f"{request.url.scheme}://{request.headers.get('host', '')}"
 
 
+async def _executive_fields(db, q: dict, company: dict) -> dict:
+    """H1/10.4: el 'ejecutivo' real es el usuario Routiq que elaboró la cotización
+    (created_by), no el contacto de la agencia. Empresa = tenant."""
+    name = email = phone = ""
+    uid = (q or {}).get("created_by")
+    if uid:
+        u = await db.users.find_one({"id": uid}, {"_id": 0, "name": 1, "email": 1, "phone": 1})
+        if u:
+            name = u.get("name") or u.get("email") or ""
+            email = u.get("email") or ""
+            phone = u.get("phone") or ""
+    return {"agent_name": name, "agent_email": email, "agent_company": (company or {}).get("name", ""), "agent_phone": phone}
+
+
 async def _ctx_for_confirmation(db, conf: dict):
     q = await db.quotations.find_one({"id": conf["quotation_id"]}, {"_id": 0})
     company = await db.companies.find_one({"id": conf["tenant_id"]}, {"_id": 0})
     client = None
     if q:
         client = await db.clients.find_one({"id": q.get("client_id")}, {"_id": 0})
+    # Siempre resolver el ejecutivo real para el PDF/enlace, ignorando datos de agencia previos.
+    ef = await _executive_fields(db, q or {}, company or {})
+    conf["agent_name"] = ef["agent_name"]
+    conf["agent_email"] = ef["agent_email"]
+    conf["agent_company"] = ef["agent_company"]
+    if not conf.get("agent_phone"):
+        conf["agent_phone"] = ef["agent_phone"]
     return q or {}, company or {}, client or {"name": (q or {}).get("client_snapshot", {}).get("name", "")}
 
 
@@ -79,11 +100,15 @@ async def get_booking_confirmation(quotation_id: str, user: dict = Depends(requi
         "confirmation_number": "", "guest_name": traveler.get("name", ""),
     }] if q.get("hotel_selected") else []
 
+    company = await db.companies.find_one({"id": user["tenant_id"]}, {"_id": 0}) or {}
+    ef = await _executive_fields(db, q, company)
+
     return {
         "_prefill": True,
-        "agent_name": agency.get("contact") or client.get("name", ""),
-        "agent_phone": agency.get("phone") or client.get("phone", ""),
-        "agent_company": agency.get("name") or client.get("name", ""),
+        "agent_name": ef["agent_name"],
+        "agent_phone": ef["agent_phone"],
+        "agent_company": ef["agent_company"],
+        "agent_email": ef["agent_email"],
         "reservation_date": now_iso()[:10],
         "passenger_name": traveler.get("name") or client.get("name", ""),
         "passenger_phone": traveler.get("phone") or client.get("phone", ""),

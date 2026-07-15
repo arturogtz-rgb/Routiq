@@ -311,13 +311,14 @@ async def mark_quotation_paid(quotation_id: str, payload: ManualPaymentInput, us
         raise HTTPException(status_code=400, detail=f"El monto excede lo pendiente ({q.get('currency','MXN')} ${remaining:,.2f})")
     amount_paid = round((q.get("amount_paid", 0) or 0) + float(payload.amount), 2)
     pay_status = "paid" if amount_paid >= round(final_total, 2) - 0.01 else "partial"
+    pay_date = (payload.date or now_iso()[:10])
     was_won = q.get("state") == "ganada"
-    updates = {"amount_paid": amount_paid, "payment_status": pay_status, "last_activity_at": now_iso()}
+    updates = {"amount_paid": amount_paid, "payment_status": pay_status, "last_activity_at": now_iso(), "paid_at": pay_date}
     if not was_won:
         updates["state"] = "ganada"
     await db.quotations.update_one({"id": quotation_id, "tenant_id": user["tenant_id"]}, {"$set": updates})
     METHOD_ES = {"transfer": "transferencia", "cash": "efectivo", "card": "tarjeta", "other": "otro"}
-    detail = f"Pago manual de {q.get('currency','MXN')} ${float(payload.amount):,.2f} ({METHOD_ES.get(payload.method, payload.method)})"
+    detail = f"Pago manual de {q.get('currency','MXN')} ${float(payload.amount):,.2f} ({METHOD_ES.get(payload.method, payload.method)}) el {pay_date}"
     if payload.note:
         detail += f" — {payload.note}"
     await _append_history(db, quotation_id, user, "payment", detail)

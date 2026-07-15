@@ -20,6 +20,7 @@ export default function QuotationsList() {
   const [q, setQ] = useState('');
   const [state, setState] = useState('');
   const [showArchived, setShowArchived] = useState(false);
+  const [onlyPaid, setOnlyPaid] = useState(false);
 
   useEffect(() => {
     (async () => {
@@ -29,6 +30,7 @@ export default function QuotationsList() {
   }, [showArchived]);
 
   const filtered = items.filter((x) => {
+    if (onlyPaid && x.payment_status !== 'paid') return false;
     if (state && x.state !== state) return false;
     if (q) {
       const s = q.toLowerCase();
@@ -56,6 +58,9 @@ export default function QuotationsList() {
           <option value="">Todos los estados</option>
           {Object.entries(STATE_LABELS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
         </select>
+        <button onClick={() => setOnlyPaid((v) => !v)} className={`pill whitespace-nowrap ${onlyPaid ? 'bg-emerald-600 text-white' : 'bg-white border border-ink-200 text-ink-600'}`} data-testid="toggle-paid">
+          {onlyPaid ? 'Ver todas' : 'Reservas pagadas'}
+        </button>
         <button onClick={() => setShowArchived((v) => !v)} className={`pill whitespace-nowrap ${showArchived ? 'bg-brand-500 text-white' : 'bg-white border border-ink-200 text-ink-600'}`} data-testid="toggle-archived">
           {showArchived ? 'Ver activas' : 'Ver archivadas'}
         </button>
@@ -80,7 +85,10 @@ export default function QuotationsList() {
             <div className="col-span-6 md:col-span-2 text-sm text-ink-700 truncate" data-testid={`row-traveler-${x.code}`}>{x.contacts?.traveler?.name || '—'}</div>
             <div className="col-span-6 md:col-span-2 text-sm text-ink-500 truncate" data-testid={`row-agent-${x.code}`}>{x.agent_name || '—'}</div>
             <div className="col-span-6 md:col-span-2"><span className={`pill ${STATE_TONES[x.state]}`}>{STATE_LABELS[x.state]}</span></div>
-            <div className="col-span-6 md:col-span-2 md:text-right font-display font-semibold text-ink-900">{money(x.total, x.currency)}</div>
+            <div className="col-span-6 md:col-span-2 md:text-right font-display font-semibold text-ink-900">
+              {money(x.total, x.currency)}
+              {x.payment_status === 'paid' && <span className="ml-2 pill bg-emerald-100 text-emerald-700 text-[10px]" data-testid={`row-paid-${x.code}`}>Pagado</span>}
+            </div>
           </Link>
         ))}
         {filtered.length === 0 && (
