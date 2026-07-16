@@ -451,5 +451,6 @@ Ver `/app/memory/test_credentials.md`. Seed automático en cada startup.
 - H3 Paso Servicios del Paquete Armado: botón "Siguiente" arriba + filtro de categorías (solo UI).
 - Testeado iter_52: backend 14/14 tras fix (H1 presentation_text + eliminación de código muerto ai_client_message), frontend 100%. Motor de precios Paquete Armado intacto.
 - Pendiente: Captcha Turnstile (solo diagnóstico leyendo log en producción). Subir a GitHub para validación previa a despliegue.
+- Mejora historial de envíos (Iter 2, cierre): cada envío directo (cotización/cobro/pre-pago/post-venta/mensaje) registra entrada concisa "Envió {tipo} por {WhatsApp|correo}" en el historial (POST /quotations/{id}/log-send para WhatsApp; send-message loguea al enviar correo). Solo acción + canal, sin texto (queda en el Inbox). Verificado por curl.
 - Backlog P2 (fuera de esta iteración): miniaturas WhatsApp, dry-run Excel, pago por ocupación, top agencias/ejecutivos, timeline público, comparar dos meses.
 - Pendiente (próximo): Lote E — reportes por mes calendario + filtros date_from/date_to en GET /quotations + selector de mes + comparativa mes vs mes anterior en stats.py.

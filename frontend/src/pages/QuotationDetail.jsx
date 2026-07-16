@@ -165,7 +165,7 @@ export default function QuotationDetail() {
   const sendDraftWhatsApp = async () => {
     if (!aiDraft?.text?.trim()) return;
     setAiSending('Enviando…');
-    setAiSending(await deliverWhatsApp(aiDraft.text));
+    setAiSending(await deliverWhatsApp(aiDraft.text, aiDraft.kind));
   };
 
   const sendDraftEmail = async () => {
@@ -210,19 +210,26 @@ export default function QuotationDetail() {
     return `Hola ${name} 👋\nTe comparto tu cotización *${code}* de ${companyName}.\n${pkg ? `Paquete: ${pkg}\n` : ''}Total: *${amount}*\nMírala y confírmala aquí:\n${url}`;
   };
 
-  const deliverWhatsApp = async (msg) => {
+  const logSend = async (kind, channel) => {
+    try { await api.post(`/quotations/${id}/log-send`, { kind, channel }); await load(); } catch (_e) { /* noop */ }
+  };
+
+  const deliverWhatsApp = async (msg, kind) => {
     const openFallback = () => {
       const phone = (clientPhone || '').replace(/[^0-9]/g, '');
       const base = phone ? `https://wa.me/${phone}` : 'https://wa.me/';
       window.open(`${base}?text=${encodeURIComponent(msg)}`, '_blank');
       return 'Abriendo WhatsApp… (envío manual)';
     };
+    let status;
     // 1) Chat vinculado → envío directo por el WhatsApp conectado de la empresa.
     if (waLink?.chat_id && waLink?.number_id) {
       try {
         await api.post('/whatsapp/send', { number_id: waLink.number_id, to: waLink.chat_id, text: msg });
-        return `✓ Enviado por WhatsApp a ${waLink.phone}. Quedó registrado en el Inbox.`;
-      } catch (e) { const s = `No se pudo enviar directo (${formatApiError(e)}). `; openFallback(); return s + 'Abriendo WhatsApp…'; }
+        status = `✓ Enviado por WhatsApp a ${waLink.phone}. Quedó registrado en el Inbox.`;
+      } catch (e) { openFallback(); status = `No se pudo enviar directo (${formatApiError(e)}). Abriendo WhatsApp…`; }
+      await logSend(kind, 'whatsapp');
+      return status;
     }
     // 2) Sin chat vinculado, hay número conectado + teléfono del cliente → envío directo (crea el chat).
     const connected = waNumbers.find((n) => n.status === 'connected');
@@ -230,17 +237,21 @@ export default function QuotationDetail() {
     if (connected && phone) {
       try {
         await api.post('/whatsapp/send', { number_id: connected.id, to: phone, text: msg });
-        return `✓ Enviado por "${connected.label}" al ${clientPhone}. Quedó registrado en el Inbox.`;
-      } catch (e) { const s = `No se pudo enviar directo (${formatApiError(e)}). `; openFallback(); return s + 'Abriendo WhatsApp…'; }
+        status = `✓ Enviado por "${connected.label}" al ${clientPhone}. Quedó registrado en el Inbox.`;
+      } catch (e) { openFallback(); status = `No se pudo enviar directo (${formatApiError(e)}). Abriendo WhatsApp…`; }
+      await logSend(kind, 'whatsapp');
+      return status;
     }
     // 3) Sin número conectado → fallback a wa.me (nunca bloquear).
-    return openFallback();
+    status = openFallback();
+    await logSend(kind, 'whatsapp');
+    return status;
   };
 
   const sendWhatsApp = async (kind) => {
     if (!publicToken) return;
     setWaSendMsg(''); setWaSending(kind);
-    const status = await deliverWhatsApp(buildWaMessage(kind));
+    const status = await deliverWhatsApp(buildWaMessage(kind), kind);
     setWaSendMsg(status); setWaSending('');
   };
 

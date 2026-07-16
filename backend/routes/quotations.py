@@ -25,6 +25,18 @@ from deps import (
 log = logging.getLogger("routiq")
 router = APIRouter()
 
+# Etiquetas para el registro de envíos en el historial (mejora Iter 2).
+SEND_KIND_LABEL = {
+    "quote": "la cotización", "pay": "el cobro",
+    "prepay": "un seguimiento pre-pago", "postsale": "un seguimiento post-venta",
+    "message": "un mensaje",
+}
+CHANNEL_LABEL = {"whatsapp": "WhatsApp", "email": "correo"}
+
+
+def _send_detail(kind: str, channel: str) -> str:
+    return f"Envió {SEND_KIND_LABEL.get(kind, 'un mensaje')} por {CHANNEL_LABEL.get(channel, channel)}"
+
 
 def _esc_html(s: str) -> str:
     return (str(s or "").replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;"))
@@ -613,6 +625,20 @@ async def ai_follow_up_postsale(quotation_id: str, user: dict = Depends(require_
 
 class SendMessageInput(BaseModel):
     text: str
+    kind: str = "message"
+
+
+@router.post("/quotations/{quotation_id}/log-send")
+async def log_quotation_send(quotation_id: str, payload: dict, user: dict = Depends(require_tenant)):
+    """Registra en el historial un envío directo (solo acción + canal; el texto queda en el Inbox)."""
+    db = get_db()
+    q = await db.quotations.find_one({"id": quotation_id, "tenant_id": user["tenant_id"]}, {"_id": 0})
+    if not q:
+        raise HTTPException(status_code=404, detail="Cotización no encontrada")
+    kind = payload.get("kind", "message")
+    channel = payload.get("channel", "whatsapp")
+    await _append_history(db, quotation_id, user, "sent_message", _send_detail(kind, channel))
+    return {"ok": True}
 
 
 @router.post("/quotations/{quotation_id}/send-message")
@@ -633,4 +659,6 @@ async def send_quotation_message(quotation_id: str, payload: SendMessageInput,
         raise HTTPException(status_code=400, detail="El cliente no tiene correo registrado.")
     html = "".join(f"<p>{_esc_html(line)}</p>" for line in text.split("\n") if line.strip())
     sent = await send_email(company, to, f"Seguimiento · Cotización {q.get('code', '')}", html)
+    if sent:
+        await _append_history(db, quotation_id, user, "sent_message", _send_detail(payload.kind, "email"))
     return {"email_sent": sent, "to": to}
