@@ -14,6 +14,7 @@ import Kanban from '@/pages/Kanban';
 import Packages from '@/pages/Packages';
 import PackageEditor from '@/pages/PackageEditor';
 import Services from '@/pages/Services';
+import ServiceEditor from '@/pages/ServiceEditor';
 import QuotationBuilder from '@/pages/QuotationBuilder';
 import Clients from '@/pages/Clients';
 import CustomQuotationBuilder from '@/pages/CustomQuotationBuilder';
@@ -91,6 +92,8 @@ export default function App() {
           <Route path="/app/packages/new" element={<ProtectedRoute roles={['company_admin']}><PackageEditor /></ProtectedRoute>} />
           <Route path="/app/packages/:id/edit" element={<ProtectedRoute roles={['company_admin']}><PackageEditor /></ProtectedRoute>} />
           <Route path="/app/services" element={<ProtectedRoute roles={['company_admin', 'executive']}><Services /></ProtectedRoute>} />
+          <Route path="/app/services/new" element={<ProtectedRoute roles={['company_admin']}><ServiceEditor /></ProtectedRoute>} />
+          <Route path="/app/services/:id/edit" element={<ProtectedRoute roles={['company_admin']}><ServiceEditor /></ProtectedRoute>} />
           <Route path="/app/quotations" element={<ProtectedRoute roles={['company_admin', 'executive']}><QuotationsList /></ProtectedRoute>} />
           <Route path="/app/leads" element={<ProtectedRoute roles={['company_admin', 'executive']}><Leads /></ProtectedRoute>} />
           <Route path="/app/analytics" element={<ProtectedRoute roles={['company_admin']}><CatalogAnalytics /></ProtectedRoute>} />

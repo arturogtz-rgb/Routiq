@@ -2,10 +2,78 @@ import { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import AppShell from '@/components/AppShell';
 import api, { formatApiError } from '@/lib/api';
-import { ArrowLeft, Plus, Trash2, Save, Download, Mail, MessageCircle, Loader2, CheckCircle2, Link2 } from 'lucide-react';
+import { formatDateEs } from '@/lib/dates';
+import { Popover, PopoverTrigger, PopoverContent } from '@/components/ui/popover';
+import { Calendar } from '@/components/ui/calendar';
+import {
+  DndContext, PointerSensor, KeyboardSensor, useSensor, useSensors, closestCenter,
+} from '@dnd-kit/core';
+import {
+  SortableContext, sortableKeyboardCoordinates, verticalListSortingStrategy, useSortable, arrayMove,
+} from '@dnd-kit/sortable';
+import { CSS } from '@dnd-kit/utilities';
+import { ArrowLeft, Plus, Trash2, Save, Download, Mail, MessageCircle, Loader2, CheckCircle2, Link2, GripVertical, CalendarDays } from 'lucide-react';
 
-const EMPTY_SVC = { date: '', service: '', details: '', persons: '', observations: '' };
+let RID = 0;
+const rid = () => `r${Date.now().toString(36)}${(RID++).toString(36)}`;
+const newSvc = () => ({ _rid: rid(), date: '', service: '', details: '', persons: '', observations: '' });
+const withRid = (arr) => (arr || []).map((r) => ({ _rid: r._rid || rid(), ...r }));
 const EMPTY_LODGING = { hotel: '', plan: '', checkin: '', checkout: '', nights: '', room_type: '', confirmation_number: '', guest_name: '' };
+
+function DateField({ value, onChange, testid }) {
+  const [open, setOpen] = useState(false);
+  const selected = value ? new Date(`${String(value).slice(0, 10)}T00:00:00`) : undefined;
+  return (
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger asChild>
+        <button type="button" className="input-field flex items-center gap-2 text-left w-full" data-testid={testid}>
+          <CalendarDays className="w-4 h-4 text-ink-400 shrink-0" />
+          <span className={value ? 'text-ink-900' : 'text-ink-400'}>{value ? formatDateEs(value) : 'Fecha'}</span>
+        </button>
+      </PopoverTrigger>
+      <PopoverContent className="w-auto p-0" align="start">
+        <Calendar
+          mode="single"
+          selected={selected}
+          onSelect={(d) => {
+            if (d) {
+              const iso = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+              onChange(iso);
+            } else {
+              onChange('');
+            }
+            setOpen(false);
+          }}
+          initialFocus
+        />
+      </PopoverContent>
+    </Popover>
+  );
+}
+
+function SortableServiceRow({ row, i, updRow, delRow }) {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: row._rid });
+  const style = { transform: CSS.Transform.toString(transform), transition, opacity: isDragging ? 0.5 : 1, zIndex: isDragging ? 20 : undefined };
+  return (
+    <div ref={setNodeRef} style={style} className="grid md:grid-cols-12 gap-2 items-start bg-white" data-testid={`service-row-${i}`}>
+      <button
+        type="button" {...attributes} {...listeners}
+        className="md:col-span-1 flex items-center justify-center py-2.5 text-ink-300 hover:text-ink-600 cursor-grab active:cursor-grabbing touch-none"
+        data-testid={`svc-drag-${i}`} aria-label="Reordenar fila"
+      >
+        <GripVertical className="w-4 h-4" />
+      </button>
+      <div className="md:col-span-2">
+        <DateField value={row.date} onChange={(v) => updRow(i, { date: v })} testid={`svc-date-${i}`} />
+      </div>
+      <input className="input-field md:col-span-3" placeholder="Servicio" value={row.service} onChange={(e) => updRow(i, { service: e.target.value })} data-testid={`svc-name-${i}`} />
+      <input className="input-field md:col-span-2" placeholder="Detalles" value={row.details} onChange={(e) => updRow(i, { details: e.target.value })} data-testid={`svc-details-${i}`} />
+      <input className="input-field md:col-span-1" placeholder="Pers." value={row.persons} onChange={(e) => updRow(i, { persons: e.target.value })} data-testid={`svc-persons-${i}`} />
+      <input className="input-field md:col-span-2" placeholder="Observaciones" value={row.observations} onChange={(e) => updRow(i, { observations: e.target.value })} data-testid={`svc-obs-${i}`} />
+      <button onClick={() => delRow(i)} className="md:col-span-1 p-2 text-ink-400 hover:text-red-600 justify-self-start" data-testid={`del-service-${i}`}><Trash2 className="w-4 h-4" /></button>
+    </div>
+  );
+}
 
 export default function BookingConfirmation() {
   const { id } = useParams();
@@ -19,9 +87,14 @@ export default function BookingConfirmation() {
   const [form, setForm] = useState({
     agent_name: '', agent_phone: '', agent_company: '', agent_email: '', reservation_date: '',
     passenger_name: '', passenger_phone: '', num_persons: '',
-    services: [{ ...EMPTY_SVC }], lodging: [{ ...EMPTY_LODGING }],
+    services: [newSvc()], lodging: [{ ...EMPTY_LODGING }],
     general_observations: '', price_per_person: 0, total_amount: 0,
   });
+
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
+    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
+  );
 
   useEffect(() => {
     (async () => {
@@ -45,7 +118,7 @@ export default function BookingConfirmation() {
             agent_company: existing.agent_company || '', agent_email: existing.agent_email || '', reservation_date: existing.reservation_date || '',
             passenger_name: existing.passenger_name || '', passenger_phone: existing.passenger_phone || '',
             num_persons: existing.num_persons || paxStr,
-            services: existing.services?.length ? existing.services : [{ ...EMPTY_SVC }],
+            services: existing.services?.length ? withRid(existing.services) : [newSvc()],
             lodging: existing.lodging?.length ? existing.lodging : [{ ...EMPTY_LODGING }],
             general_observations: existing.general_observations || '',
             price_per_person: existing.price_per_person || 0, total_amount: existing.total_amount || 0,
@@ -57,7 +130,7 @@ export default function BookingConfirmation() {
             agent_company: p.agent_company || '', agent_email: p.agent_email || '', reservation_date: p.reservation_date || '',
             passenger_name: p.passenger_name || '', passenger_phone: p.passenger_phone || '',
             num_persons: p.num_persons || paxStr,
-            services: p.services?.length ? p.services : [{ ...EMPTY_SVC }],
+            services: p.services?.length ? withRid(p.services) : [newSvc()],
             lodging: p.lodging?.length ? p.lodging : [{ ...EMPTY_LODGING }],
             general_observations: p.general_observations || '',
             price_per_person: p.price_per_person || 0, total_amount: p.total_amount || 0,
@@ -69,17 +142,30 @@ export default function BookingConfirmation() {
 
   const setField = (k, v) => setForm((f) => ({ ...f, [k]: v }));
   const updRow = (key, i, patch) => setForm((f) => ({ ...f, [key]: f[key].map((r, idx) => idx === i ? { ...r, ...patch } : r) }));
-  const addRow = (key, empty) => setForm((f) => ({ ...f, [key]: [...f[key], { ...empty }] }));
+  const addRow = (key, empty) => setForm((f) => ({ ...f, [key]: [...f[key], empty] }));
   const delRow = (key, i) => setForm((f) => ({ ...f, [key]: f[key].filter((_, idx) => idx !== i) }));
+
+  const onServicesDragEnd = (event) => {
+    const { active, over } = event;
+    if (!over || active.id === over.id) return;
+    setForm((f) => {
+      const oldIdx = f.services.findIndex((r) => r._rid === active.id);
+      const newIdx = f.services.findIndex((r) => r._rid === over.id);
+      if (oldIdx < 0 || newIdx < 0) return f;
+      return { ...f, services: arrayMove(f.services, oldIdx, newIdx) };
+    });
+  };
 
   const save = async () => {
     setError(''); setOk(''); setSaving(true);
     try {
-      const { data } = await api.post(`/quotations/${id}/booking-confirmation`, {
+      const payload = {
         ...form,
+        services: form.services.map(({ _rid, ...rest }) => rest),
         price_per_person: Number(form.price_per_person) || 0,
         total_amount: Number(form.total_amount) || 0,
-      });
+      };
+      const { data } = await api.post(`/quotations/${id}/booking-confirmation`, payload);
       setConf(data); setOk('Confirmación de reserva guardada');
       setTimeout(() => setOk(''), 2500);
     } catch (e) { setError(formatApiError(e)); }
@@ -147,13 +233,17 @@ export default function BookingConfirmation() {
           <h2 className="font-display font-semibold text-lg text-ink-900 mb-4">Datos generales</h2>
           <div className="grid md:grid-cols-3 gap-4">
             {[['agent_name', 'Ejecutivo'], ['agent_email', 'Correo del ejecutivo'], ['agent_company', 'Empresa'], ['agent_phone', 'Teléfono'],
-              ['reservation_date', 'Fecha de reservación'], ['passenger_name', 'Pasajero final'], ['passenger_phone', 'Teléfono del pasajero'],
+              ['passenger_name', 'Pasajero final'], ['passenger_phone', 'Teléfono del pasajero'],
               ['num_persons', 'Número de personas']].map(([k, label]) => (
               <div key={k}>
                 <label className="label-text">{label}</label>
                 <input className="input-field" value={form[k]} onChange={(e) => setField(k, e.target.value)} data-testid={`conf-${k}`} />
               </div>
             ))}
+            <div>
+              <label className="label-text">Fecha de reservación</label>
+              <DateField value={form.reservation_date} onChange={(v) => setField('reservation_date', v)} testid="conf-reservation_date" />
+            </div>
           </div>
         </div>
 
@@ -161,29 +251,30 @@ export default function BookingConfirmation() {
         <div className="card-surface p-6 mb-5">
           <div className="flex items-center justify-between mb-4">
             <h2 className="font-display font-semibold text-lg text-ink-900">Servicios confirmados</h2>
-            <button onClick={() => addRow('services', EMPTY_SVC)} className="btn-ghost text-sm" data-testid="add-service-row"><Plus className="w-4 h-4" /> Fila</button>
+            <button onClick={() => addRow('services', newSvc())} className="btn-ghost text-sm" data-testid="add-service-row"><Plus className="w-4 h-4" /> Fila</button>
           </div>
+          <p className="text-xs text-ink-400 mb-3">Arrastra <GripVertical className="w-3 h-3 inline align-middle" /> para reordenar. El orden visual define el orden impreso en el PDF.</p>
           <div className="space-y-3">
             {form.services.length > 0 && (
               <div className="hidden md:grid grid-cols-12 gap-2 px-1 text-xs uppercase tracking-widest font-bold text-ink-400" data-testid="service-row-headers">
+                <div className="col-span-1"></div>
                 <div className="col-span-2">Fecha</div>
                 <div className="col-span-3">Servicio</div>
-                <div className="col-span-3">Detalles</div>
+                <div className="col-span-2">Detalles</div>
                 <div className="col-span-1">Pers.</div>
                 <div className="col-span-2">Observaciones</div>
                 <div className="col-span-1"></div>
               </div>
             )}
-            {form.services.map((r, i) => (
-              <div key={i} className="grid md:grid-cols-12 gap-2 items-start" data-testid={`service-row-${i}`}>
-                <input className="input-field md:col-span-2" placeholder="Fecha" value={r.date} onChange={(e) => updRow('services', i, { date: e.target.value })} data-testid={`svc-date-${i}`} />
-                <input className="input-field md:col-span-3" placeholder="Servicio" value={r.service} onChange={(e) => updRow('services', i, { service: e.target.value })} data-testid={`svc-name-${i}`} />
-                <input className="input-field md:col-span-3" placeholder="Detalles" value={r.details} onChange={(e) => updRow('services', i, { details: e.target.value })} data-testid={`svc-details-${i}`} />
-                <input className="input-field md:col-span-1" placeholder="Pers." value={r.persons} onChange={(e) => updRow('services', i, { persons: e.target.value })} data-testid={`svc-persons-${i}`} />
-                <input className="input-field md:col-span-2" placeholder="Observaciones" value={r.observations} onChange={(e) => updRow('services', i, { observations: e.target.value })} data-testid={`svc-obs-${i}`} />
-                <button onClick={() => delRow('services', i)} className="md:col-span-1 p-2 text-ink-400 hover:text-red-600 justify-self-start" data-testid={`del-service-${i}`}><Trash2 className="w-4 h-4" /></button>
-              </div>
-            ))}
+            <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={onServicesDragEnd}>
+              <SortableContext items={form.services.map((r) => r._rid)} strategy={verticalListSortingStrategy}>
+                <div className="space-y-3">
+                  {form.services.map((r, i) => (
+                    <SortableServiceRow key={r._rid} row={r} i={i} updRow={(idx, patch) => updRow('services', idx, patch)} delRow={(idx) => delRow('services', idx)} />
+                  ))}
+                </div>
+              </SortableContext>
+            </DndContext>
           </div>
         </div>
 
@@ -191,7 +282,7 @@ export default function BookingConfirmation() {
         <div className="card-surface p-6 mb-5">
           <div className="flex items-center justify-between mb-4">
             <h2 className="font-display font-semibold text-lg text-ink-900">Hospedaje</h2>
-            <button onClick={() => addRow('lodging', EMPTY_LODGING)} className="btn-ghost text-sm" data-testid="add-lodging-row"><Plus className="w-4 h-4" /> Fila</button>
+            <button onClick={() => addRow('lodging', { ...EMPTY_LODGING })} className="btn-ghost text-sm" data-testid="add-lodging-row"><Plus className="w-4 h-4" /> Fila</button>
           </div>
           <div className="space-y-4">
             {form.lodging.map((r, i) => (

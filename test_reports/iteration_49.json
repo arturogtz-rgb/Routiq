@@ -1,0 +1,49 @@
+{
+  "summary": "Iter 49 — Lote C + Kanban dorado. Backend pytest 6/6 PASS: creación de servicio, PATCH edit + persistencia por listado, is_private (badge y exclusión de catálogo público), DnD orden persistido + fechas ISO, PDF 200 con _fmt_date, regresión precios paquete OK. Frontend Playwright: Kanban 'Ganada' con gradiente ámbar dorado (rgb 251,239,194→254,249,231) — OK. Services list → 'Nuevo servicio' navega a /app/services/new y renderiza service-editor-page SIN modal — OK. Crear servicio con is_private=true guarda y muestra badge 'Privado' en la tarjeta del listado — OK. Confirmación de Reserva: DateField es <button> popover (no input libre), calendar abre, selección se muestra formateada '15 JUL 2026' y se guarda ISO — OK. DnD reordena visualmente (ROW_ALPHA/BETA/GAMMA → BETA/GAMMA/ALPHA) — OK. Guardar (POST 200) y reload preserva el orden reordenado (persistido) — OK. Botón PDF descarga archivo COT-XXXX-CR.pdf sin error — OK. CRITICAL BUG: Editar servicio (Lote C 8.1) está roto. ServiceEditor.jsx llama a GET /api/services/{id} pero ese endpoint NO EXISTE en el backend (server.py L527-570 solo tiene GET /services list, POST, PATCH, DELETE). Al navegar a /app/services/{id}/edit se muestra 'Method Not Allowed' y todos los campos quedan en blanco — el ejecutivo NO puede editar servicios existentes.",
+  "backend_issues": {
+    "critical": [
+      {"endpoint": "GET /api/services/{service_id}", "issue": "Endpoint faltante. ServiceEditor.jsx L41 hace api.get('/services/${id}') pero server.py no expone GET individual, solo list/create/patch/delete. Response = 405 Method Not Allowed. Rompe TODO el flujo 'Editar servicio' (Lote C 8.1 AC2).", "priority": "CRITICAL"}
+    ],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [
+      {"component": "ServiceEditor (modo edición)", "issue": "Al abrir /app/services/{id}/edit se muestra banner 'Method Not Allowed' y los campos quedan vacíos porque el GET individual falla (405). Consecuencia directa del endpoint faltante.", "selector": "[data-testid='service-editor-page']", "priority": "CRITICAL"}
+    ],
+    "integration_issues": [
+      {"flow": "Editar servicio (Lote C 8.1)", "issue": "ServiceEditor.jsx L41 fetch /services/{id} → 405. El usuario no ve datos precargados y si intenta 'Guardar' sobrescribiría el servicio con campos vacíos (name='' → botón deshabilitado, mitigación parcial; pero net_price/public_price/is_private/etc se resetearían).", "affected_selectors": ["service-name-input", "service-net-input", "service-public-input", "service-private-checkbox", "save-service-btn"]}
+    ],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_iteration49_lote_c.py",
+    "/app/test_reports/pytest/iter49.xml"
+  ],
+  "action_items": [
+    "AGREGAR endpoint GET /api/services/{service_id} en /app/backend/server.py (patrón sugerido justo antes del PATCH, L551): filtrar por id + tenant_id, excluir _id, 404 si no existe. Con eso el flujo 'Editar servicio' (Lote C 8.1 AC2) queda funcional sin tocar el frontend.",
+    "Opcional: si prefieren no agregar endpoint, cambiar ServiceEditor.jsx L41 a leer del listado (const list=await api.get('/services'); setForm(list.data.find(s=>s.id===id))) — menos eficiente pero evita cambios de backend."
+  ],
+  "critical_code_review_comments": [
+    "/app/backend/server.py L527-570: services CRUD asimétrico. Hay GET list, POST, PATCH, DELETE pero NO hay GET /services/{id}. PATCH internamente hace find_one por id (L555) y podría convertirse trivialmente en un GET reutilizando esa lógica. Es la causa raíz del bug crítico.",
+    "/app/frontend/src/pages/ServiceEditor.jsx L41: la llamada api.get('/services/${id}') asume que existe el endpoint individual. No hay error boundary/fallback; el error aparece en el div de error (L88) pero los inputs quedan controlados por form.name='' y bloquean 'Guardar' (L188 disabled={!form.name}), lo que previene sobrescritura destructiva pero deja el flujo inoperante.",
+    "/app/frontend/src/pages/BookingConfirmation.jsx L23-52 DateField: correcto uso de Popover+Calendar; onSelect construye ISO con getFullYear/getMonth+1/getDate (locale-safe). Verificado en UI: click día 15 julio 2026 → muestra '15 JUL 2026' inmediatamente.",
+    "/app/frontend/src/pages/BookingConfirmation.jsx L54-76 SortableServiceRow: dnd-kit useSortable + CSS.Transform. Handler svc-drag-{i} con touch-none. Verificado: drag desde svc-drag-0 hasta svc-drag-2 reordena visualmente. arrayMove aplicado en onServicesDragEnd (L148-157).",
+    "/app/frontend/src/pages/BookingConfirmation.jsx L162-167 save payload: mapea services quitando _rid (spread rest). Preserva orden del array. Verificado: reload devuelve exactamente el mismo orden.",
+    "/app/backend/routes/booking.py L140-149 insert doc: services se guarda directo del payload (list ordenado) y GET (L57) devuelve tal cual. Sin reordenamientos server-side.",
+    "/app/backend/pdf_generator.py L634 y L651: reservation_date y date por servicio pasan por _fmt_date. Verificado en PDF: no aparece '2026-06-10' crudo; sí aparece formato es-MX.",
+    "/app/backend/routes/public_package.py L182/L206/L234: filtro `is_private: {$ne: True}` en catálogo público de servicios y en detalle público. Verificado: servicio con is_private=true retorna 404 en /api/public/company/aventurate/service/{id}, y NO aparece en /api/public/company/aventurate/services.",
+    "/app/frontend/src/pages/Kanban.jsx L15: 'Ganada' usa cls='kanban-col-ganada'. /app/frontend/src/index.css L143: linear-gradient(180deg, #FBEFC2 0%, #FEF9E7 100%). Verificado con getComputedStyle: rgb(251,239,194) → rgb(254,249,231). Distinto del verde previo.",
+    "/app/frontend/src/pages/Services.jsx L132: badge 'Privado' condicional a svc.is_private con data-testid=service-private-badge-{id}. Verificado: aparece en la tarjeta del servicio recién creado con is_private=true."
+  ],
+  "updated_files": ["/app/backend/tests/test_iteration49_lote_c.py (nuevo)"],
+  "success_rate": {
+    "backend": "100% (6/6 pytest)",
+    "frontend": "85% — 5/6 acceptance criteria del Lote C pasan (Kanban dorado ✓, Nuevo servicio ✓, is_private badge+exclusión pública ✓, DnD+persistencia ✓, Calendario+PDF ✓). El AC 'Editar servicio' FALLA por endpoint backend faltante."
+  },
+  "test_credentials": "admin@aventurate.mx / Demo2026! (María González, tenant Aventúrate por Jalisco). Slug público demo: 'aventurate'.",
+  "seed_data_creation": "Se creó y eliminó 4 servicios TEST_* en el tenant Aventúrate (idempotente: DELETE al final de cada test). Se guardó/actualizó la booking_confirmation de COT-2026086 (upsert, no crea duplicados). En la UI de Playwright quedó un servicio TEST_UI_C81_* (id adf82b6c-4892-4901-82b4-44a7181e051d) creado durante la prueba manual de UI que NO se limpió automáticamente — el main agent puede borrarlo desde la lista.",
+  "retest_needed": true,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Lote C: 5/6 ACs OK. El único bloqueo es el endpoint faltante GET /api/services/{id}. Una vez agregado en server.py (antes del PATCH L551), la edición de servicios queda funcional sin cambios en el frontend. El resto del Lote C (independent page, is_private badge, exclusión pública, DnD, calendario popover, PDF _fmt_date) está verificado end-to-end. Kanban 'Ganada' dorado también OK. NO se tocó el motor de precios del Paquete Armado — regresión de precios pasa (subtotal + commission = total).",
+  "rca of the issue": "CAUSA RAÍZ del fallo de 'Editar servicio': /app/backend/server.py maneja el CRUD de services (L527-570) con GET list, POST, PATCH y DELETE, pero omite GET individual /services/{id}. El frontend ServiceEditor.jsx en modo edición (isEdit=true) hace `await api.get('/services/${id}')` en useEffect (L41) — FastAPI responde 405 Method Not Allowed (probablemente porque otra ruta con path parameter atrapa la request como método incorrecto). Al fallar la promesa, setError se llena con 'Method Not Allowed' y form permanece en EMPTY (name vacío, is_private=false, precios=0, etc). El usuario ve un formulario en blanco con banner de error, no puede identificar el servicio y el botón Guardar queda deshabilitado por !form.name. MITIGACIÓN: agregar `@api.get('/services/{service_id}')` que haga db.services.find_one({'id': service_id, 'tenant_id': user['tenant_id']}, {'_id':0}), 404 si no existe. Reproducción: login como admin@aventurate.mx → /app/services → click Pencil en cualquier tarjeta → observar banner 'Method Not Allowed' y campos vacíos."
+}

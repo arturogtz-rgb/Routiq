@@ -1,9 +1,10 @@
 import { useEffect, useState, useRef } from 'react';
+import { useNavigate } from 'react-router-dom';
 import AppShell from '@/components/AppShell';
 import api, { formatApiError } from '@/lib/api';
 import { useConfirm } from '@/components/ConfirmDialog';
 import { useAuth } from '@/context/AuthContext';
-import { Plus, Pencil, Trash2, X, Save, Sparkles, Bus, Ticket, Map, FileSpreadsheet, Upload, Download, CheckCircle2, AlertTriangle, Clock, CalendarDays, Image as ImageIcon, Loader2 } from 'lucide-react';
+import { Plus, Pencil, Trash2, X, Sparkles, Bus, Ticket, Map, FileSpreadsheet, Upload, Download, CheckCircle2, AlertTriangle } from 'lucide-react';
 
 const CATEGORIES = [
   { key: 'tour', label: 'Tour', icon: Map },
@@ -12,64 +13,23 @@ const CATEGORIES = [
   { key: 'extra', label: 'Extra', icon: Sparkles },
 ];
 
-const UNITS = [
-  { key: 'per_person', label: 'Por persona' },
-  { key: 'per_group', label: 'Por grupo' },
-  { key: 'per_day', label: 'Por día' },
-  { key: 'per_access', label: 'Por acceso' },
-];
 const UNIT_ES = { per_person: 'por persona', per_group: 'por grupo', per_day: 'por día', per_access: 'por acceso' };
-const DUR_UNITS = [{ key: 'minutos', label: 'Minutos' }, { key: 'horas', label: 'Horas' }, { key: 'dias', label: 'Días' }];
-const DAYS = [['Lun', 0], ['Mar', 1], ['Mié', 2], ['Jue', 3], ['Vie', 4], ['Sáb', 5], ['Dom', 6]];
-
-const EMPTY = { name: '', category: 'tour', description: '', net_price: 0, public_price: 0, unit: 'per_group', image_url: '', duration_value: 0, duration_unit: 'horas', operating_days: [], includes: [], excludes: [], is_private: false, status: 'active' };
 
 function money(v) { return `$${Number(v || 0).toLocaleString('es-MX', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`; }
 
 export default function Services() {
   const confirm = useConfirm();
+  const navigate = useNavigate();
   const { user } = useAuth();
   const isAdmin = user?.role === 'company_admin';
   const [services, setServices] = useState([]);
-  const [margin, setMargin] = useState(0.76);
   const [error, setError] = useState('');
-  const [showForm, setShowForm] = useState(false);
-  const [editing, setEditing] = useState(null);
-  const [form, setForm] = useState(EMPTY);
-  const [saving, setSaving] = useState(false);
   const [importing, setImporting] = useState(false);
-  const [uploading, setUploading] = useState(false);
   const [report, setReport] = useState(null);
   const fileRef = useRef(null);
-  const imgRef = useRef(null);
 
   const backend = process.env.REACT_APP_BACKEND_URL || '';
   const imgSrc = (u) => (u ? (u.startsWith('http') ? u : `${backend}${u}`) : '');
-
-  const uploadImage = async (e) => {
-    const file = e.target.files?.[0];
-    if (file) e.target.value = '';
-    if (!file) return;
-    setError(''); setUploading(true);
-    try {
-      const fd = new FormData();
-      fd.append('file', file);
-      const { data } = await api.post('/packages/upload-image', fd, { headers: { 'Content-Type': 'multipart/form-data' } });
-      setForm((f) => ({ ...f, image_url: data.url }));
-    } catch (err) { setError(formatApiError(err)); }
-    finally { setUploading(false); }
-  };
-
-  const allDays = form.operating_days.length === 0;
-  const toggleDay = (d) => setForm((f) => {
-    const has = f.operating_days.includes(d);
-    return { ...f, operating_days: has ? f.operating_days.filter((x) => x !== d) : [...f.operating_days, d].sort((a, b) => a - b) };
-  });
-  const setAllDays = () => setForm((f) => ({ ...f, operating_days: [] }));
-
-  const updList = (key, i, val) => setForm((f) => ({ ...f, [key]: f[key].map((x, j) => (j === i ? val : x)) }));
-  const addList = (key) => setForm((f) => ({ ...f, [key]: [...f[key], ''] }));
-  const delList = (key, i) => setForm((f) => ({ ...f, [key]: f[key].filter((_, j) => j !== i) }));
 
   const downloadTemplate = async () => {
     try {
@@ -112,29 +72,11 @@ export default function Services() {
 
   const load = async () => {
     try {
-      const [s, c] = await Promise.all([api.get('/services'), api.get('/companies/me')]);
-      setServices(s.data);
-      setMargin(c.data?.pricing_config?.margin_divisor || 0.76);
+      const { data } = await api.get('/services');
+      setServices(data);
     } catch (e) { setError(formatApiError(e)); }
   };
   useEffect(() => { load(); }, []);
-
-  const openNew = () => { setEditing(null); setForm(EMPTY); setShowForm(true); setError(''); };
-  const openEdit = (svc) => { setEditing(svc.id); setForm({ ...EMPTY, ...svc, operating_days: svc.operating_days || [], includes: svc.includes || [], excludes: svc.excludes || [] }); setShowForm(true); setError(''); };
-
-  const suggestedPublic = form.net_price > 0 ? Math.round((form.net_price / (margin || 0.76)) * 100) / 100 : 0;
-
-  const save = async () => {
-    setError(''); setSaving(true);
-    try {
-      const payload = { ...form, net_price: +form.net_price || 0, public_price: +form.public_price || 0, duration_value: +form.duration_value || 0, includes: form.includes.filter((x) => (x || '').trim()), excludes: form.excludes.filter((x) => (x || '').trim()) };
-      if (editing) await api.patch(`/services/${editing}`, payload);
-      else await api.post('/services', payload);
-      setShowForm(false);
-      await load();
-    } catch (e) { setError(formatApiError(e)); }
-    finally { setSaving(false); }
-  };
 
   const remove = async (svc) => {
     if (!(await confirm({ title: 'Eliminar servicio', description: `¿Eliminar el servicio "${svc.name}"? Esta acción no se puede deshacer.`, confirmText: 'Eliminar' }))) return;
@@ -161,7 +103,7 @@ export default function Services() {
               <Upload className="w-4 h-4" /> {importing ? 'Importando…' : 'Importar Excel'}
             </button>
             <input ref={fileRef} type="file" accept=".xlsx" className="hidden" onChange={handleImport} data-testid="svc-import-input" />
-            <button className="btn-primary text-sm" onClick={openNew} data-testid="new-service-btn">
+            <button className="btn-primary text-sm" onClick={() => navigate('/app/services/new')} data-testid="new-service-btn">
               <Plus className="w-4 h-4" /> Nuevo servicio
             </button>
           </div>
@@ -181,7 +123,7 @@ export default function Services() {
                 <span className="pill bg-brand-50 text-brand-500 inline-flex items-center gap-1.5"><Icon className="w-3.5 h-3.5" /> {cat.label}</span>
                 {isAdmin && (
                   <div className="flex gap-1">
-                    <button className="p-1.5 rounded-lg text-ink-400 hover:bg-brand-50 hover:text-brand-500" onClick={() => openEdit(svc)} data-testid={`edit-service-${svc.id}`}><Pencil className="w-4 h-4" /></button>
+                    <button className="p-1.5 rounded-lg text-ink-400 hover:bg-brand-50 hover:text-brand-500" onClick={() => navigate(`/app/services/${svc.id}/edit`)} data-testid={`edit-service-${svc.id}`}><Pencil className="w-4 h-4" /></button>
                     <button className="p-1.5 rounded-lg text-ink-400 hover:bg-red-50 hover:text-red-600" onClick={() => remove(svc)} data-testid={`delete-service-${svc.id}`}><Trash2 className="w-4 h-4" /></button>
                   </div>
                 )}
@@ -208,121 +150,6 @@ export default function Services() {
         )}
       </div>
 
-      {/* Form modal */}
-      {showForm && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4" role="dialog">
-          <div className="absolute inset-0 bg-ink-900/40" onClick={() => setShowForm(false)} />
-          <div className="relative card-surface p-6 w-full max-w-lg animate-fade-up" data-testid="service-form-modal">
-            <div className="flex items-center justify-between mb-4">
-              <h2 className="font-display text-xl font-semibold text-ink-900">{editing ? 'Editar servicio' : 'Nuevo servicio'}</h2>
-              <button onClick={() => setShowForm(false)} className="p-2 rounded-lg hover:bg-brand-50"><X className="w-5 h-5" /></button>
-            </div>
-            {error && <div className="rounded-xl border border-red-200 bg-red-50 text-red-700 px-4 py-2 text-sm mb-3">{error}</div>}
-            <div className="space-y-4">
-              <div><label className="label-text">Nombre</label>
-                <input className="input-field" value={form.name} onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))} data-testid="service-name-input" /></div>
-              <div className="grid grid-cols-2 gap-3">
-                <div><label className="label-text">Categoría</label>
-                  <select className="input-field" value={form.category} onChange={(e) => setForm((f) => ({ ...f, category: e.target.value }))} data-testid="service-category-input">
-                    {CATEGORIES.map((c) => <option key={c.key} value={c.key}>{c.label}</option>)}
-                  </select>
-                </div>
-                <div><label className="label-text">Unidad de cobro</label>
-                  <select className="input-field" value={form.unit || 'per_group'} onChange={(e) => setForm((f) => ({ ...f, unit: e.target.value }))} data-testid="service-unit-input">
-                    {UNITS.map((u) => <option key={u.key} value={u.key}>{u.label}</option>)}
-                  </select>
-                </div>
-              </div>
-              <div><label className="label-text">Descripción</label>
-                <textarea rows="2" className="input-field" value={form.description} onChange={(e) => setForm((f) => ({ ...f, description: e.target.value }))} data-testid="service-desc-input" /></div>
-
-              <div><label className="label-text">Imagen de portada</label>
-                <div className="flex items-center gap-3">
-                  <button type="button" className="btn-ghost text-sm" onClick={() => imgRef.current?.click()} disabled={uploading} data-testid="service-image-upload-btn">
-                    {uploading ? <Loader2 className="w-4 h-4 animate-spin" /> : <ImageIcon className="w-4 h-4" />} {uploading ? 'Subiendo…' : 'Subir imagen'}
-                  </button>
-                  {form.image_url && <button type="button" className="text-xs text-red-600 hover:underline" onClick={() => setForm((f) => ({ ...f, image_url: '' }))} data-testid="service-image-remove">Quitar</button>}
-                  <input ref={imgRef} type="file" accept="image/*" className="hidden" onChange={uploadImage} data-testid="service-image-file" />
-                </div>
-                <input className="input-field mt-2" placeholder="o pega una URL https://..." value={form.image_url || ''} onChange={(e) => setForm((f) => ({ ...f, image_url: e.target.value }))} data-testid="service-image-input" />
-                {form.image_url ? <img src={imgSrc(form.image_url)} alt="" className="mt-2 h-24 w-full object-cover rounded-lg border border-ink-100" onError={(e) => { e.currentTarget.style.display = 'none'; }} /> : null}
-              </div>
-
-              <div className="grid grid-cols-2 gap-3">
-                <div><label className="label-text">Duración</label>
-                  <input type="number" min="0" step="0.5" className="input-field" value={form.duration_value} onChange={(e) => setForm((f) => ({ ...f, duration_value: e.target.value }))} data-testid="service-duration-value" /></div>
-                <div><label className="label-text">Unidad de duración</label>
-                  <select className="input-field" value={form.duration_unit} onChange={(e) => setForm((f) => ({ ...f, duration_unit: e.target.value }))} data-testid="service-duration-unit">
-                    {DUR_UNITS.map((u) => <option key={u.key} value={u.key}>{u.label}</option>)}
-                  </select>
-                </div>
-              </div>
-
-              <div>
-                <label className="label-text">Días de operación</label>
-                <div className="flex flex-wrap gap-2" data-testid="service-operating-days">
-                  <button type="button" onClick={setAllDays} className={`px-3 py-1.5 rounded-full text-sm font-medium border transition-colors ${allDays ? 'border-brand-500 bg-brand-50 text-brand-700' : 'border-ink-100 text-ink-500 hover:border-brand-300'}`} data-testid="service-day-all">Todos los días</button>
-                  {DAYS.map(([label, d]) => (
-                    <button type="button" key={d} onClick={() => toggleDay(d)} className={`px-3 py-1.5 rounded-full text-sm font-medium border transition-colors ${form.operating_days.includes(d) ? 'border-brand-500 bg-brand-50 text-brand-700' : 'border-ink-100 text-ink-500 hover:border-brand-300'}`} data-testid={`service-day-${d}`}>{label}</button>
-                  ))}
-                </div>
-                <p className="text-[11px] text-ink-400 mt-1">Sin selección = disponible todos los días.</p>
-              </div>
-
-              <label className="flex items-center gap-3 rounded-xl border border-ink-100 p-3 cursor-pointer" data-testid="service-private-toggle">
-                <input type="checkbox" className="w-4 h-4 accent-brand-500" checked={!!form.is_private} onChange={(e) => setForm((f) => ({ ...f, is_private: e.target.checked }))} data-testid="service-private-checkbox" />
-                <span>
-                  <span className="block text-sm font-medium text-ink-900">Servicio privado</span>
-                  <span className="block text-[11px] text-ink-400">No aparece en el catálogo público; sí está disponible al cotizar internamente.</span>
-                </span>
-              </label>
-
-              <div className="grid sm:grid-cols-2 gap-4">
-                <div>
-                  <label className="label-text">Incluye</label>
-                  <div className="space-y-2" data-testid="service-includes">
-                    {form.includes.map((x, i) => (
-                      <div key={i} className="flex gap-2">
-                        <input className="input-field" value={x} placeholder="Ej. Transporte" onChange={(e) => updList('includes', i, e.target.value)} data-testid={`service-includes-input-${i}`} />
-                        <button type="button" className="text-red-600 hover:text-red-800 px-1" onClick={() => delList('includes', i)} data-testid={`service-includes-remove-${i}`}><Trash2 className="w-4 h-4" /></button>
-                      </div>
-                    ))}
-                    <button type="button" className="btn-ghost text-xs" onClick={() => addList('includes')} data-testid="service-includes-add"><Plus className="w-4 h-4" /> Agregar</button>
-                  </div>
-                </div>
-                <div>
-                  <label className="label-text">No incluye</label>
-                  <div className="space-y-2" data-testid="service-excludes">
-                    {form.excludes.map((x, i) => (
-                      <div key={i} className="flex gap-2">
-                        <input className="input-field" value={x} placeholder="Ej. Propinas" onChange={(e) => updList('excludes', i, e.target.value)} data-testid={`service-excludes-input-${i}`} />
-                        <button type="button" className="text-red-600 hover:text-red-800 px-1" onClick={() => delList('excludes', i)} data-testid={`service-excludes-remove-${i}`}><Trash2 className="w-4 h-4" /></button>
-                      </div>
-                    ))}
-                    <button type="button" className="btn-ghost text-xs" onClick={() => addList('excludes')} data-testid="service-excludes-add"><Plus className="w-4 h-4" /> Agregar</button>
-                  </div>
-                </div>
-              </div>
-              <div className="grid grid-cols-2 gap-3">
-                <div><label className="label-text">Precio neto (costo)</label>
-                  <input type="number" step="0.01" className="input-field" value={form.net_price} onChange={(e) => setForm((f) => ({ ...f, net_price: e.target.value }))} data-testid="service-net-input" /></div>
-                <div><label className="label-text">Precio público</label>
-                  <input type="number" step="0.01" className="input-field" value={form.public_price} placeholder={suggestedPublic ? String(suggestedPublic) : ''}
-                    onChange={(e) => setForm((f) => ({ ...f, public_price: e.target.value }))} data-testid="service-public-input" /></div>
-              </div>
-              {suggestedPublic > 0 && (
-                <p className="text-xs text-ink-500">Sugerido con margen {Math.round((1 - margin) * 100)}%: <b className="text-brand-500">{money(suggestedPublic)}</b>. Déjalo en 0 para autocalcular.</p>
-              )}
-            </div>
-            <div className="flex justify-end gap-2 mt-6 pt-4 border-t border-ink-100">
-              <button className="btn-ghost" onClick={() => setShowForm(false)}>Cancelar</button>
-              <button className="btn-primary" onClick={save} disabled={saving || !form.name} data-testid="save-service-btn">
-                <Save className="w-4 h-4" /> {saving ? 'Guardando…' : 'Guardar'}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
       {report && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4" role="dialog">
           <div className="absolute inset-0 bg-ink-900/40" onClick={() => setReport(null)} />

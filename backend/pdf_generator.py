@@ -631,7 +631,7 @@ def generate_booking_confirmation_pdf(company: dict, quotation: dict, confirmati
         ("Empresa", confirmation.get("agent_company", "")),
         ("Correo del ejecutivo", confirmation.get("agent_email", "")),
         ("Teléfono", confirmation.get("agent_phone", "")),
-        ("Fecha de reservación", confirmation.get("reservation_date", "")),
+        ("Fecha de reservación", _fmt_date(confirmation.get("reservation_date", ""))),
         ("Pasajero final", confirmation.get("passenger_name", "")),
         ("Teléfono del pasajero", confirmation.get("passenger_phone", "")),
         ("Número de personas", confirmation.get("num_persons", "")),
@@ -648,7 +648,7 @@ def generate_booking_confirmation_pdf(company: dict, quotation: dict, confirmati
         else:
             sec_label = (quotation.get("package_snapshot") or {}).get("name") or "Paquete"
         story.append(Paragraph(f"Servicios confirmados · {_xml_escape(sec_label)}", s["h2"]))
-        rows = [[x.get("date", ""), x.get("service", ""), x.get("details", ""), x.get("persons", ""), x.get("observations", "")] for x in services]
+        rows = [[_fmt_date(x.get("date", "")), x.get("service", ""), x.get("details", ""), x.get("persons", ""), x.get("observations", "")] for x in services]
         story.append(_grid_table(["Fecha", "Servicio", "Detalles", "Pers.", "Observaciones"], rows, [2.3, 3.5, 4.2, 1.4, 5.0]))
         story.append(Spacer(1, 10))
 

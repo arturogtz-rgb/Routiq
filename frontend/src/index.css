@@ -140,7 +140,7 @@ h1, h2, h3, h4, h5, h6, .font-display {
 .kanban-col-cotizando { background: linear-gradient(180deg, #E6F1FB 0%, #F8F9FA 100%); }
 .kanban-col-enviada { background: linear-gradient(180deg, #DBE9F8 0%, #F8F9FA 100%); }
 .kanban-col-negociacion { background: linear-gradient(180deg, #FAEEDA 0%, #FEF9EF 100%); }
-.kanban-col-ganada { background: linear-gradient(180deg, #E1F5EE 0%, #F2FBF7 100%); }
+.kanban-col-ganada { background: linear-gradient(180deg, #FBEFC2 0%, #FEF9E7 100%); }
 .kanban-col-perdida { background: linear-gradient(180deg, #FDE8E8 0%, #FEF5F5 100%); }
 
 .grain {
