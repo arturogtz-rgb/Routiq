@@ -530,6 +530,15 @@ async def list_services(user: dict = Depends(require_tenant)):
     return await db.services.find({"tenant_id": user["tenant_id"]}, {"_id": 0}).sort("name", 1).to_list(500)
 
 
+@api.get("/services/{service_id}")
+async def get_service(service_id: str, user: dict = Depends(require_tenant)):
+    db = get_db()
+    svc = await db.services.find_one({"id": service_id, "tenant_id": user["tenant_id"]}, {"_id": 0})
+    if not svc:
+        raise HTTPException(status_code=404, detail="Servicio no encontrado")
+    return svc
+
+
 async def _auto_public_price(db, tenant_id: str, net_price: float, public_price: float) -> float:
     if public_price and public_price > 0:
         return round(public_price, 2)

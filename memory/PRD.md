@@ -409,3 +409,12 @@ Ver `/app/memory/test_credentials.md`. Seed automático en cada startup.
 - 7.1: PDF de cotización muestra nombre del paquete en "Detalles de la reservación" y en desglose/conceptos.
 - H2: solo logging mejorado del captcha Turnstile (diagnóstico hostname-mismatch / invalid-secret / token vencido). El ajuste de dominio/secret se hace en el panel de Cloudflare (dominio prod: routiq.com.mx).
 - Probado: backend 8/8, frontend 6/6. Precios y Paquete armado intactos.
+
+## [2026-07-16] Lote C + fix Kanban dorado (COMPLETADO ✅, iter_49)
+- Fix Kanban dorado: columna "Ganada" de /app/kanban ahora con gradiente ámbar (.kanban-col-ganada → #FBEFC2→#FEF9E7), consistente con Dashboard/lista.
+- 8.1: ServiceEditor.jsx como página independiente (rutas /app/services/new y /app/services/:id/edit, roles company_admin). Modal viejo eliminado de Services.jsx (ahora solo listado + import/export Excel).
+- Nuevo endpoint backend GET /api/services/{id} (require_tenant, 404 si no existe) — necesario para precargar el editor en modo edición.
+- 8.2: servicio privado (is_private) editable desde el editor; badge "Privado" en el listado; excluido del catálogo público de servicios (filtro is_private:{$ne:True} en public_package.py). Filtrado público ya existía.
+- 9.3: Confirmación de Reserva — drag-and-drop de filas de "Servicios confirmados" con @dnd-kit/sortable (el orden visual define el orden impreso en PDF); fechas por servicio y "Fecha de reservación" con selector de calendario (Popover+Calendar, valor ISO). pdf_generator.py formatea esas fechas con _fmt_date.
+- Probado: backend 6/6 pytest + endpoint GET verificado (200); frontend 6/6 ACs (edición de servicios verificada tras el fix). Motor de precios del Paquete Armado intacto.
+- Pendiente (próximo): Lote D (4.1 cliente favorito + 10.5 itinerario/descripción según tipo) y Lote E (reportes por mes calendario + filtros date_from/date_to en GET /quotations).
