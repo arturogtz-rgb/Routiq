@@ -806,11 +806,25 @@ export default function QuotationBuilder() {
         {/* Step: Services (paquete flow) */}
         {cur === 'services' && (
           <div className="space-y-4" data-testid="step-services-panel">
-            <div>
-              <h2 className="font-display text-xl font-semibold text-ink-900">Servicios a la carta</h2>
-              <p className="text-ink-500 text-sm mt-1">Agrega tours, traslados, accesos o extras opcionales. Este paso es opcional.</p>
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <h2 className="font-display text-xl font-semibold text-ink-900">Servicios a la carta</h2>
+                <p className="text-ink-500 text-sm mt-1">Agrega tours, traslados, accesos o extras opcionales. Este paso es opcional.</p>
+              </div>
+              <button disabled={!canNext()} onClick={() => setStep((s) => s + 1)} className="btn-primary shrink-0" data-testid="builder-next-top">
+                Siguiente <ArrowRight className="w-4 h-4" />
+              </button>
             </div>
-            {renderServicesGrid()}
+            {services.length > 0 && (
+              <div className="flex flex-wrap gap-2" data-testid="services-cat-filter">
+                {['todos', ...Array.from(new Set(services.map((s) => s.category)))].map((c) => (
+                  <button key={c} type="button" onClick={() => setSvcCat(c)}
+                    className={`px-3 py-1.5 rounded-full text-sm font-medium border capitalize transition-colors ${svcCat === c ? 'border-brand-500 bg-brand-50 text-brand-700' : 'border-ink-100 text-ink-500 hover:border-brand-300'}`}
+                    data-testid={`services-cat-${c}`}>{c === 'todos' ? 'Todas' : c}</button>
+                ))}
+              </div>
+            )}
+            {renderServicesGrid(svcCat === 'todos' ? services : services.filter((s) => s.category === svcCat))}
             {servicesSubtotal > 0 && (
               <div className="rounded-xl bg-mint-100 text-emerald-800 px-4 py-3 text-sm font-medium" data-testid="services-subtotal">
                 Servicios seleccionados: {money(servicesSubtotal)}

@@ -4,7 +4,7 @@ import AppShell from '@/components/AppShell';
 import api, { formatApiError } from '@/lib/api';
 import { useConfirm } from '@/components/ConfirmDialog';
 import { useAuth } from '@/context/AuthContext';
-import { MessageCircle, Sparkles, Smartphone, Send, Search, Plus, QrCode, Power, X, RefreshCw, Phone, FileText, Trash2 } from 'lucide-react';
+import { MessageCircle, Sparkles, Smartphone, Send, Search, Plus, QrCode, Power, X, RefreshCw, Phone, FileText, Trash2, Users, EyeOff, Archive } from 'lucide-react';
 
 export default function WhatsAppInbox() {
   const confirm = useConfirm();
@@ -24,6 +24,9 @@ export default function WhatsAppInbox() {
   const [error, setError] = useState('');
   const [sending, setSending] = useState(false);
   const [search, setSearch] = useState('');
+  const [showGroups, setShowGroups] = useState(false);
+  const [showHidden, setShowHidden] = useState(false);
+  const messagesEndRef = useRef(null);
   // QR connect modal
   const [qrModal, setQrModal] = useState(false);
   const [qr, setQr] = useState(null);
@@ -159,10 +162,29 @@ export default function WhatsAppInbox() {
     finally { setAiLoading(false); }
   };
 
-  const filteredChats = chats.filter((c) =>
-    (c.contact_name || '').toLowerCase().includes(search.toLowerCase()) || (c.phone || '').includes(search));
+  const hideChat = async (chat, hidden) => {
+    try {
+      await api.post('/whatsapp/chats/hide', { number_id: activeNumber, chat_id: chat.chat_id, hidden });
+      if (hidden && activeChat === chat.chat_id) { setActiveChat(null); setMessages([]); }
+      setChats((cs) => cs.map((c) => (c.chat_id === chat.chat_id ? { ...c, hidden } : c)));
+    } catch (e) { setError(formatApiError(e)); }
+  };
+
+  const groupCount = chats.filter((c) => c.is_group && !c.hidden).length;
+  const hiddenCount = chats.filter((c) => c.hidden).length;
+  const filteredChats = chats.filter((c) => {
+    if (showHidden) { if (!c.hidden) return false; }
+    else { if (c.hidden) return false; if (c.is_group && !showGroups) return false; }
+    const s = search.toLowerCase();
+    return (c.contact_name || '').toLowerCase().includes(s) || (c.phone || '').includes(search);
+  });
   const activeChatObj = chats.find((c) => c.chat_id === activeChat);
   const connected = activeNum?.status === 'connected';
+
+  // F5: auto-scroll al último mensaje al abrir/recibir/enviar
+  useEffect(() => {
+    if (messagesEndRef.current) messagesEndRef.current.scrollIntoView({ behavior: 'auto' });
+  }, [messages, activeChat]);
 
   return (
     <AppShell>
@@ -203,39 +225,61 @@ export default function WhatsAppInbox() {
         )}
       </div>
 
-      <div className="card-surface overflow-hidden grid md:grid-cols-[320px_1fr] min-h-[560px]" data-testid="wa-inbox">
+      <div className="card-surface overflow-hidden grid md:grid-cols-[320px_1fr] h-[calc(100vh-240px)] min-h-[420px]" data-testid="wa-inbox">
         {/* Chat list */}
-        <aside className="border-r border-ink-100 flex flex-col">
-          <div className="p-3 border-b border-ink-100">
+        <aside className="border-r border-ink-100 flex flex-col min-h-0">
+          <div className="p-3 border-b border-ink-100 space-y-2">
             <div className="relative">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-ink-400" />
               <input className="input-field pl-10" placeholder="Buscar chat" value={search} onChange={(e) => setSearch(e.target.value)} data-testid="wa-search" />
             </div>
+            <div className="flex items-center gap-2 flex-wrap">
+              <button onClick={() => { setShowHidden(false); setShowGroups((v) => !v); }}
+                className={`pill text-xs inline-flex items-center gap-1 ${showGroups && !showHidden ? 'bg-brand-500 text-white' : 'bg-white border border-ink-200 text-ink-600'}`}
+                data-testid="wa-toggle-groups">
+                <Users className="w-3 h-3" /> Grupos{groupCount > 0 ? ` (${groupCount})` : ''}
+              </button>
+              <button onClick={() => setShowHidden((v) => !v)}
+                className={`pill text-xs inline-flex items-center gap-1 ${showHidden ? 'bg-ink-700 text-white' : 'bg-white border border-ink-200 text-ink-600'}`}
+                data-testid="wa-toggle-hidden">
+                <Archive className="w-3 h-3" /> {showHidden ? 'Ver activos' : `Ocultos${hiddenCount > 0 ? ` (${hiddenCount})` : ''}`}
+              </button>
+            </div>
           </div>
-          <div className="flex-1 overflow-y-auto">
+          <div className="flex-1 overflow-y-auto min-h-0">
             {filteredChats.length === 0 && (
               <p className="p-6 text-sm text-ink-400" data-testid="wa-chats-empty">
-                {connected ? 'Aún no hay conversaciones. Cuando te escriban aparecerán aquí.' : 'Conecta este número para empezar a recibir mensajes.'}
+                {showHidden ? 'No hay chats ocultos.' : connected ? 'Aún no hay conversaciones. Cuando te escriban aparecerán aquí.' : 'Conecta este número para empezar a recibir mensajes.'}
               </p>
             )}
             {filteredChats.map((c) => (
-              <button key={c.chat_id} onClick={() => setActiveChat(c.chat_id)}
-                className={`w-full text-left px-4 py-3 border-b border-ink-100 transition-colors ${activeChat === c.chat_id ? 'bg-brand-50' : 'hover:bg-cream'}`}
+              <div key={c.chat_id}
+                className={`group relative w-full border-b border-ink-100 transition-colors ${activeChat === c.chat_id ? 'bg-brand-50' : 'hover:bg-cream'}`}
                 data-testid={`wa-chat-${c.chat_id}`}>
-                <div className="flex items-center justify-between">
-                  <p className="font-semibold text-ink-900 truncate">{c.contact_name}</p>
-                  {c.unread > 0 && <span className="pill bg-brand-500 text-white text-[10px]">{c.unread}</span>}
-                </div>
-                <p className="text-xs text-ink-400 mt-0.5 flex items-center gap-1"><Phone className="w-3 h-3" />{c.phone}</p>
-                {c.quotation_code && <span className="inline-flex items-center gap-1 pill bg-peach-100 text-amber-700 text-[10px] mt-1" data-testid={`wa-chat-quote-${c.chat_id}`}><FileText className="w-3 h-3" />{c.quotation_code}</span>}
-                <p className="text-sm text-ink-500 mt-1 truncate">{c.last_text}</p>
-              </button>
+                <button onClick={() => setActiveChat(c.chat_id)} className="w-full text-left px-4 py-3">
+                  <div className="flex items-center justify-between gap-2 pr-6">
+                    <p className="font-semibold text-ink-900 truncate flex items-center gap-1.5">
+                      {c.is_group && <Users className="w-3.5 h-3.5 text-ink-400 shrink-0" />}{c.contact_name}
+                    </p>
+                    {c.unread > 0 && <span className="pill bg-brand-500 text-white text-[10px]">{c.unread}</span>}
+                  </div>
+                  <p className="text-xs text-ink-400 mt-0.5 flex items-center gap-1"><Phone className="w-3 h-3" />{c.phone}</p>
+                  {c.quotation_code && <span className="inline-flex items-center gap-1 pill bg-peach-100 text-amber-700 text-[10px] mt-1" data-testid={`wa-chat-quote-${c.chat_id}`}><FileText className="w-3 h-3" />{c.quotation_code}</span>}
+                  <p className="text-sm text-ink-500 mt-1 truncate">{c.last_text}</p>
+                </button>
+                <button onClick={(e) => { e.stopPropagation(); hideChat(c, !c.hidden); }}
+                  title={c.hidden ? 'Restaurar chat' : 'Ocultar chat'}
+                  className="absolute top-2.5 right-2 p-1 rounded-lg text-ink-300 opacity-0 group-hover:opacity-100 hover:text-ink-700 hover:bg-white transition"
+                  data-testid={`wa-hide-chat-${c.chat_id}`}>
+                  {c.hidden ? <RefreshCw className="w-3.5 h-3.5" /> : <EyeOff className="w-3.5 h-3.5" />}
+                </button>
+              </div>
             ))}
           </div>
         </aside>
 
         {/* Conversation */}
-        <section className="flex flex-col">
+        <section className="flex flex-col min-h-0">
           {!activeChat ? (
             <div className="flex-1 flex items-center justify-center text-ink-400 text-sm" data-testid="wa-no-chat">
               <div className="text-center">
@@ -271,7 +315,7 @@ export default function WhatsAppInbox() {
                   </div>
                 </div>
               </header>
-              <div className="flex-1 overflow-y-auto p-6 space-y-3 bg-cream" data-testid="wa-messages">
+              <div className="flex-1 overflow-y-auto p-6 space-y-3 bg-cream min-h-0" data-testid="wa-messages">
                 {messages.map((m) => (
                   <div key={m.id} className={`flex ${m.from_me ? 'justify-end' : 'justify-start'}`}>
                     <div className={`max-w-[75%] rounded-2xl px-4 py-2 text-sm ${m.from_me ? 'bg-brand-500 text-white rounded-br-sm' : 'bg-white text-ink-900 border border-ink-100 rounded-bl-sm'}`}>
@@ -282,6 +326,7 @@ export default function WhatsAppInbox() {
                     </div>
                   </div>
                 ))}
+                <div ref={messagesEndRef} />
               </div>
               <div className="p-4 border-t border-ink-100 bg-white">
                 <div className="flex gap-2">

@@ -1,0 +1,48 @@
+{
+  "summary": "Iteración 52 — Lotes F/G/H (WhatsApp + IA seguimiento + correcciones cotizaciones) verificado end-to-end. Backend pytest 13/14 PASS (1 FAIL real de H1: presentation_text NO se traduce a 'texto de presentación', queda como snake_case crudo). Todo lo demás pasa: F6 share/q y share/r con OG del tenant OK ('Aventúrate por Jalisco · Cotización COT-2026061' verificado); share/q con token inválido devuelve HTML genérico redirigiendo a /q/{token}; share/r idem. F2 GET /whatsapp/chats responde 200 con estructura correcta (is_group/hidden/contact_name), lista vacía en demo (sin mensajes) — validado que las claves están presentes cuando hay filas. F4 POST /whatsapp/chats/hide devuelve {ok:true, hidden:true/false} y persiste. G endpoints follow-up-prepay/postsale devuelven 503 con detalle 'IA no disponible: La IA no está configurada…' (BYOK correcto). G send-message devuelve 200 con to=email cliente. H1 diff real: cambiar solo 'notes' registra 'Editó: notas' (NO 13 campos); re-enviar mismo valor NO registra history; PERO presentation_text queda 'Editó: presentation_text' — FIELD_ES incompleto. Regresión motor de precios: paquete 4ca24d69… subtotal+commission==total (± 0.02) ✓, custom idem ✓. Frontend Playwright: (a) AI panel muestra 3 botones para paquete GANADA (pre-pago + post-venta + redactar); post-venta oculto en 'servicios' (nueva) ✓; viejos ai-next-step-btn/ai-missing-btn eliminados ✓; click prepay → ai-error 'IA no disponible: La IA no está configurada…' elegante, sin crash. (b) H2: paquete NO muestra detail-custom-items ni detail-service-items; personalizado ba5d… muestra 'Conceptos del programa' con 'TEST Hotel UI · hospedaje×1'; servicios 91dd… muestra 'Servicios contratados' con 'Acceso Hospicio Cabañas · por acceso×3'. (c) WA Inbox /app/whatsapp: wa-inbox con clase h-[calc(100vh-240px)] confirmada; wa-toggle-groups y wa-toggle-hidden presentes; sin chats en demo (0 wa-hide-chat-*, esperado). (d) F3 modal: wa-link-btn abre wa-link-modal, con wa-link-search (fillable) y wa-link-show-all presentes. (e) F6 copy: código de QuotationDetail L193-199 confirma que copyPublicUrl construye `${origin}/api/share/q/${token}` — la ruta con OG por empresa. NO se tocó pricing.py ni compute_quotation.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "PATCH /api/quotations/{id}", "issue": "H1 — El diccionario FIELD_ES en /app/backend/routes/quotations.py L356-358 NO incluye: presentation_text, important_info, executive_id, custom_title, custom_items, custom_nights, custom_rooms, custom_itinerary, custom_includes, custom_excludes, show_all_occupancies, show_price_breakdown, hotel_selected. Editar presentation_text registra 'Editó: presentation_text' (snake_case crudo) en vez de 'Editó: texto de presentación'. Contradice el requisito H1 que exige traducciones al español."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_iteration52_lote_fgh.py",
+    "/app/test_reports/pytest/iter52.xml"
+  ],
+  "action_items": [
+    "Extender FIELD_ES en /app/backend/routes/quotations.py L356-358 para cubrir todos los campos editables. Agregar como mínimo: 'presentation_text':'texto de presentación', 'important_info':'información importante', 'executive_id':'ejecutivo', 'custom_title':'título del programa', 'custom_items':'conceptos del programa', 'custom_nights':'noches del programa', 'custom_rooms':'habitaciones del programa', 'custom_itinerary':'itinerario', 'custom_includes':'incluye', 'custom_excludes':'no incluye', 'show_all_occupancies':'mostrar ocupaciones', 'show_price_breakdown':'mostrar desglose de precio', 'hotel_selected':'hotel'. Como alternativa robusta, considerar helper _humanize(field) que si no encuentra traducción convierta snake_case→'palabra palabra' antes de mostrar."
+  ],
+  "critical_code_review_comments": [
+    "/app/backend/routes/quotations.py L623-632 — BUG MENOR (código muerto): la segunda definición de `ai_client_message` (L624) tiene `router.post(...)` en L623 SIN el `@` decorador. La función NO se registra como ruta (la ruta activa es la de L524-533, que sí está decorada). Esto redefine el nombre Python `ai_client_message` pero sin efecto en FastAPI. Recomendación: eliminar las líneas 623-632 (código duplicado/muerto).",
+    "/app/backend/routes/quotations.py L282 changed_fields = [k for k in updates if q.get(k) != updates[k]] — CORRECTO para diff real, pero: para campos anidados (dict como 'pax' o 'dates') puede reportar cambio aunque solo se re-envíen valores serializados idénticos. En pruebas con 'notes' funciona bien; con dicts podría dar falsos positivos.",
+    "/app/backend/routes/quotations.py L356-358 FIELD_ES incompleto — ver action_items. Sin snake_case fallback, cualquier campo no listado aparece crudo en la UI del historial. Además, para 'assigned_to' se traduce 'responsable', pero el nuevo campo 'executive_id' (ejecutivo del cliente) no está mapeado.",
+    "/app/backend/routes/whatsapp.py L164-180 _crm_name_map — correcto: normaliza a 10 dígitos ignorando 52/521; prioriza formato 'Ejecutivo · Agencia'. Bien.",
+    "/app/backend/routes/whatsapp.py L184-230 list_chats — devuelve is_group/hidden/contact_name. La consulta whatsapp_chat_prefs se carga por tenant+number (bien, sin explosión). Filtro CRM solo se aplica a chats no-grupo (correcto).",
+    "/app/backend/routes/whatsapp.py L239-246 hide_chat — usa upsert atómico. Bien. No hay endpoint DELETE explícito; el toggle con hidden=false es el 'unhide'. OK.",
+    "/app/backend/routes/booking.py L219-262 share/r — implementa OG por tenant idéntico al de public_payments.py::share/q. Con token inválido devuelve título genérico 'Confirmación de Reserva' + redirect a /r/{token}. Consistente.",
+    "/app/backend/routes/quotations.py L590-597 follow-up-prepay/postsale — delegan a _run_follow_up que llama ai_service.follow_up_message (BYOK vía ai_service.py). El detalle 'IA no disponible: La IA no está configurada…' llega desde la exception de ai_service (correcto, 503 uniforme).",
+    "/app/backend/routes/quotations.py L604-622 send-message — reenvía por correo (send_email desde notifications.py). Retorna to=client.email. Correcto. Nota: no registra history del envío (podría ser una mejora futura para auditoría).",
+    "/app/frontend/src/pages/QuotationDetail.jsx L193-199 copyPublicUrl — construye ${origin}/api/share/q/${publicToken}, cumpliendo F6. El input de texto en la UI muestra la URL SPA (/q/{token}) para lectura humana, pero al copiar sirve el enlace con OG. Buen patrón.",
+    "/app/frontend/src/pages/WhatsAppInbox.jsx L228 wa-inbox — className grid + h-[calc(100vh-240px)] min-h-[420px]. Cumple F5 (altura fija, scroll interno independiente). Bien.",
+    "/app/frontend/src/pages/QuotationDetail.jsx L466 ai-followup-postsale-btn — renderizado condicional q.state==='ganada' || q.payment_status==='paid'. Verificado en UI: en paquete ganada aparece; en servicios nueva no aparece. Correcto."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_iteration52_lote_fgh.py (nuevo — 14 tests pytest para Lotes F/G/H)"
+  ],
+  "success_rate": {
+    "backend": "93% (13/14 pytest — 1 FAIL en H1 presentation_text translation)",
+    "frontend": "100% — G panel/H2/F4-F5/F3/F6 verificados end-to-end"
+  },
+  "test_credentials": "admin@aventurate.mx / Demo2026! (company_admin María González, tenant Aventúrate por Jalisco)",
+  "seed_data_creation": "Solo modificaciones idempotentes vía tests: notes/presentation_text de la cotización paquete 4ca24d69… se actualizaron con valores TEST_iter52; toggle hide_chat con chat_id sintético (upsert en whatsapp_chat_prefs, reversible). Motor de precios NO tocado.",
+  "retest_needed": true,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Lote F (share OG por empresa, WA chats CRM/is_group/hidden, hide-chat) y Lote G (IA follow-up 503 BYOK, send-message email) al 100%. Frontend UI de Iter 2 (H2 detail cards, WA inbox altura fija + toggles, F3 modal buscador, panel IA con 3 botones + eliminación de viejos, F6 copy /api/share/q/) verificado directamente. ÚNICO BUG PENDIENTE H1: FIELD_ES en /app/backend/routes/quotations.py L356-358 no cubre presentation_text/executive_id/custom_*/important_info/show_*/hotel_selected — main agent debe extender el dict (ver action_items). El test test_presentation_text_translated queda como regresión para verificar el fix. Bug menor de código muerto en L623-632 (segunda def de ai_client_message sin @). Motor de precios de Paquete Armado intacto (subtotal+commission==total ± 0.02).",
+  "rca of the issue": "H1 presentation_text no traducido — RCA: el requisito Iter2 H1 exige que TODOS los campos editables se muestren en español en el historial. El código en quotations.py L354-360 usa `FIELD_ES.get(f, f)` con un diccionario que solo cubre 8 campos legacy (dates/pax/services/extra_nights/hotel_name/contacts/notes/assigned_to). Los campos añadidos en iteraciones posteriores (presentation_text, important_info, executive_id, custom_*, show_*) no fueron agregados al diccionario, por lo que fallback devuelve el snake_case crudo. Reproducción: PATCH /api/quotations/{id} con {presentation_text:'x'} → history entry 'Editó: presentation_text'. Mitigación: extender FIELD_ES (ver action_items) O implementar `_humanize(field)` que replace('_',' ') y traduzca si es conocido."
+}

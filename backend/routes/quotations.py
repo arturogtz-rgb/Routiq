@@ -6,6 +6,7 @@ from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import StreamingResponse
+from pydantic import BaseModel
 
 from database import get_db, new_id, now_iso, DEFAULT_PRICING_CONFIG
 from auth import require_tenant
@@ -15,6 +16,7 @@ from models import (
 )
 from pricing import compute_quotation, compute_custom_quotation
 from pdf_generator import generate_quotation_pdf
+from notifications import send_email
 import ai_service
 from deps import (
     _load_services_catalog, _next_quotation_code, _append_history, _record_audit, _apply_discount,
@@ -22,6 +24,10 @@ from deps import (
 
 log = logging.getLogger("routiq")
 router = APIRouter()
+
+
+def _esc_html(s: str) -> str:
+    return (str(s or "").replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;"))
 
 
 def _apply_client_commission(pricing_config: dict, client: dict) -> dict:
@@ -272,7 +278,8 @@ async def update_quotation(quotation_id: str, payload: QuotationUpdate, user: di
     q = await db.quotations.find_one({"id": quotation_id, "tenant_id": user["tenant_id"]}, {"_id": 0})
     if not q:
         raise HTTPException(status_code=404, detail="Cotización no encontrada")
-    changed_fields = [k for k in updates.keys()]
+    # H1: diff real — registrar SOLO los campos que efectivamente cambiaron (payload del usuario).
+    changed_fields = [k for k in updates if q.get(k) != updates[k]]
     if q.get("type") == "personalizado":
         if any(k in updates for k in ("pax", "dates", "custom_items", "custom_nights", "custom_rooms")):
             client = await db.clients.find_one({"id": q["client_id"], "tenant_id": user["tenant_id"]}, {"_id": 0})
@@ -515,6 +522,105 @@ async def ai_missing_fields(quotation_id: str, user: dict = Depends(require_tena
 
 
 @router.post("/ai/quotations/{quotation_id}/client-message")
+async def ai_client_message(quotation_id: str, user: dict = Depends(require_tenant)):
+    await _check_ai_enabled(user["tenant_id"])
+    q, pack, client = await _load_quotation_context(quotation_id, user["tenant_id"])
+    try:
+        msg = await ai_service.generate_client_message(q, pack, client, tenant_id=user['tenant_id'])
+        return {"message": msg, "context": ""}
+    except Exception as e:
+        log.exception("AI client-message failed")
+        raise HTTPException(status_code=503, detail=f"IA no disponible: {e}")
+
+
+async def _follow_up_context(db, q: dict, tenant_id: str):
+    """Contexto para el seguimiento: días desde envío, estado de pago y últimos mensajes
+    del chat vinculado (si existe). Devuelve (context_note, chat_excerpt)."""
+    parts = []
+    # días desde el envío (busca en el historial el cambio a 'enviada'; si no, days_idle)
+    sent_at = None
+    for h in (q.get("history") or []):
+        d = (h.get("detail") or "") + (h.get("action") or "")
+        if "enviada" in d.lower() or h.get("action") == "sent":
+            sent_at = h.get("at")
+    days_sent = None
+    try:
+        if sent_at:
+            days_sent = (datetime.now(timezone.utc) - datetime.fromisoformat(sent_at)).days
+    except Exception:
+        days_sent = None
+    if days_sent is None:
+        days_sent = q.get("days_idle")
+    if days_sent is not None:
+        parts.append(f"Enviada hace {days_sent} día(s).")
+    ps = q.get("payment_status", "unpaid")
+    parts.append({"paid": "Ya está pagada.", "partial": "Tiene un pago parcial.",
+                  "unpaid": "Sin pago registrado."}.get(ps, "Sin pago registrado."))
+    parts.append(f"Estado: {q.get('state', '?')}.")
+    # chat vinculado → últimos mensajes
+    excerpt = ""
+    link = await db.whatsapp_links.find_one({"tenant_id": tenant_id, "quotation_id": q["id"]}, {"_id": 0})
+    if link:
+        msgs = await db.whatsapp_messages.find(
+            {"tenant_id": tenant_id, "number_id": link["number_id"], "chat_id": link["chat_id"]},
+            {"_id": 0, "from_me": 1, "text": 1}).sort("timestamp", -1).to_list(10)
+        msgs = list(reversed(msgs))
+        if msgs:
+            excerpt = "\n".join(f"{'Yo' if m.get('from_me') else 'Agencia'}: {m.get('text', '')}" for m in msgs if m.get("text"))
+            last_in = next((m for m in reversed(msgs) if not m.get("from_me")), None)
+            parts.append("Hay conversación de WhatsApp vinculada." if last_in else "Chat vinculado (sin respuesta de la agencia).")
+    else:
+        parts.append("Sin chat de WhatsApp vinculado.")
+    return " ".join(parts), excerpt
+
+
+async def _run_follow_up(quotation_id: str, tenant_id: str, kind: str):
+    await _check_ai_enabled(tenant_id)
+    q, pack, client = await _load_quotation_context(quotation_id, tenant_id)
+    context_note, chat_excerpt = await _follow_up_context(get_db(), q, tenant_id)
+    try:
+        msg = await ai_service.follow_up_message(q, kind, context_note, chat_excerpt,
+                                                 pack, client, tenant_id=tenant_id)
+        return {"message": msg, "context": context_note}
+    except Exception as e:
+        log.exception("AI follow-up (%s) failed", kind)
+        raise HTTPException(status_code=503, detail=f"IA no disponible: {e}")
+
+
+@router.post("/ai/quotations/{quotation_id}/follow-up-prepay")
+async def ai_follow_up_prepay(quotation_id: str, user: dict = Depends(require_tenant)):
+    return await _run_follow_up(quotation_id, user["tenant_id"], "prepay")
+
+
+@router.post("/ai/quotations/{quotation_id}/follow-up-postsale")
+async def ai_follow_up_postsale(quotation_id: str, user: dict = Depends(require_tenant)):
+    return await _run_follow_up(quotation_id, user["tenant_id"], "postsale")
+
+
+class SendMessageInput(BaseModel):
+    text: str
+
+
+@router.post("/quotations/{quotation_id}/send-message")
+async def send_quotation_message(quotation_id: str, payload: SendMessageInput,
+                                 user: dict = Depends(require_tenant)):
+    """Envía por correo un mensaje de seguimiento (redactado por IA o editado) al cliente."""
+    db = get_db()
+    q = await db.quotations.find_one({"id": quotation_id, "tenant_id": user["tenant_id"]}, {"_id": 0})
+    if not q:
+        raise HTTPException(status_code=404, detail="Cotización no encontrada")
+    text = (payload.text or "").strip()
+    if not text:
+        raise HTTPException(status_code=400, detail="El mensaje está vacío.")
+    company = await db.companies.find_one({"id": user["tenant_id"]}, {"_id": 0}) or {}
+    client = await db.clients.find_one({"id": q["client_id"], "tenant_id": user["tenant_id"]}, {"_id": 0}) or {}
+    to = (client.get("email") or "").strip()
+    if not to:
+        raise HTTPException(status_code=400, detail="El cliente no tiene correo registrado.")
+    html = "".join(f"<p>{_esc_html(line)}</p>" for line in text.split("\n") if line.strip())
+    sent = await send_email(company, to, f"Seguimiento · Cotización {q.get('code', '')}", html)
+    return {"email_sent": sent, "to": to}
+router.post("/ai/quotations/{quotation_id}/client-message")
 async def ai_client_message(quotation_id: str, user: dict = Depends(require_tenant)):
     await _check_ai_enabled(user["tenant_id"])
     q, pack, client = await _load_quotation_context(quotation_id, user["tenant_id"])

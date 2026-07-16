@@ -3,7 +3,7 @@ import { Link, useParams, useNavigate } from 'react-router-dom';
 import AppShell from '@/components/AppShell';
 import api, { formatApiError } from '@/lib/api';
 import { useConfirm } from '@/components/ConfirmDialog';
-import { ArrowLeft, Download, MessageCircle, Mail, FileText, Sparkles, Link2, Copy, CheckCircle2, X, Tag, CreditCard, Pencil, Archive, Trash2, History, Briefcase, Users, Smartphone, BookmarkPlus, Package as PackageIcon } from 'lucide-react';
+import { ArrowLeft, Download, MessageCircle, Mail, FileText, Sparkles, Link2, Copy, CheckCircle2, X, Tag, CreditCard, Pencil, Archive, Trash2, History, Briefcase, Users, Smartphone, BookmarkPlus, Search, Package as PackageIcon } from 'lucide-react';
 import { formatDateEs } from '@/lib/dates';
 import { useAuth } from '@/context/AuthContext';
 
@@ -33,9 +33,10 @@ export default function QuotationDetail() {
   const [pkgModalOpen, setPkgModalOpen] = useState(false);
   const [pkgCode, setPkgCode] = useState('');
   const [saveAsMsg, setSaveAsMsg] = useState('');
-  const [ai, setAi] = useState({ next: '', missing: [], message: '' });
-  const [aiLoading, setAiLoading] = useState({ next: false, missing: false, message: false });
+  const [aiLoading, setAiLoading] = useState({ prepay: false, postsale: false, message: false });
   const [aiError, setAiError] = useState('');
+  const [aiDraft, setAiDraft] = useState(null); // { kind, context, text }
+  const [aiSendMsg, setAiSending] = useState('');
   const [publicToken, setPublicToken] = useState('');
   const [copiedPublic, setCopiedPublic] = useState(false);
   const [lostModal, setLostModal] = useState(false);
@@ -54,6 +55,10 @@ export default function QuotationDetail() {
   const [waNumbers, setWaNumbers] = useState([]);
   const [waSelNumber, setWaSelNumber] = useState('');
   const [waChats, setWaChats] = useState([]);
+  const [waSearch, setWaSearch] = useState('');
+  const [waShowAll, setWaShowAll] = useState(false);
+  const [waSendMsg, setWaSendMsg] = useState('');
+  const [waSending, setWaSending] = useState('');
 
   const load = async () => {
     const { data } = await api.get(`/quotations/${id}`);
@@ -61,6 +66,7 @@ export default function QuotationDetail() {
     setPublicToken(data?.public_link?.token || '');
     if (data?.discount) setDiscount({ discount_type: data.discount.type, discount_value: data.discount.value });
     api.get(`/whatsapp/links/by-quotation/${id}`).then(({ data: l }) => setWaLink(l && l.chat_id ? l : null)).catch(() => {});
+    api.get('/whatsapp/numbers').then(({ data }) => setWaNumbers(data || [])).catch(() => {});
     try {
       const reqs = [api.get('/clients'), api.get('/companies/me')];
       if (data.package_id) reqs.push(api.get(`/packages/${data.package_id}`));
@@ -74,7 +80,7 @@ export default function QuotationDetail() {
   useEffect(() => { load(); }, [id]); // eslint-disable-line
 
   const openWaModal = async () => {
-    setWaModal(true);
+    setWaModal(true); setWaSearch(''); setWaShowAll(false);
     try {
       const { data } = await api.get('/whatsapp/numbers');
       setWaNumbers(data);
@@ -146,14 +152,29 @@ export default function QuotationDetail() {
     window.URL.revokeObjectURL(url);
   };
 
-  const runAI = async (kind) => {
-    setAiError('');
+  const runAIDraft = async (kind, endpoint) => {
+    setAiError(''); setAiSending('');
     setAiLoading((s) => ({ ...s, [kind]: true }));
     try {
-      const { data } = await api.post(`/ai/quotations/${id}/${kind === 'next' ? 'next-step' : kind === 'missing' ? 'missing-fields' : 'client-message'}`);
-      setAi((a) => ({ ...a, [kind]: kind === 'missing' ? (data.fields || []) : (data.suggestion || data.message || '') }));
+      const { data } = await api.post(`/ai/quotations/${id}/${endpoint}`);
+      setAiDraft({ kind, context: data.context || '', text: data.message || '' });
     } catch (e) { setAiError(formatApiError(e)); }
     finally { setAiLoading((s) => ({ ...s, [kind]: false })); }
+  };
+
+  const sendDraftWhatsApp = async () => {
+    if (!aiDraft?.text?.trim()) return;
+    setAiSending('Enviando…');
+    setAiSending(await deliverWhatsApp(aiDraft.text));
+  };
+
+  const sendDraftEmail = async () => {
+    if (!aiDraft?.text?.trim()) return;
+    setAiSending('Enviando correo…');
+    try {
+      const { data } = await api.post(`/quotations/${id}/send-message`, { text: aiDraft.text });
+      setAiSending(data.email_sent ? `✓ Correo enviado a ${data.to}` : 'No se pudo enviar el correo (configura Resend en Ajustes).');
+    } catch (e) { setAiSending(formatApiError(e)); }
   };
 
   const createPublicLink = async () => {
@@ -170,28 +191,57 @@ export default function QuotationDetail() {
   };
 
   const copyPublicUrl = () => {
-    const url = `${window.location.origin}/q/${publicToken}`;
+    // F6: la ruta /api/share entrega la vista previa (tarjeta) con nombre de empresa.
+    const url = `${window.location.origin}/api/share/q/${publicToken}`;
     navigator.clipboard.writeText(url);
     setCopiedPublic(true);
     setTimeout(() => setCopiedPublic(false), 2000);
   };
 
-  const sendWhatsApp = (kind) => {
-    if (!publicToken) return;
+  const buildWaMessage = (kind) => {
     const url = `${window.location.origin}/api/share/q/${publicToken}`;
     const name = q?.client_snapshot?.name || 'Hola';
     const code = q?.code || '';
     const pkg = q?.package_snapshot?.name || '';
     const amount = money(q?.final_total != null ? q.final_total : q?.total, q?.currency);
-    let msg;
     if (kind === 'pay') {
-      msg = `Hola ${name} 👋\nTu cotización *${code}* está lista. Total: *${amount}*.\nPuedes confirmar y *pagar de forma segura* (tarjeta o transferencia) aquí:\n${url}\n\n— ${companyName}`;
-    } else {
-      msg = `Hola ${name} 👋\nTe comparto tu cotización *${code}* de ${companyName}.\n${pkg ? `Paquete: ${pkg}\n` : ''}Total: *${amount}*\nMírala y confírmala aquí:\n${url}`;
+      return `Hola ${name} 👋\nTu cotización *${code}* está lista. Total: *${amount}*.\nPuedes confirmar y *pagar de forma segura* (tarjeta o transferencia) aquí:\n${url}\n\n— ${companyName}`;
     }
+    return `Hola ${name} 👋\nTe comparto tu cotización *${code}* de ${companyName}.\n${pkg ? `Paquete: ${pkg}\n` : ''}Total: *${amount}*\nMírala y confírmala aquí:\n${url}`;
+  };
+
+  const deliverWhatsApp = async (msg) => {
+    const openFallback = () => {
+      const phone = (clientPhone || '').replace(/[^0-9]/g, '');
+      const base = phone ? `https://wa.me/${phone}` : 'https://wa.me/';
+      window.open(`${base}?text=${encodeURIComponent(msg)}`, '_blank');
+      return 'Abriendo WhatsApp… (envío manual)';
+    };
+    // 1) Chat vinculado → envío directo por el WhatsApp conectado de la empresa.
+    if (waLink?.chat_id && waLink?.number_id) {
+      try {
+        await api.post('/whatsapp/send', { number_id: waLink.number_id, to: waLink.chat_id, text: msg });
+        return `✓ Enviado por WhatsApp a ${waLink.phone}. Quedó registrado en el Inbox.`;
+      } catch (e) { const s = `No se pudo enviar directo (${formatApiError(e)}). `; openFallback(); return s + 'Abriendo WhatsApp…'; }
+    }
+    // 2) Sin chat vinculado, hay número conectado + teléfono del cliente → envío directo (crea el chat).
+    const connected = waNumbers.find((n) => n.status === 'connected');
     const phone = (clientPhone || '').replace(/[^0-9]/g, '');
-    const base = phone ? `https://wa.me/${phone}` : 'https://wa.me/';
-    window.open(`${base}?text=${encodeURIComponent(msg)}`, '_blank');
+    if (connected && phone) {
+      try {
+        await api.post('/whatsapp/send', { number_id: connected.id, to: phone, text: msg });
+        return `✓ Enviado por "${connected.label}" al ${clientPhone}. Quedó registrado en el Inbox.`;
+      } catch (e) { const s = `No se pudo enviar directo (${formatApiError(e)}). `; openFallback(); return s + 'Abriendo WhatsApp…'; }
+    }
+    // 3) Sin número conectado → fallback a wa.me (nunca bloquear).
+    return openFallback();
+  };
+
+  const sendWhatsApp = async (kind) => {
+    if (!publicToken) return;
+    setWaSendMsg(''); setWaSending(kind);
+    const status = await deliverWhatsApp(buildWaMessage(kind));
+    setWaSendMsg(status); setWaSending('');
   };
 
   const markPaid = async () => {
@@ -317,6 +367,32 @@ export default function QuotationDetail() {
               {(q.dates?.start || q.dates?.end) && <div><p className="text-xs uppercase tracking-widest text-ink-400 font-bold">Fechas</p><p className="text-ink-900 font-medium mt-1">{formatDateEs(q.dates?.start)} → {formatDateEs(q.dates?.end)}</p></div>}
               <div><p className="text-xs uppercase tracking-widest text-ink-400 font-bold">{q.type === 'servicios' ? 'Personas' : 'Habitaciones / Pax'}</p><p className="text-ink-900 font-medium mt-1">{paxDesc}</p></div>
             </div>
+            {q.type === 'personalizado' && q.custom_items?.length > 0 && (
+              <div className="mt-6 pt-4 border-t border-ink-100" data-testid="detail-custom-items">
+                <p className="text-xs uppercase tracking-widest text-ink-400 font-bold mb-2">Conceptos del programa</p>
+                <ul className="space-y-1.5">
+                  {q.custom_items.map((it, i) => (
+                    <li key={i} className="text-sm text-ink-700 flex items-start justify-between gap-3">
+                      <span><span className="font-medium text-ink-900">{it.name || 'Concepto'}</span>{it.category ? <span className="text-ink-400 capitalize"> · {it.category}</span> : ''}{it.service_date ? <span className="text-ink-400"> · {formatDateEs(it.service_date)}</span> : ''}</span>
+                      {it.qty > 0 && <span className="text-ink-400 shrink-0">×{it.qty}</span>}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+            {q.type === 'servicios' && q.items?.length > 0 && (
+              <div className="mt-6 pt-4 border-t border-ink-100" data-testid="detail-service-items">
+                <p className="text-xs uppercase tracking-widest text-ink-400 font-bold mb-2">Servicios contratados</p>
+                <ul className="space-y-1.5">
+                  {q.items.map((it, i) => (
+                    <li key={i} className="text-sm text-ink-700 flex items-start justify-between gap-3">
+                      <span className="font-medium text-ink-900">{it.label}</span>
+                      <span className="text-ink-400 shrink-0">×{it.qty}</span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
             {(q.contacts?.agency?.name || q.contacts?.traveler?.name) && (
               <div className="grid md:grid-cols-2 gap-4 mt-6 pt-4 border-t border-ink-100" data-testid="detail-contacts">
                 {q.contacts?.agency?.name && (
@@ -373,40 +449,43 @@ export default function QuotationDetail() {
         </div>
 
         <div className="space-y-6">
-          {/* AI Panel */}
+          {/* AI Panel — seguimiento de venta (G1/G2/G3) */}
           <div className="card-surface p-6" data-testid="ai-panel">
-            <h3 className="font-display font-semibold text-ink-900 mb-3 flex items-center gap-2">
-              <Sparkles className="w-4 h-4 text-brand-500" /> Asistente IA
+            <h3 className="font-display font-semibold text-ink-900 mb-1 flex items-center gap-2">
+              <Sparkles className="w-4 h-4 text-brand-500" /> Asistente de seguimiento
             </h3>
+            <p className="text-xs text-ink-500 mb-3">La IA redacta; tú revisas, editas y envías. Nada se envía solo.</p>
             {aiError && <div className="text-xs text-red-700 bg-red-50 rounded-lg p-2 mb-3" data-testid="ai-error">{aiError}</div>}
             <div className="space-y-2">
-              <button className="btn-secondary w-full text-xs justify-center" disabled={aiLoading.next}
-                onClick={() => runAI('next')} data-testid="ai-next-step-btn">
-                {aiLoading.next ? 'Analizando…' : 'Sugerir próximo paso'}
+              <button className="btn-secondary w-full text-xs justify-center" disabled={aiLoading.prepay}
+                onClick={() => runAIDraft('prepay', 'follow-up-prepay')} data-testid="ai-followup-prepay-btn">
+                {aiLoading.prepay ? 'Redactando…' : 'Seguimiento pre-pago'}
               </button>
-              {ai.next && <p className="text-sm text-ink-700 bg-mint-100 rounded-lg p-3" data-testid="ai-next-result">{ai.next}</p>}
-
-              <button className="btn-secondary w-full text-xs justify-center" disabled={aiLoading.missing}
-                onClick={() => runAI('missing')} data-testid="ai-missing-btn">
-                {aiLoading.missing ? 'Analizando…' : 'Detectar campos faltantes'}
-              </button>
-              {ai.missing.length > 0 && (
-                <ul className="text-sm text-ink-700 bg-peach-100 rounded-lg p-3 space-y-1" data-testid="ai-missing-result">
-                  {ai.missing.map((f, i) => <li key={i}>• {f}</li>)}
-                </ul>
+              {(q.state === 'ganada' || q.payment_status === 'paid') && (
+                <button className="btn-secondary w-full text-xs justify-center" disabled={aiLoading.postsale}
+                  onClick={() => runAIDraft('postsale', 'follow-up-postsale')} data-testid="ai-followup-postsale-btn">
+                  {aiLoading.postsale ? 'Redactando…' : 'Seguimiento post-venta'}
+                </button>
               )}
-
               <button className="btn-secondary w-full text-xs justify-center" disabled={aiLoading.message}
-                onClick={() => runAI('message')} data-testid="ai-message-btn">
-                {aiLoading.message ? 'Redactando…' : 'Redactar mensaje WhatsApp'}
+                onClick={() => runAIDraft('message', 'client-message')} data-testid="ai-message-btn">
+                {aiLoading.message ? 'Redactando…' : 'Redactar mensaje'}
               </button>
-              {ai.message && (
-                <div className="text-sm text-ink-700 bg-brand-50 rounded-lg p-3 whitespace-pre-wrap" data-testid="ai-message-result">
-                  {ai.message}
-                  <button className="mt-2 btn-ghost text-xs"
-                    onClick={() => navigator.clipboard.writeText(ai.message)} data-testid="ai-message-copy">
-                    <Copy className="w-3 h-3" /> Copiar
-                  </button>
+
+              {aiDraft && (
+                <div className="rounded-lg bg-brand-50 p-3 space-y-2" data-testid="ai-draft">
+                  {aiDraft.context && <p className="text-[11px] text-ink-500 italic" data-testid="ai-draft-context">{aiDraft.context}</p>}
+                  <textarea rows="5" className="input-field text-sm" value={aiDraft.text}
+                    onChange={(e) => setAiDraft((d) => ({ ...d, text: e.target.value }))} data-testid="ai-draft-text" />
+                  <div className="flex gap-2">
+                    <button onClick={sendDraftWhatsApp} className="flex-1 text-xs font-semibold justify-center inline-flex items-center gap-1.5 py-2 rounded-lg bg-[#25D366] text-white hover:brightness-95 transition" data-testid="ai-draft-send-whatsapp">
+                      <MessageCircle className="w-3.5 h-3.5" /> WhatsApp
+                    </button>
+                    <button onClick={sendDraftEmail} className="flex-1 text-xs font-semibold justify-center inline-flex items-center gap-1.5 py-2 rounded-lg bg-brand-500 text-white hover:brightness-95 transition" data-testid="ai-draft-send-email">
+                      <Mail className="w-3.5 h-3.5" /> Correo
+                    </button>
+                  </div>
+                  {aiSendMsg && <p className="text-xs text-ink-700 bg-white rounded p-2 break-words" data-testid="ai-draft-send-msg">{aiSendMsg}</p>}
                 </div>
               )}
             </div>
@@ -435,12 +514,13 @@ export default function QuotationDetail() {
                     <X className="w-3 h-3" /> Revocar
                   </button>
                 </div>
-                <button className="w-full text-xs font-semibold justify-center inline-flex items-center gap-1.5 py-2.5 rounded-xl bg-[#25D366] text-white hover:brightness-95 transition" onClick={() => sendWhatsApp('quote')} data-testid="send-quote-whatsapp-btn">
-                  <MessageCircle className="w-3.5 h-3.5" /> Enviar cotización por WhatsApp
+                <button className="w-full text-xs font-semibold justify-center inline-flex items-center gap-1.5 py-2.5 rounded-xl bg-[#25D366] text-white hover:brightness-95 transition disabled:opacity-60" onClick={() => sendWhatsApp('quote')} disabled={!!waSending} data-testid="send-quote-whatsapp-btn">
+                  <MessageCircle className="w-3.5 h-3.5" /> {waSending === 'quote' ? 'Enviando…' : (waLink ? 'Enviar cotización por WhatsApp ✓' : 'Enviar cotización por WhatsApp')}
                 </button>
-                <button className="w-full text-xs font-semibold justify-center inline-flex items-center gap-1.5 py-2.5 rounded-xl border-2 border-[#25D366] text-[#128C7E] hover:bg-[#25D366]/10 transition" onClick={() => sendWhatsApp('pay')} data-testid="send-pay-whatsapp-btn">
-                  <MessageCircle className="w-3.5 h-3.5" /> Enviar a cobrar por WhatsApp
+                <button className="w-full text-xs font-semibold justify-center inline-flex items-center gap-1.5 py-2.5 rounded-xl border-2 border-[#25D366] text-[#128C7E] hover:bg-[#25D366]/10 transition disabled:opacity-60" onClick={() => sendWhatsApp('pay')} disabled={!!waSending} data-testid="send-pay-whatsapp-btn">
+                  <MessageCircle className="w-3.5 h-3.5" /> {waSending === 'pay' ? 'Enviando…' : 'Enviar a cobrar por WhatsApp'}
                 </button>
+                {waSendMsg && <p className="text-xs text-emerald-700 bg-mint-100 rounded p-2 break-words" data-testid="wa-send-msg">{waSendMsg}</p>}
                 <button className="w-full text-xs font-semibold justify-center inline-flex items-center gap-1.5 py-2.5 rounded-xl bg-brand-500 text-white hover:brightness-95 transition disabled:opacity-60" onClick={sendPaymentEmail} disabled={sendingEmail} data-testid="send-pay-email-btn">
                   <Mail className="w-3.5 h-3.5" /> {sendingEmail ? 'Enviando…' : 'Enviar a cobrar por correo'}
                 </button>
@@ -572,18 +652,46 @@ export default function QuotationDetail() {
                   {waNumbers.map((n) => <option key={n.id} value={n.id}>{n.label} {n.status === 'connected' ? '· conectado' : ''}</option>)}
                 </select>
                 <label className="label-text">Conversación</label>
-                <div className="max-h-64 overflow-y-auto rounded-xl border border-ink-100 divide-y divide-ink-100">
-                  {waChats.length === 0 && <p className="p-4 text-sm text-ink-400" data-testid="wa-link-no-chats">No hay conversaciones en este número todavía.</p>}
-                  {waChats.map((c) => (
+                <div className="relative mb-2">
+                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-ink-400" />
+                  <input className="input-field pl-10" placeholder="Buscar por nombre o teléfono" value={waSearch} onChange={(e) => setWaSearch(e.target.value)} data-testid="wa-link-search" />
+                </div>
+                <label className="flex items-center gap-2 text-xs text-ink-500 mb-2 cursor-pointer">
+                  <input type="checkbox" checked={waShowAll} onChange={(e) => setWaShowAll(e.target.checked)} data-testid="wa-link-show-all" />
+                  Mostrar todos (incluye grupos y ocultos)
+                </label>
+                {(() => {
+                  const norm = (p) => (p || '').replace(/[^0-9]/g, '').slice(-10);
+                  const targets = [clientPhone, q?.contacts?.traveler?.phone, q?.contacts?.agency?.phone].map(norm).filter(Boolean);
+                  const s = waSearch.toLowerCase();
+                  const visible = waChats.filter((c) => {
+                    if (!waShowAll) { if (c.hidden) return false; if (c.is_group) return false; }
+                    return (c.contact_name || '').toLowerCase().includes(s) || (c.phone || '').includes(waSearch);
+                  });
+                  const suggested = visible.filter((c) => targets.includes(norm(c.phone)));
+                  const others = visible.filter((c) => !targets.includes(norm(c.phone)));
+                  const Row = (c) => (
                     <button key={c.chat_id} onClick={() => linkChat(c)} className="w-full text-left px-3 py-2.5 hover:bg-brand-50 transition-colors" data-testid={`wa-link-chat-${c.chat_id}`}>
-                      <p className="font-semibold text-ink-900 text-sm flex items-center justify-between">
-                        {c.contact_name}
+                      <p className="font-semibold text-ink-900 text-sm flex items-center justify-between gap-2">
+                        <span className="flex items-center gap-1.5 truncate">{c.is_group && <Users className="w-3.5 h-3.5 text-ink-400 shrink-0" />}{c.contact_name}</span>
                         {c.quotation_code && <span className="pill bg-peach-100 text-amber-700 text-[10px]">{c.quotation_code}</span>}
                       </p>
                       <p className="text-xs text-ink-400">{c.phone}</p>
                     </button>
-                  ))}
-                </div>
+                  );
+                  return (
+                    <div className="max-h-64 overflow-y-auto rounded-xl border border-ink-100 divide-y divide-ink-100">
+                      {visible.length === 0 && <p className="p-4 text-sm text-ink-400" data-testid="wa-link-no-chats">No hay conversaciones que coincidan.</p>}
+                      {suggested.length > 0 && (
+                        <div className="bg-mint-100/50" data-testid="wa-link-suggested">
+                          <p className="px-3 pt-2 pb-1 text-[10px] uppercase tracking-widest font-bold text-emerald-700">Sugerido para esta cotización</p>
+                          {suggested.map(Row)}
+                        </div>
+                      )}
+                      {others.map(Row)}
+                    </div>
+                  );
+                })()}
               </>
             )}
           </div>

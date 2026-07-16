@@ -270,3 +270,37 @@ async def generate_client_message(q: dict, pack: dict | None = None, client: dic
     )
     brief = _quotation_brief(q, pack, client)
     return await _ask(system, f"Cotización:\n{brief}\n\nRedacta el mensaje:", max_tokens=400, tenant_id=tenant_id, feature="client_message")
+
+
+async def follow_up_message(q: dict, kind: str, context_note: str = "", chat_excerpt: str = "",
+                            pack: dict | None = None, client: dict | None = None,
+                            tenant_id: str | None = None) -> str:
+    """G1/G2 — Seguimiento comercial B2B colega-a-colega dirigido al EJECUTIVO de la agencia
+    (no al viajero final), editable por el usuario antes de enviar.
+    kind: 'prepay' (pre-pago, seguimiento — NO cobranza) | 'postsale' (post-venta / post-viaje).
+    """
+    if kind == "postsale":
+        system = (
+            "Eres ejecutivo de un tour operador (mayorista) en México escribiendo por WhatsApp a un COLEGA "
+            "ejecutivo de una agencia de viajes que ya te compró (venta ganada/pagada). Redacta un mensaje "
+            "de seguimiento POST-VENTA, colega-a-colega, cálido y profesional (~70 palabras, español de México). "
+            "Pregunta si todo salió bien con la operación del viaje y si necesita algún ajuste a la Confirmación "
+            "de Reserva. NO es cobranza ni venta nueva. Sin emojis excesivos (máx 2), sin firma ni corchetes."
+        )
+        feature = "follow_up_postsale"
+    else:
+        system = (
+            "Eres ejecutivo de un tour operador (mayorista) en México escribiendo por WhatsApp a un COLEGA "
+            "ejecutivo de una agencia de viajes a quien le enviaste una cotización. Redacta un mensaje de "
+            "SEGUIMIENTO comercial PRE-PAGO, colega-a-colega (~60 palabras, español de México). Pregunta con "
+            "naturalidad si tuvo oportunidad de presentar la cotización a su cliente y ofrece ajustar lo que "
+            "necesite. Tono de seguimiento de venta, NUNCA de cobranza ni presión. Sin emojis excesivos (máx 2), "
+            "sin firma ni corchetes."
+        )
+        feature = "follow_up_prepay"
+    brief = _quotation_brief(q, pack, client)
+    prompt = f"Cotización:\n{brief}\n\nContexto de seguimiento:\n{context_note or 'Sin datos adicionales.'}"
+    if chat_excerpt:
+        prompt += f"\n\nÚltimos mensajes del chat de WhatsApp (más reciente al final):\n{chat_excerpt}"
+    prompt += "\n\nRedacta el mensaje:"
+    return await _ask(system, prompt, max_tokens=400, tenant_id=tenant_id, feature=feature)

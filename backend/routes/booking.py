@@ -5,7 +5,7 @@ import re
 import secrets
 
 from fastapi import APIRouter, Depends, HTTPException, Request
-from fastapi.responses import StreamingResponse
+from fastapi.responses import StreamingResponse, HTMLResponse
 
 from database import get_db, new_id, now_iso
 from auth import require_tenant
@@ -209,6 +209,57 @@ async def public_booking_pdf(token: str, request: Request):
     pdf = generate_booking_confirmation_pdf(company, q, conf, client, base_url=_base_url(request))
     return StreamingResponse(io.BytesIO(pdf), media_type="application/pdf",
                              headers={"Content-Disposition": f'inline; filename="{conf["code"]}.pdf"'})
+
+
+def _esc(s: str) -> str:
+    return (str(s or "").replace("&", "&amp;").replace("<", "&lt;")
+            .replace(">", "&gt;").replace('"', "&quot;"))
+
+
+@router.get("/share/r/{token}", response_class=HTMLResponse)
+async def share_booking_confirmation(token: str, request: Request):
+    """Página compartible (Open Graph por tenant) para la Confirmación de Reserva;
+    redirige a la SPA /r/{token}."""
+    db = get_db()
+    base = _base_url(request)
+    spa_url = f"{base}/r/{token}"
+    conf = await db.booking_confirmations.find_one({"token": token}, {"_id": 0})
+    title = "Confirmación de Reserva"
+    desc = "Consulta los detalles de tu reserva y agrégala a tu calendario."
+    image = ""
+    if conf:
+        company = await db.companies.find_one({"id": conf["tenant_id"]}, {"_id": 0}) or {}
+        cname = company.get("name") or "Routiq"
+        title = f"{cname} · Confirmación {conf.get('code', '')}".strip()
+        passenger = conf.get("passenger_name") or "viajero"
+        desc = (f"Hola {passenger}, tu Confirmación de Reserva está lista. "
+                "Ábrela para ver servicios, hospedaje y agregarla a tu calendario.")
+        logo = company.get("logo_url") or ""
+        if logo.startswith("/"):
+            image = base + logo
+        elif logo.startswith("http"):
+            image = logo
+    img_tags = (f'<meta property="og:image" content="{_esc(image)}"/>'
+                f'<meta name="twitter:image" content="{_esc(image)}"/>') if image else ""
+    html = f"""<!doctype html>
+<html lang="es"><head><meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>{_esc(title)}</title>
+<meta name="description" content="{_esc(desc)}"/>
+<meta property="og:type" content="website"/>
+<meta property="og:title" content="{_esc(title)}"/>
+<meta property="og:description" content="{_esc(desc)}"/>
+<meta property="og:url" content="{_esc(spa_url)}"/>
+<meta name="twitter:card" content="summary_large_image"/>
+<meta name="twitter:title" content="{_esc(title)}"/>
+<meta name="twitter:description" content="{_esc(desc)}"/>
+{img_tags}
+<meta http-equiv="refresh" content="0; url={_esc(spa_url)}"/>
+<script>window.location.replace({spa_url!r});</script>
+</head><body>
+<p>Redirigiendo a tu confirmación… <a href="{_esc(spa_url)}">Abrir confirmación</a></p>
+</body></html>"""
+    return HTMLResponse(content=html)
 
 
 @router.get("/public/booking-confirmation/{token}")

@@ -9,6 +9,7 @@ Session id convention: f"{tenant_id}_{number_id}" (both are hyphenated UUIDs,
 so they never contain underscores → safe to rsplit on "_").
 """
 import os
+import re
 import logging
 from datetime import datetime, timezone
 
@@ -154,6 +155,32 @@ class SendInput(BaseModel):
     text: str
 
 
+def _norm_phone(p: str) -> str:
+    """Últimos 10 dígitos (nacional MX) para cruzar con el CRM, ignorando 52/521 y formato."""
+    d = re.sub(r"[^0-9]", "", p or "")
+    return d[-10:] if len(d) >= 10 else d
+
+
+async def _crm_name_map(db, tenant_id: str) -> dict:
+    """phone(10 dígitos) -> nombre a mostrar. Prioriza ejecutivo ('Nombre · Agencia')."""
+    m: dict = {}
+    async for c in db.clients.find(
+            {"tenant_id": tenant_id}, {"_id": 0, "name": 1, "phone": 1, "executives": 1}):
+        cname = (c.get("name") or "").strip()
+        if c.get("phone"):
+            k = _norm_phone(c["phone"])
+            if k:
+                m.setdefault(k, cname)
+        for e in (c.get("executives") or []):
+            if e.get("phone"):
+                k = _norm_phone(e["phone"])
+                if k:
+                    ename = (e.get("name") or "").strip()
+                    m[k] = f"{ename} · {cname}" if ename and cname else (ename or cname)
+    return m
+
+
+
 @router.get("/whatsapp/chats")
 async def list_chats(number_id: str, user: dict = Depends(require_tenant)):
     db = get_db()
@@ -175,13 +202,25 @@ async def list_chats(number_id: str, user: dict = Depends(require_tenant)):
     links = await db.whatsapp_links.find(
         {"tenant_id": user["tenant_id"], "number_id": number_id}, {"_id": 0}).to_list(500)
     link_by_chat = {l["chat_id"]: l for l in links}
+    # F4: preferencias propias de Routiq (ocultar chat)
+    prefs = await db.whatsapp_chat_prefs.find(
+        {"tenant_id": user["tenant_id"], "number_id": number_id}, {"_id": 0}).to_list(500)
+    hidden_by_chat = {p["chat_id"]: bool(p.get("hidden")) for p in prefs}
+    # F2: cruce de nombres con el CRM propio
+    name_map = await _crm_name_map(db, user["tenant_id"])
     out = []
     for r in rows:
-        link = link_by_chat.get(r["_id"])
+        chat_id = r["_id"] or ""
+        phone = chat_id.split("@")[0]
+        is_group = chat_id.endswith("@g.us")
+        link = link_by_chat.get(chat_id)
+        crm = name_map.get(_norm_phone(phone)) if not is_group else None
         out.append({
-            "chat_id": r["_id"],
-            "phone": (r["_id"] or "").split("@")[0],
-            "contact_name": r.get("contact_name") or (r["_id"] or "").split("@")[0],
+            "chat_id": chat_id,
+            "phone": phone,
+            "is_group": is_group,
+            "hidden": hidden_by_chat.get(chat_id, False),
+            "contact_name": crm or r.get("contact_name") or phone,
             "last_text": r.get("last_text", ""),
             "last_at": r.get("last_at", ""),
             "unread": r.get("unread", 0),
@@ -189,6 +228,22 @@ async def list_chats(number_id: str, user: dict = Depends(require_tenant)):
             "quotation_code": link["quotation_code"] if link else None,
         })
     return out
+
+
+class HideChatInput(BaseModel):
+    number_id: str
+    chat_id: str
+    hidden: bool = True
+
+
+@router.post("/whatsapp/chats/hide")
+async def hide_chat(payload: HideChatInput, user: dict = Depends(require_tenant)):
+    """Archivado propio de Routiq (independiente del estado real en WhatsApp)."""
+    db = get_db()
+    await db.whatsapp_chat_prefs.update_one(
+        {"tenant_id": user["tenant_id"], "number_id": payload.number_id, "chat_id": payload.chat_id},
+        {"$set": {"hidden": payload.hidden, "updated_at": now_iso()}}, upsert=True)
+    return {"ok": True, "hidden": payload.hidden}
 
 
 @router.get("/whatsapp/messages")
