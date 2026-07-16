@@ -661,6 +661,24 @@ def generate_booking_confirmation_pdf(company: dict, quotation: dict, confirmati
                                  rows, [2.6, 1.9, 1.8, 1.8, 1.1, 2.1, 2.2, 2.9]))
         story.append(Spacer(1, 10))
 
+    itinerary = confirmation.get("itinerary") or []
+    if any((e.get("title") or e.get("description")) for e in itinerary):
+        qtype = quotation.get("type", "paquete")
+        itin_title = ("Itinerario día a día" if qtype == "paquete"
+                      else "Descripción de servicios" if qtype == "servicios"
+                      else "Programa detallado")
+        story.append(Paragraph(itin_title, s["h2"]))
+        for e in itinerary:
+            t = (e.get("title") or "").strip()
+            d = (e.get("description") or "").strip()
+            if t:
+                story.append(Paragraph(f"<b>{_xml_escape(t)}</b>", s["body"]))
+            if d:
+                story.append(Paragraph(_xml_escape(d), s["body"]))
+            if t or d:
+                story.append(Spacer(1, 4))
+        story.append(Spacer(1, 8))
+
     if (confirmation.get("general_observations") or "").strip():
         story.append(Paragraph("Observaciones generales", s["h2"]))
         for para in confirmation["general_observations"].split("\n"):

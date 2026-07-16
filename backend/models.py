@@ -368,6 +368,7 @@ class ClientUpdate(BaseModel):
     notes: Optional[str] = None
     executives: Optional[List[Executive]] = None
     commission_rate: Optional[float] = Field(default=None, ge=0, le=1)
+    is_favorite: Optional[bool] = None  # 4.1: cliente favorito (fijado arriba manualmente)
 
 
 # ---------- Quotation contacts (agency + final traveler) ----------
@@ -500,6 +501,11 @@ class BookingLodging(BaseModel):
     guest_name: str = ""
 
 
+class BookingItineraryEntry(BaseModel):
+    title: str = ""
+    description: str = ""
+
+
 class BookingConfirmationSave(BaseModel):
     agent_name: str = ""
     agent_phone: str = ""
@@ -511,6 +517,7 @@ class BookingConfirmationSave(BaseModel):
     num_persons: str = ""
     services: List[BookingService] = Field(default_factory=list)
     lodging: List[BookingLodging] = Field(default_factory=list)
+    itinerary: List[BookingItineraryEntry] = Field(default_factory=list)  # 10.5: itinerario/descripción según tipo
     general_observations: str = ""
     price_per_person: float = 0.0
     total_amount: float = 0.0

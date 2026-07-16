@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import AppShell from '@/components/AppShell';
 import api, { formatApiError } from '@/lib/api';
 import { formatDateEs } from '@/lib/dates';
-import { UserCog, Plus, Search, Pencil, Trash2, AlertTriangle, FileText, TrendingUp, ChevronLeft, ChevronRight, Users } from 'lucide-react';
+import { UserCog, Plus, Search, Pencil, Trash2, AlertTriangle, FileText, TrendingUp, ChevronLeft, ChevronRight, Users, Star } from 'lucide-react';
 
 const CHANNELS = [
   { v: 'directo', label: 'Directo' },
@@ -22,7 +22,7 @@ export default function Clients() {
   const [error, setError] = useState('');
   const [q, setQ] = useState('');
   const [channel, setChannel] = useState('todos');
-  const [sort, setSort] = useState('activity');
+  const [sort, setSort] = useState('favorites');
   const [page, setPage] = useState(1);
   const [editClient, setEditClient] = useState(null); // null | {} (new) | client
   const [form, setForm] = useState(emptyForm);
@@ -51,12 +51,13 @@ export default function Clients() {
     if (term) list = list.filter((c) => `${c.name} ${c.email} ${c.notes || ''}`.toLowerCase().includes(term));
     if (channel !== 'todos') list = list.filter((c) => c.channel === channel);
     const sorters = {
+      favorites: (a, b) => (b.is_favorite ? 1 : 0) - (a.is_favorite ? 1 : 0) || (b.my_freq || 0) - (a.my_freq || 0) || (a.name || '').localeCompare(b.name || ''),
       activity: (a, b) => (b.quotations_count || 0) - (a.quotations_count || 0),
       sales: (a, b) => (b.sales_total || 0) - (a.sales_total || 0),
       name: (a, b) => (a.name || '').localeCompare(b.name || ''),
       recent: (a, b) => String(b.last_activity_at || '').localeCompare(String(a.last_activity_at || '')),
     };
-    list.sort(sorters[sort] || sorters.activity);
+    list.sort(sorters[sort] || sorters.favorites);
     return list;
   }, [clients, q, channel, sort]);
 
@@ -86,6 +87,13 @@ export default function Clients() {
       setEditClient(null); await load();
     } catch (e) { setError(formatApiError(e)); }
     finally { setSaving(false); }
+  };
+
+  const toggleFavorite = async (c) => {
+    const next = !c.is_favorite;
+    setClients((cs) => cs.map((x) => (x.id === c.id ? { ...x, is_favorite: next } : x)));
+    try { await api.patch(`/clients/${c.id}`, { is_favorite: next }); }
+    catch (e) { setError(formatApiError(e)); setClients((cs) => cs.map((x) => (x.id === c.id ? { ...x, is_favorite: !next } : x))); }
   };
 
   const confirmDelete = async () => {
@@ -118,6 +126,7 @@ export default function Clients() {
           {CHANNELS.map((c) => <option key={c.v} value={c.v}>{c.label}</option>)}
         </select>
         <select className="input-field md:w-52" value={sort} onChange={(e) => setSort(e.target.value)} data-testid="clients-sort">
+          <option value="favorites">Orden: favoritos y frecuencia</option>
           <option value="activity">Orden: más cotizaciones</option>
           <option value="sales">Orden: más ventas</option>
           <option value="name">Orden: nombre (A-Z)</option>
@@ -140,6 +149,9 @@ export default function Clients() {
             {pageItems.map((c) => (
               <div key={c.id} className="card-surface px-5 py-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3" data-testid={`client-row-${c.id}`}>
                 <div className="flex items-center gap-3 min-w-0">
+                  <button onClick={() => toggleFavorite(c)} title={c.is_favorite ? 'Quitar de favoritos' : 'Marcar como favorito'} className={`p-1.5 rounded-lg shrink-0 transition-colors ${c.is_favorite ? 'text-amber-500 hover:text-amber-600' : 'text-ink-300 hover:text-amber-500'}`} data-testid={`fav-client-${c.id}`}>
+                    <Star className="w-5 h-5" fill={c.is_favorite ? 'currentColor' : 'none'} />
+                  </button>
                   <div className="w-11 h-11 rounded-full bg-brand-50 text-brand-500 flex items-center justify-center font-display font-semibold shrink-0">{(c.name || '?').slice(0, 1).toUpperCase()}</div>
                   <div className="min-w-0">
                     <p className="font-semibold text-ink-900 truncate">{c.name}</p>

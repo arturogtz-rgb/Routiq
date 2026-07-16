@@ -600,6 +600,12 @@ async def list_clients(user: dict = Depends(require_tenant)):
         }},
     ]
     stats = {row["_id"]: row async for row in db.quotations.aggregate(pipeline)}
+    # 4.1: frecuencia = # de cotizaciones elaboradas por el ejecutivo logueado con cada cliente.
+    my_pipeline = [
+        {"$match": {"tenant_id": t, "deleted": {"$ne": True}, "created_by": user["id"]}},
+        {"$group": {"_id": "$client_id", "n": {"$sum": 1}}},
+    ]
+    my_freq = {row["_id"]: row["n"] async for row in db.quotations.aggregate(my_pipeline)}
     for c in clients:
         s = stats.get(c["id"], {})
         c["quotations_count"] = s.get("count", 0)
@@ -607,6 +613,8 @@ async def list_clients(user: dict = Depends(require_tenant)):
         c["sales_total"] = round(s.get("sales", 0) or 0, 2)
         c["last_activity_at"] = s.get("last") or c.get("created_at")
         c["executives_count"] = len(c.get("executives") or [])
+        c["is_favorite"] = bool(c.get("is_favorite"))
+        c["my_freq"] = my_freq.get(c["id"], 0)
     return clients
 
 

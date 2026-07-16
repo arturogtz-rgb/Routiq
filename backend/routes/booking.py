@@ -53,6 +53,38 @@ async def _ctx_for_confirmation(db, conf: dict):
 OCC_LABEL = {"sencilla": "Sencilla", "doble": "Doble", "triple": "Triple", "cuadruple": "Cuádruple"}
 OCC_CNT = {"sencilla": 1, "doble": 2, "triple": 3, "cuadruple": 4}
 
+from pricing import CUSTOM_CATEGORY_ES
+
+
+async def _prefill_itinerary(db, q: dict, pack: dict | None) -> list:
+    """10.5 — Contenido del programa según el tipo de cotización:
+      - paquete       -> itinerario día a día completo del paquete.
+      - servicios     -> descripción de cada servicio contratado.
+      - personalizado -> concepto + descripción de cada ítem del programa.
+    """
+    qtype = (q or {}).get("type", "paquete")
+    entries: list = []
+    if qtype == "personalizado":
+        for ci in (q.get("custom_items") or []):
+            name = (ci.get("name") or "").strip() or CUSTOM_CATEGORY_ES.get(ci.get("category", ""), "Concepto")
+            entries.append({"title": name, "description": (ci.get("description") or "").strip()})
+    elif qtype == "servicios":
+        sel = q.get("services") or []
+        ids = [s.get("service_id") for s in sel if s.get("service_id")]
+        svcs: dict = {}
+        if ids:
+            async for s in db.services.find({"id": {"$in": ids}, "tenant_id": q.get("tenant_id")}, {"_id": 0}):
+                svcs[s["id"]] = s
+        for s in sel:
+            svc = svcs.get(s.get("service_id"))
+            if svc:
+                entries.append({"title": svc.get("name", ""), "description": (svc.get("description") or "").strip()})
+    else:  # paquete
+        for d in ((pack or {}).get("itinerary") or []):
+            title = f"Día {d.get('day', '')}: {d.get('title', '')}".strip().rstrip(":")
+            entries.append({"title": title, "description": (d.get("description") or "").strip()})
+    return entries
+
 
 @router.get("/quotations/{quotation_id}/booking-confirmation")
 async def get_booking_confirmation(quotation_id: str, user: dict = Depends(require_tenant)):
@@ -60,6 +92,10 @@ async def get_booking_confirmation(quotation_id: str, user: dict = Depends(requi
     conf = await db.booking_confirmations.find_one(
         {"quotation_id": quotation_id, "tenant_id": user["tenant_id"]}, {"_id": 0})
     if conf:
+        if not conf.get("itinerary"):
+            qc = await db.quotations.find_one({"id": quotation_id, "tenant_id": user["tenant_id"]}, {"_id": 0}) or {}
+            packc = await db.packages.find_one({"id": qc.get("package_id")}, {"_id": 0}) if qc.get("package_id") else None
+            conf["itinerary"] = await _prefill_itinerary(db, qc, packc)
         return conf
 
     # Sin confirmación previa -> devolver un BORRADOR prellenado desde la cotización.
@@ -115,6 +151,7 @@ async def get_booking_confirmation(quotation_id: str, user: dict = Depends(requi
         "num_persons": str(total_pax) if total_pax else "",
         "services": services,
         "lodging": lodging,
+        "itinerary": await _prefill_itinerary(db, q, pack),
         "general_observations": "",
         "price_per_person": round(total / total_pax, 2) if total_pax else 0,
         "total_amount": total or 0,

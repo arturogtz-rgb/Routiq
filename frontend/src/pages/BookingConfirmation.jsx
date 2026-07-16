@@ -87,7 +87,7 @@ export default function BookingConfirmation() {
   const [form, setForm] = useState({
     agent_name: '', agent_phone: '', agent_company: '', agent_email: '', reservation_date: '',
     passenger_name: '', passenger_phone: '', num_persons: '',
-    services: [newSvc()], lodging: [{ ...EMPTY_LODGING }],
+    services: [newSvc()], lodging: [{ ...EMPTY_LODGING }], itinerary: [],
     general_observations: '', price_per_person: 0, total_amount: 0,
   });
 
@@ -120,6 +120,7 @@ export default function BookingConfirmation() {
             num_persons: existing.num_persons || paxStr,
             services: existing.services?.length ? withRid(existing.services) : [newSvc()],
             lodging: existing.lodging?.length ? existing.lodging : [{ ...EMPTY_LODGING }],
+            itinerary: existing.itinerary || [],
             general_observations: existing.general_observations || '',
             price_per_person: existing.price_per_person || 0, total_amount: existing.total_amount || 0,
           });
@@ -132,6 +133,7 @@ export default function BookingConfirmation() {
             num_persons: p.num_persons || paxStr,
             services: p.services?.length ? withRid(p.services) : [newSvc()],
             lodging: p.lodging?.length ? p.lodging : [{ ...EMPTY_LODGING }],
+            itinerary: p.itinerary || [],
             general_observations: p.general_observations || '',
             price_per_person: p.price_per_person || 0, total_amount: p.total_amount || 0,
           });
@@ -162,6 +164,7 @@ export default function BookingConfirmation() {
       const payload = {
         ...form,
         services: form.services.map(({ _rid, ...rest }) => rest),
+        itinerary: (form.itinerary || []).filter((e) => (e.title || '').trim() || (e.description || '').trim()),
         price_per_person: Number(form.price_per_person) || 0,
         total_amount: Number(form.total_amount) || 0,
       };
@@ -297,6 +300,29 @@ export default function BookingConfirmation() {
                     </div>
                   ))}
                 </div>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* Itinerario / descripción según tipo (10.5) */}
+        <div className="card-surface p-6 mb-5" data-testid="itinerary-section">
+          <div className="flex items-center justify-between mb-2">
+            <h2 className="font-display font-semibold text-lg text-ink-900">
+              {q.type === 'servicios' ? 'Descripción de servicios' : q.type === 'personalizado' ? 'Programa detallado' : 'Itinerario día a día'}
+            </h2>
+            <button onClick={() => addRow('itinerary', { title: '', description: '' })} className="btn-ghost text-sm" data-testid="add-itinerary-row"><Plus className="w-4 h-4" /> Bloque</button>
+          </div>
+          <p className="text-xs text-ink-400 mb-3">Prellenado desde la cotización. Edítalo libremente; se imprime en el PDF de confirmación.</p>
+          <div className="space-y-3">
+            {(form.itinerary || []).length === 0 && (
+              <p className="text-sm text-ink-400 italic" data-testid="itinerary-empty">Sin contenido. Agrega un bloque o guarda sin itinerario.</p>
+            )}
+            {(form.itinerary || []).map((e, i) => (
+              <div key={i} className="rounded-xl border border-ink-100 p-3 relative" data-testid={`itinerary-row-${i}`}>
+                <button onClick={() => delRow('itinerary', i)} className="absolute top-2 right-2 p-1.5 text-ink-400 hover:text-red-600" data-testid={`del-itinerary-${i}`}><Trash2 className="w-4 h-4" /></button>
+                <input className="input-field font-medium mb-2 pr-8" placeholder="Título (ej. Día 1: Llegada)" value={e.title} onChange={(ev) => updRow('itinerary', i, { title: ev.target.value })} data-testid={`itinerary-title-${i}`} />
+                <textarea rows="2" className="input-field" placeholder="Descripción" value={e.description} onChange={(ev) => updRow('itinerary', i, { description: ev.target.value })} data-testid={`itinerary-desc-${i}`} />
               </div>
             ))}
           </div>

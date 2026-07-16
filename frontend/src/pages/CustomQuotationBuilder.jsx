@@ -2,7 +2,8 @@ import { useEffect, useState } from 'react';
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import AppShell from '@/components/AppShell';
 import api, { formatApiError } from '@/lib/api';
-import { ArrowLeft, ArrowRight, Check, User, Wand2, ListChecks, CalendarRange, Calculator, Plus, Trash2, Briefcase, Users, FileText, Sparkles, Save, BookmarkPlus } from 'lucide-react';
+import { ArrowLeft, ArrowRight, Check, User, Wand2, ListChecks, CalendarRange, Calculator, Plus, Trash2, Briefcase, Users, FileText, Sparkles, Save, BookmarkPlus, Star } from 'lucide-react';
+import { sortByFavorite } from '@/lib/clients';
 import { formatDateEs, nightsBetween } from '@/lib/dates';
 import { UNIT_ES, CATEGORIES, EMPTY_CONTACTS, money, StringList } from './custom-builder/constants';
 import { CustomItemCard } from './custom-builder/CustomItemCard';
@@ -175,6 +176,13 @@ export default function CustomQuotationBuilder() {
 
   // --- mutators ---
   const setContact = (group, key, val) => setForm((f) => ({ ...f, contacts: { ...f.contacts, [group]: { ...f.contacts[group], [key]: val } } }));
+  const toggleFavorite = async (c) => {
+    const next = !c.is_favorite;
+    setClients((cs) => cs.map((x) => (x.id === c.id ? { ...x, is_favorite: next } : x)));
+    try { await api.patch(`/clients/${c.id}`, { is_favorite: next }); }
+    catch (_e) { setClients((cs) => cs.map((x) => (x.id === c.id ? { ...x, is_favorite: !next } : x))); }
+  };
+
   const selectClient = (c) => setForm((f) => {
     const next = { ...f, client_id: c.id, executive_id: '' };
     const execs = c.executives || [];
@@ -348,14 +356,17 @@ export default function CustomQuotationBuilder() {
               </div>
             )}
             <div className="grid md:grid-cols-2 gap-3">
-              {clients.map((c) => (
-                <button key={c.id} onClick={() => !editing && selectClient(c)} disabled={editing}
-                  className={`text-left rounded-xl border p-4 transition-all ${form.client_id === c.id ? 'border-brand-500 bg-brand-50' : 'border-ink-100 hover:border-brand-300'} ${editing && form.client_id !== c.id ? 'hidden' : ''}`}
-                  data-testid={`custom-client-option-${c.id}`}>
-                  <p className="font-semibold text-ink-900">{c.name}</p>
-                  <p className="text-xs text-ink-500 mt-1">{c.email} · {c.phone}</p>
-                  <span className="pill bg-brand-50 text-brand-500 mt-2">{c.channel}</span>
-                </button>
+              {sortByFavorite(clients).map((c) => (
+                <div key={c.id} className={`relative text-left rounded-xl border p-4 transition-all ${form.client_id === c.id ? 'border-brand-500 bg-brand-50' : 'border-ink-100 hover:border-brand-300'} ${editing && form.client_id !== c.id ? 'hidden' : ''}`}>
+                  <button type="button" onClick={() => toggleFavorite(c)} title={c.is_favorite ? 'Quitar de favoritos' : 'Marcar como favorito'} className={`absolute top-3 right-3 ${c.is_favorite ? 'text-amber-500' : 'text-ink-300 hover:text-amber-500'}`} data-testid={`custom-fav-client-${c.id}`}>
+                    <Star className="w-4 h-4" fill={c.is_favorite ? 'currentColor' : 'none'} />
+                  </button>
+                  <button onClick={() => !editing && selectClient(c)} disabled={editing} className="text-left w-full pr-7" data-testid={`custom-client-option-${c.id}`}>
+                    <p className="font-semibold text-ink-900 flex items-center gap-1.5">{c.is_favorite && <Star className="w-3.5 h-3.5 text-amber-500" fill="currentColor" />}{c.name}</p>
+                    <p className="text-xs text-ink-500 mt-1">{c.email} · {c.phone}</p>
+                    <span className="pill bg-brand-50 text-brand-500 mt-2">{c.channel}</span>
+                  </button>
+                </div>
               ))}
               {clients.length === 0 && <p className="text-ink-400 text-sm">No hay clientes. Crea uno.</p>}
             </div>

@@ -1,0 +1,33 @@
+{
+  "summary": "Iter 50 — Lote D 4.1 (favoritos + my_freq) y 10.5 (itinerario según tipo en Confirmación de Reserva) verificados end-to-end. Backend pytest 7/7 PASS. Frontend Playwright: estrella en /app/clients toggle + persistencia OK (rgb(148,163,184) → rgb(217,119,6) ámbar, se conserva tras reload). Sort default 'favoritos y frecuencia' OK; el orden real observado prioriza is_favorite y luego my_freq (Laura Ramírez sube a primera posición al marcarla favorita a pesar de que Agencia Viajes del Sol tenía más ventas ganadas). En el picker de Paquete Armado (/app/quotations/new) la estrella (fav-client-{id}) toggle sin activar client-option-{id}; al hacer click en la card sí avanza al siguiente paso — flujos separados OK. En Custom (/app/quotations/new/custom) custom-fav-client-{id} presente + custom-client-option-{id} presente, click estrella no cambia de paso. Confirmación de Reserva 10.5: PAQUETE (id 4ca24d69) prellena 4 filas 'Día N: ...' con título 'Itinerario día a día'; SERVICIOS (91dd1e61) muestra 'Descripción de servicios' con nombre del servicio ('Acceso Hospicio Cabañas'); PERSONALIZADO (ba5d7c14) muestra 'Programa detallado'. Add-row + fill + save-confirmation-btn → banner 'Confirmación de reserva guardada' + reload preserva el marcador 'TEST_UI_D_MARKER'. Download-confirmation-pdf-btn → GET /api/booking-confirmations/{id}/pdf status 200, content-type application/pdf, 5935 bytes, header %PDF válido. Cleanup del marcador ejecutado. NO se tocó el motor de precios del Paquete Armado.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "Clients / picker (Paquete + Custom)", "issues": ["Menor: la clase hover:text-amber-500 en la estrella no-favorita produce lecturas ambiguas de color durante tests automatizados si el mouse queda sobre el botón. No afecta al usuario final (visualmente el hover es correcto y la fill del ícono cambia). Se puede considerar diferenciar el hover para no coincidir con el estado activo, pero no es bug."]}
+    ]
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_iteration50_lote_d.py",
+    "/app/test_reports/pytest/iter50.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "/app/backend/server.py L586-618 list_clients: la agregación de my_freq usa created_by == user['id'] y respeta deleted != true — correcto. is_favorite se saneado con bool(). El pipeline se ejecuta por cada GET /clients: por tenants con muchas cotizaciones podría añadir índice compuesto (tenant_id, created_by, client_id, deleted). Sugerido, no crítico.",
+    "/app/backend/routes/booking.py L59-86 _prefill_itinerary: switch por qtype correcto (personalizado→custom_items, servicios→services con lookup, paquete→pack.itinerary). Nota: en 'servicios' si un service_id no existe (svc borrado) la línea se omite silenciosamente — puede sorprender al usuario. Considerar dejar entry vacía con el nombre de la línea de la cotización.",
+    "/app/backend/routes/booking.py L94-99 GET /booking-confirmation: si existe conf pero sin itinerary lo prellena on-the-fly — perfecto para docs anteriores a Lote D.",
+    "/app/backend/routes/booking.py L168-169 save requires state=='ganada' — bien enforced. UI podría deshabilitar 'Guardar' si el estado no es ganada (actualmente el error se muestra sólo tras el click).",
+    "/app/frontend/src/lib/clients.js: sortByFavorite es puro y estable — 3 niveles correctos. La misma lógica está duplicada en Clients.jsx L54 (sorters.favorites); sería mejor importarla desde el helper para DRY.",
+    "/app/frontend/src/pages/Clients.jsx L92-97 toggleFavorite: optimistic update + rollback en catch — patrón correcto.",
+    "/app/frontend/src/pages/BookingConfirmation.jsx L308-329: titulo dinámico según q.type y editor con add/del/edit correcto. data-testids consistentes."
+  ],
+  "updated_files": ["/app/backend/tests/test_iteration50_lote_d.py (nuevo)"],
+  "success_rate": {"backend": "100% (7/7 pytest)", "frontend": "100% — 4.1 y 10.5 end-to-end OK"},
+  "test_credentials": "admin@aventurate.mx / Demo2026! (company_admin María González, tenant Aventúrate por Jalisco)",
+  "seed_data_creation": "Se agregó y limpió un bloque 'TEST_UI_D_MARKER' en la confirmación de la cotización COT-2026061 (id 4ca24d69). El backend test creó/limpió también un marcador. También el favorito de Laura Ramírez fue toggled ON→OFF automáticamente al final de la corrida UI. Nota: en la corrida UI del picker de Paquete el favorito quedó activo brevemente hasta el paso siguiente; al volver a /app/clients quedó restaurado.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Lote D 100% verificado. 4.1 favoritos: is_favorite/my_freq en /api/clients OK, PATCH /clients/{id} {is_favorite} OK, sort default 'favorites' UI OK, estrella en pickers de Paquete y Personalizado OK (no rompe selectClient). 10.5 itinerario: prefill correcto por los 3 tipos (paquete=day-by-day 4 filas, servicios=nombre+desc por service, personalizado=concept+desc), edición/add/del + save + reload persisten, PDF 200 con header %PDF y >2KB. Motor de precios del Paquete Armado NO tocado — regresión de Lotes A/B/C sigue en verde. Cotizaciones de referencia utilizadas: 4ca24d69 (paquete ganada), 91dd1e61 (servicios), ba5d7c14 (personalizado).",
+  "rca of the issue": "N/A — no se encontraron bugs bloqueantes en Lote D."
+}
