@@ -353,10 +353,24 @@ async def update_quotation(quotation_id: str, payload: QuotationUpdate, user: di
     updates["last_activity_at"] = now_iso()
     await db.quotations.update_one({"id": quotation_id, "tenant_id": user["tenant_id"]}, {"$set": updates})
     if changed_fields:
-        FIELD_ES = {"dates": "fechas", "pax": "habitaciones/pax", "services": "servicios",
-                    "extra_nights": "noches extra", "hotel_name": "hotel", "contacts": "contactos",
-                    "notes": "notas", "assigned_to": "responsable"}
-        detail = "Editó: " + ", ".join(FIELD_ES.get(f, f) for f in changed_fields)
+        FIELD_ES = {
+            "dates": "fechas", "pax": "habitaciones/pax", "services": "servicios",
+            "extra_nights": "noches extra", "hotel_name": "hotel", "hotel_selected": "hotel",
+            "contacts": "contactos", "notes": "notas", "assigned_to": "responsable",
+            "executive_id": "ejecutivo", "presentation_text": "texto de presentación",
+            "important_info": "información importante", "show_all_occupancies": "mostrar todas las ocupaciones",
+            "show_price_breakdown": "desglose de precios", "custom_title": "título del programa",
+            "custom_items": "conceptos del programa", "custom_itinerary": "itinerario",
+            "custom_includes": "incluye", "custom_excludes": "no incluye",
+            "custom_nights": "noches", "custom_rooms": "habitaciones",
+        }
+
+        def _humanize(f: str) -> str:
+            if f in FIELD_ES:
+                return FIELD_ES[f]
+            return f.replace("_id", "").replace("_", " ").strip()
+
+        detail = "Editó: " + ", ".join(_humanize(f) for f in changed_fields)
         await _append_history(db, quotation_id, user, "edited", detail)
     return await db.quotations.find_one({"id": quotation_id, "tenant_id": user["tenant_id"]}, {"_id": 0})
 
@@ -620,13 +634,3 @@ async def send_quotation_message(quotation_id: str, payload: SendMessageInput,
     html = "".join(f"<p>{_esc_html(line)}</p>" for line in text.split("\n") if line.strip())
     sent = await send_email(company, to, f"Seguimiento · Cotización {q.get('code', '')}", html)
     return {"email_sent": sent, "to": to}
-router.post("/ai/quotations/{quotation_id}/client-message")
-async def ai_client_message(quotation_id: str, user: dict = Depends(require_tenant)):
-    await _check_ai_enabled(user["tenant_id"])
-    q, pack, client = await _load_quotation_context(quotation_id, user["tenant_id"])
-    try:
-        msg = await ai_service.generate_client_message(q, pack, client, tenant_id=user['tenant_id'])
-        return {"message": msg}
-    except Exception as e:
-        log.exception("AI client-message failed")
-        raise HTTPException(status_code=503, detail=f"IA no disponible: {e}")

@@ -433,4 +433,23 @@ Ver `/app/memory/test_credentials.md`. Seed automático en cada startup.
 - Probado: backend 14/14 pytest; frontend e2e 100% + regresión C/D (editor servicios, itinerario, motor de precios Paquete Armado intacto).
 - CIERRE DE ITERACIÓN: Lotes C+D+E completos y testeados. Pendiente: subir a GitHub (Save to Github) para validación de código previa a despliegue.
 - Backlog P2 siguiente iteración: miniaturas WhatsApp Inbox, dry-run importación Excel, pago ligado a ocupación en enlace público, mini-panel Top agencias/ejecutivos, timeline del viaje en enlace público.
+
+## [2026-07-16] ITERACIÓN 2 — Lotes F/G/H (COMPLETADO ✅, iter_52)
+### Lote F — WhatsApp
+- F1 Envío directo por Baileys con fallback: botones de cotización/cobro y del asistente IA usan `deliverWhatsApp` (chat vinculado → POST /whatsapp/send; sin chat pero número conectado + teléfono → envío directo creando chat; sin nada → fallback wa.me). Estado "Enviado ✓".
+- F2 Nombres reales: `_crm_name_map` cruza teléfono (últimos 10 dígitos, ignora 52/521) con clients/executives; prioridad "Ejecutivo · Agencia" → push_name → número. Aplicado en list_chats (Inbox, modal, header).
+- F3 Modal vincular: buscador nombre/teléfono + bloque "Sugerido" (match con cliente/ejecutivo) + "Mostrar todos".
+- F4 Grupos ocultos por defecto (is_group por @g.us) con toggle; ocultar/restaurar chat (colección `whatsapp_chat_prefs`, POST /whatsapp/chats/hide). Vista "Ocultos".
+- F5 Inbox altura fija `h-[calc(100vh-240px)]` (scroll interno independiente) + auto-scroll al último mensaje.
+- F6 "Copiar" usa `/api/share/q/{token}` (OG por empresa). Nueva ruta `/api/share/r/{token}` para Confirmación (booking.py) con og:title "{Empresa} · Confirmación {código}".
+### Lote G — Asistente IA de seguimiento (BYOK vía ai_service.py, doc platform_settings id='ai')
+- G1 Seguimiento pre-pago + G2 post-venta (solo ganada/pagada) + G3 Redactar mensaje. Todos con contexto (días desde envío, estado de pago, resumen de chat vinculado), texto editable y envío directo WhatsApp/correo. Endpoints: /ai/quotations/{id}/follow-up-prepay, /follow-up-postsale, /client-message (retorna {message,context}); POST /quotations/{id}/send-message (correo al cliente).
+- G4 Botones "Sugerir próximo paso" y "Detectar campos faltantes" retirados de la UI (endpoints deprecados en backend).
+### Lote H — Cotizaciones
+- H1 Historial: diff real (solo campos que cambiaron) + FIELD_ES completo + `_humanize` fallback (nunca snake_case).
+- H2 "Detalles" muestra conceptos: custom_items (personalizado) / items (servicios).
+- H3 Paso Servicios del Paquete Armado: botón "Siguiente" arriba + filtro de categorías (solo UI).
+- Testeado iter_52: backend 14/14 tras fix (H1 presentation_text + eliminación de código muerto ai_client_message), frontend 100%. Motor de precios Paquete Armado intacto.
+- Pendiente: Captcha Turnstile (solo diagnóstico leyendo log en producción). Subir a GitHub para validación previa a despliegue.
+- Backlog P2 (fuera de esta iteración): miniaturas WhatsApp, dry-run Excel, pago por ocupación, top agencias/ejecutivos, timeline público, comparar dos meses.
 - Pendiente (próximo): Lote E — reportes por mes calendario + filtros date_from/date_to en GET /quotations + selector de mes + comparativa mes vs mes anterior en stats.py.
