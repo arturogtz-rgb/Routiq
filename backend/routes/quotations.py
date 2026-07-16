@@ -49,7 +49,9 @@ async def _check_ai_enabled(tenant_id: str):
 
 
 @router.get("/quotations")
-async def list_quotations(state: str | None = None, archived: bool = False, user: dict = Depends(require_tenant)):
+async def list_quotations(state: str | None = None, archived: bool = False,
+                          date_from: str | None = None, date_to: str | None = None,
+                          user: dict = Depends(require_tenant)):
     db = get_db()
     q = {"tenant_id": user["tenant_id"], "deleted": {"$ne": True}}
     if archived:
@@ -58,6 +60,14 @@ async def list_quotations(state: str | None = None, archived: bool = False, user
         q["archived"] = {"$ne": True}
     if state:
         q["state"] = state
+    # Lote E: filtro por rango de fechas sobre created_at (inclusive en ambos extremos).
+    if date_from or date_to:
+        rng = {}
+        if date_from:
+            rng["$gte"] = date_from
+        if date_to:
+            rng["$lte"] = f"{date_to}T23:59:59.999999"
+        q["created_at"] = rng
     items = await db.quotations.find(q, {"_id": 0}).sort("created_at", -1).to_list(500)
     # Resolve the elaborating executive (created_by) -> display name for the list.
     uids = list({it.get("created_by") for it in items if it.get("created_by")})

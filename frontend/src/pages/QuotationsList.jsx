@@ -21,13 +21,20 @@ export default function QuotationsList() {
   const [state, setState] = useState('');
   const [showArchived, setShowArchived] = useState(false);
   const [onlyPaid, setOnlyPaid] = useState(false);
+  const [month, setMonth] = useState('');
 
   useEffect(() => {
     (async () => {
-      const { data } = await api.get('/quotations', { params: showArchived ? { archived: true } : {} });
+      const params = showArchived ? { archived: true } : {};
+      if (month) {
+        const [y, m] = month.split('-').map(Number);
+        params.date_from = `${month}-01`;
+        params.date_to = `${month}-${String(new Date(y, m, 0).getDate()).padStart(2, '0')}`;
+      }
+      const { data } = await api.get('/quotations', { params });
       setItems(data);
     })();
-  }, [showArchived]);
+  }, [showArchived, month]);
 
   const filtered = items.filter((x) => {
     if (onlyPaid && x.payment_status !== 'paid') return false;
@@ -44,13 +51,13 @@ export default function QuotationsList() {
       <div className="flex items-end justify-between gap-4 mb-8">
         <div>
           <h1 className="font-display text-3xl font-semibold text-ink-900 tracking-tight">Cotizaciones</h1>
-          <p className="text-ink-500 mt-1">{items.length} {showArchived ? 'archivadas' : 'en total'}</p>
+          <p className="text-ink-500 mt-1">{items.length} {showArchived ? 'archivadas' : (month ? 'en el mes' : 'en total')}</p>
         </div>
         <Link to="/app/quotations/new" className="btn-primary" data-testid="new-quotation-btn"><Plus className="w-4 h-4" /> Nueva</Link>
       </div>
 
-      <div className="flex flex-col sm:flex-row gap-3 mb-6">
-        <div className="relative flex-1">
+      <div className="flex flex-col sm:flex-row flex-wrap gap-3 mb-6">
+        <div className="relative flex-1 min-w-[200px]">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-ink-400" />
           <input value={q} onChange={(e) => setQ(e.target.value)} className="input-field pl-10" placeholder="Buscar por código, cliente o paquete" data-testid="quotations-search" />
         </div>
@@ -58,6 +65,8 @@ export default function QuotationsList() {
           <option value="">Todos los estados</option>
           {Object.entries(STATE_LABELS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
         </select>
+        <input type="month" value={month} onChange={(e) => setMonth(e.target.value)} className={`input-field sm:w-auto ${month ? 'border-brand-400 text-brand-600' : ''}`} data-testid="quotations-filter-month" title="Filtrar por mes (fecha de creación)" />
+        {month && <button onClick={() => setMonth('')} className="pill whitespace-nowrap bg-white border border-ink-200 text-ink-600" data-testid="quotations-month-clear">Todo el tiempo</button>}
         <button onClick={() => setOnlyPaid((v) => !v)} className={`pill whitespace-nowrap ${onlyPaid ? 'bg-emerald-600 text-white' : 'bg-white border border-ink-200 text-ink-600'}`} data-testid="toggle-paid">
           {onlyPaid ? 'Ver todas' : 'Reservas pagadas'}
         </button>

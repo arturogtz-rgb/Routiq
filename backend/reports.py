@@ -69,19 +69,19 @@ def _kpi_html(company: dict, data: dict, period_label: str) -> str:
     )
 
 
-async def send_company_report(db, company: dict, period: str):
+async def send_company_report(db, company: dict, period: str, month: str | None = None):
     """Build and send the sales report email for one company.
     Returns (ok: bool, to: str, error: str)."""
     if not company:
         return False, "", "Empresa no encontrada"
     tenant_id = company["id"]
-    data = await stats._compute(db, tenant_id, period)
-    period_label = {"week": "Última semana", "month": "Último mes"}.get(period, period)
+    data = await stats._compute(db, tenant_id, period, month=month)
+    period_label = data.get("label") or {"week": "Última semana", "month": "Último mes"}.get(period, period)
     html = _kpi_html(company, data, period_label)
     buf = stats.build_workbook(data)
-    stamp = datetime.now(timezone.utc).strftime("%Y%m%d")
+    stamp = month or datetime.now(timezone.utc).strftime("%Y%m%d")
     attachments = [{
-        "filename": f"routiq-ventas-{period}-{stamp}.xlsx",
+        "filename": f"routiq-ventas-{stamp}.xlsx",
         "data": buf.getvalue(),
         "mime": XLSX_MIME,
     }]
@@ -135,9 +135,17 @@ async def run_sales_reports(db=None) -> dict:
         now_local = datetime.now(tz)
         if not _is_due(cfg, now_local, company.get("sales_report_last_sent_at", "")):
             continue
-        period = "week" if cfg.get("frequency", "weekly") == "weekly" else "month"
+        # Lote E: el reporte mensual cubre el MES CALENDARIO anterior completo
+        # (con comparativa vs el mes previo, incluida en data.deltas). El semanal
+        # conserva la ventana móvil de 7 días.
+        if cfg.get("frequency", "weekly") == "weekly":
+            period, month = "week", None
+        else:
+            first_of_month = now_local.replace(day=1)
+            prev_last = first_of_month - timedelta(days=1)
+            period, month = "month", prev_last.strftime("%Y-%m")
         try:
-            ok, to, err = await send_company_report(db, company, period)
+            ok, to, err = await send_company_report(db, company, period, month=month)
             if ok:
                 await db.companies.update_one(
                     {"id": company["id"]}, {"$set": {"sales_report_last_sent_at": now_iso()}})

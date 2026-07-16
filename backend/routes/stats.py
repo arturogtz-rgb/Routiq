@@ -37,6 +37,37 @@ def _period_days(period: str) -> int:
     return {"week": 7, "month": 30, "quarter": 90, "year": 365}.get(period, 30)
 
 
+_MESES = ["Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio",
+          "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"]
+
+
+def _month_bounds(month: str):
+    """month = 'YYYY-MM' -> (win_start, win_end, prev_start) as tz-aware datetimes.
+    win_end = primer día del mes siguiente; prev_start = primer día del mes anterior."""
+    y, m = int(month[:4]), int(month[5:7])
+    start = datetime(y, m, 1, tzinfo=timezone.utc)
+    nm, ny = (m + 1, y) if m < 12 else (1, y + 1)
+    end = datetime(ny, nm, 1, tzinfo=timezone.utc)
+    pm, py = (m - 1, y) if m > 1 else (12, y - 1)
+    prev_start = datetime(py, pm, 1, tzinfo=timezone.utc)
+    return start, end, prev_start
+
+
+def _month_buckets(start: datetime, end: datetime):
+    out = []
+    d = start
+    while d < end:
+        nd = d + timedelta(days=1)
+        out.append({"label": d.strftime("%d/%m"), "start": d.isoformat(), "end": nd.isoformat()})
+        d = nd
+    return out
+
+
+def _month_label(month: str) -> str:
+    y, m = int(month[:4]), int(month[5:7])
+    return f"{_MESES[m - 1]} {y}"
+
+
 def _buckets(period: str):
     """Return ordered list of {label, start, end} for the trend chart."""
     now = datetime.now(timezone.utc)
@@ -75,11 +106,24 @@ def _buckets(period: str):
     return out
 
 
-async def _compute(db, tenant_id: str, period: str) -> dict:
-    days = _period_days(period)
+async def _compute(db, tenant_id: str, period: str = "month", month: str | None = None) -> dict:
     now = datetime.now(timezone.utc)
-    cutoff = (now - timedelta(days=days)).isoformat()
-    prev_cutoff = (now - timedelta(days=2 * days)).isoformat()
+    if month:
+        win_start, win_end, prev_start = _month_bounds(month)
+        cutoff = win_start.isoformat()
+        end = win_end.isoformat()
+        prev_cutoff = prev_start.isoformat()
+        buckets = _month_buckets(win_start, win_end)
+        label = _month_label(month)
+        days = (win_end - win_start).days
+    else:
+        days = _period_days(period)
+        cutoff = (now - timedelta(days=days)).isoformat()
+        end = now.isoformat()
+        prev_cutoff = (now - timedelta(days=2 * days)).isoformat()
+        buckets = _buckets(period)
+        label = {"week": "Última semana", "month": "Último mes",
+                 "quarter": "Último trimestre", "year": "Último año"}.get(period, period)
 
     quotations = await db.quotations.find(
         {"tenant_id": tenant_id, "deleted": {"$ne": True},
@@ -89,9 +133,9 @@ async def _compute(db, tenant_id: str, period: str) -> dict:
     users = await db.users.find({"tenant_id": tenant_id}, {"_id": 0, "id": 1, "name": 1}).to_list(500)
     uname = {u["id"]: u.get("name", "—") for u in users}
 
-    created_in = [q for q in quotations if (q.get("created_at") or "") >= cutoff and not q.get("archived")]
-    won_in = [q for q in quotations if q.get("state") == "ganada" and _won_date(q) >= cutoff]
-    lost_in = [q for q in quotations if q.get("state") == "perdida" and _won_date(q) >= cutoff]
+    created_in = [q for q in quotations if cutoff <= (q.get("created_at") or "") < end and not q.get("archived")]
+    won_in = [q for q in quotations if q.get("state") == "ganada" and cutoff <= _won_date(q) < end]
+    lost_in = [q for q in quotations if q.get("state") == "perdida" and cutoff <= _won_date(q) < end]
 
     # Previous window [prev_cutoff, cutoff) for period-over-period comparison.
     prev_created = [q for q in quotations if prev_cutoff <= (q.get("created_at") or "") < cutoff and not q.get("archived")]
@@ -113,7 +157,6 @@ async def _compute(db, tenant_id: str, period: str) -> dict:
     collected_total = round(sum(float(q.get("amount_paid", 0) or 0) for q in won_in), 2)
 
     # Trend
-    buckets = _buckets(period)
     trend = []
     for b in buckets:
         rev = sum(_value(q) for q in won_in if b["start"] <= _won_date(q) < b["end"])
@@ -198,6 +241,7 @@ async def _compute(db, tenant_id: str, period: str) -> dict:
 
     return {
         "period": period, "days": days, "currency": currency,
+        "month": month or "", "label": label,
         "revenue_total": revenue_total, "collected_total": collected_total,
         "trend": trend,
         "conversion": {"total": total_created, "won": won_created, "lost": lost_created, "rate": conv_rate},
@@ -242,7 +286,7 @@ def build_workbook(data: dict) -> io.BytesIO:
         return ws
 
     ws = wb.active; ws.title = "Resumen"
-    period_label = {"week": "Última semana", "month": "Último mes", "quarter": "Último trimestre", "year": "Último año"}.get(period, period)
+    period_label = data.get("label") or {"week": "Última semana", "month": "Último mes", "quarter": "Último trimestre", "year": "Último año"}.get(period, period)
     summary = [
         ["Routiq — Reporte de ventas", ""],
         ["Período", period_label],
@@ -278,20 +322,20 @@ def build_workbook(data: dict) -> io.BytesIO:
 
 
 @router.get("/stats/sales")
-async def sales_stats(period: str = "month", user: dict = Depends(require_roles("company_admin"))):
+async def sales_stats(period: str = "month", month: str | None = None, user: dict = Depends(require_roles("company_admin"))):
     db = get_db()
-    return await _compute(db, user["tenant_id"], period)
+    return await _compute(db, user["tenant_id"], period, month=month)
 
 
 @router.get("/stats/sales/export")
-async def export_sales_stats(period: str = "month", user: dict = Depends(require_roles("company_admin"))):
+async def export_sales_stats(period: str = "month", month: str | None = None, user: dict = Depends(require_roles("company_admin"))):
     db = get_db()
-    data = await _compute(db, user["tenant_id"], period)
+    data = await _compute(db, user["tenant_id"], period, month=month)
     buf = build_workbook(data)
-    stamp = datetime.now(timezone.utc).strftime("%Y%m%d")
+    stamp = (month or datetime.now(timezone.utc).strftime("%Y%m%d"))
     return StreamingResponse(
         buf, media_type=XLSX_MIME,
-        headers={"Content-Disposition": f'attachment; filename="routiq-ventas-{period}-{stamp}.xlsx"'},
+        headers={"Content-Disposition": f'attachment; filename="routiq-ventas-{stamp}.xlsx"'},
     )
 
 

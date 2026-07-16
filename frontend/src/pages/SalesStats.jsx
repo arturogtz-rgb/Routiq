@@ -10,9 +10,15 @@ import {
 
 const PERIODS = [['week', 'Semana'], ['month', 'Mes'], ['quarter', 'Trimestre'], ['year', 'Año']];
 
+function currentMonth() {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+}
+
 export default function SalesStats() {
   const [data, setData] = useState(null);
   const [period, setPeriod] = useState('month');
+  const [month, setMonth] = useState('');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [exporting, setExporting] = useState(false);
@@ -20,21 +26,21 @@ export default function SalesStats() {
   const ccy = data?.currency || 'MXN';
   const money = (v) => `$${Number(v || 0).toLocaleString('es-MX', { maximumFractionDigits: 0 })} ${ccy}`;
 
-  const load = async (p) => {
+  const load = async () => {
     setLoading(true); setError('');
-    try { const { data } = await api.get('/stats/sales', { params: { period: p } }); setData(data); }
+    try { const { data } = await api.get('/stats/sales', { params: month ? { month } : { period } }); setData(data); }
     catch (e) { setError(formatApiError(e)); }
     finally { setLoading(false); }
   };
-  useEffect(() => { load(period); }, [period]);
+  useEffect(() => { load(); /* eslint-disable-next-line */ }, [period, month]);
 
   const exportXlsx = async () => {
     setExporting(true);
     try {
-      const res = await api.get('/stats/sales/export', { params: { period }, responseType: 'blob' });
+      const res = await api.get('/stats/sales/export', { params: month ? { month } : { period }, responseType: 'blob' });
       const url = window.URL.createObjectURL(new Blob([res.data]));
       const a = document.createElement('a');
-      a.href = url; a.download = `routiq-ventas-${period}.xlsx`;
+      a.href = url; a.download = `routiq-ventas-${month || period}.xlsx`;
       document.body.appendChild(a); a.click(); a.remove();
       window.URL.revokeObjectURL(url);
     } catch (e) { setError(formatApiError(e)); }
@@ -65,15 +71,18 @@ export default function SalesStats() {
       <div className="flex flex-col md:flex-row md:items-end md:justify-between gap-4 mb-8">
         <div>
           <h1 className="font-display text-3xl md:text-4xl font-semibold text-ink-900 tracking-tight">Ventas y estadísticas</h1>
-          <p className="text-ink-500 mt-1">Ingresos, conversión y rendimiento de tu equipo y catálogo · vs. período anterior.</p>
+          <p className="text-ink-500 mt-1">{data?.label ? <><b className="text-ink-700">{data.label}</b> · </> : null}Ingresos, conversión y rendimiento · vs. {month ? 'mes anterior' : 'período anterior'}.</p>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           <div className="flex gap-1 bg-white border border-ink-100 rounded-xl p-1" data-testid="stats-period">
             {PERIODS.map(([k, lbl]) => (
-              <button key={k} onClick={() => setPeriod(k)} data-testid={`stats-period-${k}`}
-                className={`px-3 py-1.5 rounded-lg text-sm font-medium transition ${period === k ? 'bg-brand-50 text-brand-500' : 'text-ink-500 hover:text-ink-700'}`}>{lbl}</button>
+              <button key={k} onClick={() => { setMonth(''); setPeriod(k); }} data-testid={`stats-period-${k}`}
+                className={`px-3 py-1.5 rounded-lg text-sm font-medium transition ${!month && period === k ? 'bg-brand-50 text-brand-500' : 'text-ink-500 hover:text-ink-700'}`}>{lbl}</button>
             ))}
           </div>
+          <input type="month" value={month} max={currentMonth()} onChange={(e) => setMonth(e.target.value)}
+            className={`input-field w-auto text-sm py-1.5 ${month ? 'border-brand-400 text-brand-600' : ''}`} data-testid="stats-month-picker" title="Mes calendario específico" />
+          {month && <button onClick={() => setMonth('')} className="btn-ghost text-sm" data-testid="stats-month-clear">Ver por período</button>}
           <button onClick={exportXlsx} disabled={exporting} className="btn-secondary text-sm whitespace-nowrap" data-testid="stats-export-btn">
             <Download className="w-4 h-4" /> {exporting ? 'Generando…' : 'Exportar Excel'}
           </button>
