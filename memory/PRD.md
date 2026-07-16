@@ -424,4 +424,13 @@ Ver `/app/memory/test_credentials.md`. Seed automático en cada startup.
 - 10.5 Itinerario/descripción según tipo en Confirmación de Reserva (prefill + editor + PDF): paquete → itinerario día a día del paquete; servicios → descripción de cada servicio contratado; personalizado → concepto + descripción de cada ítem. Nuevo modelo BookingItineraryEntry + campo itinerary en BookingConfirmationSave. Prefill en booking.py (_prefill_itinerary), sección editable en BookingConfirmation.jsx, sección en el PDF (título dinámico según tipo). Confirmaciones previas sin itinerario reciben prefill on-the-fly.
 - Probado: backend 7/7 pytest; frontend e2e 100% (favoritos+persistencia, orden, itinerario 3 tipos, edición+guardado+reload, PDF 200). Motor de precios del Paquete Armado intacto.
 - Descartado del backlog: badge "Ahorras $X" + cuenta regresiva (Routiq es B2B; tácticas de urgencia no aplican).
+
+## [2026-07-16] Lote E — Reportes por mes calendario + filtro de fechas (COMPLETADO ✅, iter_51)
+- Selector de mes calendario en Ventas (/app/stats): GET /stats/sales?month=YYYY-MM computa el mes calendario (label 'Junio 2026', tendencia diaria 28-31 días) con comparativa vs MES CALENDARIO ANTERIOR (no ventana móvil). stats.py: _month_bounds/_month_buckets/_month_label; _compute acepta month; endpoints (incl. export xlsx) aceptan ?month. Frontend: input type=month + botón 'Ver por período', subtítulo con data.label.
+- Filtro por rango de fechas en listado de cotizaciones (/app/quotations): GET /quotations acepta date_from/date_to sobre created_at (rango inclusivo). Frontend: input type=month + 'Todo el tiempo', combinable con búsqueda/estado/pagadas/archivadas.
+- Correo mensual comparativo: reports.py::run_sales_reports usa el mes calendario anterior completo para el reporte mensual (reutiliza el motor existente); el semanal conserva ventana de 7 días.
+- KPI de ingresos de "Reservas pagadas" (Lote C): confirmado ya implementado (paid-revenue-kpi, suma de amount_paid).
+- Probado: backend 14/14 pytest; frontend e2e 100% + regresión C/D (editor servicios, itinerario, motor de precios Paquete Armado intacto).
+- CIERRE DE ITERACIÓN: Lotes C+D+E completos y testeados. Pendiente: subir a GitHub (Save to Github) para validación de código previa a despliegue.
+- Backlog P2 siguiente iteración: miniaturas WhatsApp Inbox, dry-run importación Excel, pago ligado a ocupación en enlace público, mini-panel Top agencias/ejecutivos, timeline del viaje en enlace público.
 - Pendiente (próximo): Lote E — reportes por mes calendario + filtros date_from/date_to en GET /quotations + selector de mes + comparativa mes vs mes anterior en stats.py.
