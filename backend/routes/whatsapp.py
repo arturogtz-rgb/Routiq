@@ -191,8 +191,17 @@ async def list_chats(number_id: str, user: dict = Depends(require_tenant)):
             "_id": "$chat_id",
             "last_text": {"$first": "$text"},
             "last_at": {"$first": "$timestamp"},
-            "contact_name": {"$first": "$contact_name"},
+            # Recolecta todos los nombres (más reciente primero) para elegir el último no vacío.
+            "names": {"$push": "$contact_name"},
             "unread": {"$sum": {"$cond": [{"$and": [{"$eq": ["$from_me", False]}, {"$ne": ["$read", True]}]}, 1, 0]}},
+        }},
+        # Fix Iter2: contact_name = último nombre NO vacío del chat (los mensajes salientes se
+        # guardan con contact_name "", por lo que $first perdía el push_name de entrantes previos).
+        {"$addFields": {
+            "contact_name": {"$ifNull": [{"$first": {"$filter": {
+                "input": "$names", "as": "n",
+                "cond": {"$and": [{"$ne": ["$$n", ""]}, {"$ne": ["$$n", None]}]},
+            }}}, ""]},
         }},
         {"$sort": {"last_at": -1}},
         {"$limit": 200},
