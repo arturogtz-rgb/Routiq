@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useRef } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { Turnstile } from '@marsidev/react-turnstile';
 import api, { formatApiError } from '@/lib/api';
@@ -23,6 +23,7 @@ export default function Signup() {
   const [loading, setLoading] = useState(false);
   const [done, setDone] = useState(false);
   const [captchaToken, setCaptchaToken] = useState(null);
+  const turnstileRef = useRef(null);
   const siteKey = process.env.REACT_APP_TURNSTILE_SITE_KEY;
 
   const set = (k) => (e) => setForm((f) => ({ ...f, [k]: e.target.value }));
@@ -38,8 +39,18 @@ export default function Signup() {
         turnstile_token: captchaToken,
       });
       setDone(true);
-    } catch (err) { setError(formatApiError(err)); }
-    finally { setLoading(false); }
+    } catch (err) {
+      const detail = err?.response?.data?.detail || '';
+      // Los tokens de Turnstile son de un solo uso: tras CUALQUIER error, recarga el
+      // widget y limpia el token para que un reintento use uno nuevo (evita el falso
+      // error de captcha por 'timeout-or-duplicate').
+      if (siteKey) { try { turnstileRef.current?.reset?.(); } catch (_e) { /* noop */ } setCaptchaToken(null); }
+      if (/timeout-or-duplicate|verificaci[óo]n expir/i.test(detail)) {
+        setError('La verificación expiró, inténtalo de nuevo.');
+      } else {
+        setError(formatApiError(err));
+      }
+    } finally { setLoading(false); }
   };
 
   const plan = PLANS[form.plan];
@@ -134,12 +145,16 @@ export default function Signup() {
             <input type="text" name="website" tabIndex={-1} autoComplete="off" value={form.website}
               onChange={set('website')} className="hidden" aria-hidden="true" data-testid="signup-honeypot" />
 
-            {siteKey && (
+            {siteKey ? (
               <div className="flex justify-center" data-testid="signup-turnstile">
-                <Turnstile siteKey={siteKey}
+                <Turnstile ref={turnstileRef} siteKey={siteKey}
                   onSuccess={(t) => setCaptchaToken(t)}
                   onError={() => setCaptchaToken(null)}
                   onExpire={() => setCaptchaToken(null)} />
+              </div>
+            ) : (
+              <div className="rounded-xl border border-amber-300 bg-amber-50 text-amber-800 px-4 py-3 text-sm" data-testid="signup-turnstile-missing">
+                ⚠️ La verificación anti-bots no está configurada (falta <code>REACT_APP_TURNSTILE_SITE_KEY</code> en el build). El registro seguirá funcionando, pero sin captcha. Configura esta variable de entorno antes de desplegar.
               </div>
             )}
 

@@ -1,0 +1,37 @@
+{
+  "summary": "Iteración 55 — Fix Turnstile en /signup verificado 100%. Backend pytest 22/22 PASS: (a) Unit tests sobre _verify_turnstile con httpx mockeado cubren SECRET vacía, token vacío, error-codes {timeout-or-duplicate, invalid-input-response, hostname-mismatch, invalid-input-secret}, success, y excepción interna → devuelven (ok, code) esperados. (b) Integración in-process con TestClient + monkeypatch de _verify_turnstile: para codes en {timeout-or-duplicate, invalid-input-response, missing-input-response} el endpoint devuelve HTTP 400 con detail que contiene 'La verificación expiró, inténtalo de nuevo.' y el marcador '[turnstile:timeout-or-duplicate]'; para hostname-mismatch, invalid-input-secret, internal-error, códigos desconocidos y '' → HTTP 400 detail 'No pudimos verificar el captcha. Recárgalo e intenta de nuevo.' (sin marcador). (c) Con captcha ok, el endpoint continúa al chequeo de email duplicado (con admin@aventurate.mx → 400 'Ya existe una cuenta con ese correo. Inicia sesión.'; sin captcha en el mensaje) y con email único → 201 con id persistido en tenant_requests. (d) Regresión servidor real: POST /api/signup con turnstile_token=null → 400 con marcador; honeypot (website=...) → {ok:true,id:'ok'} sin registrar signup_attempt. Frontend Playwright: en /signup del preview el widget data-testid='signup-turnstile' se renderiza (site key configurada) y data-testid='signup-turnstile-missing' NO aparece. Submit con captcha vacío dispara el guard 'Por favor completa el captcha.' en data-testid='signup-error'. La regex del catch en Signup.jsx /timeout-or-duplicate|verificaci[óo]n expir/i probada en el browser: matchea el marcador y el texto de expiración; NO matchea el error de correo duplicado ni el mensaje genérico de captcha (mapeo correcto al mensaje específico solo en los casos esperados). Nota importante: TURNSTILE_SECRET_KEY SÍ está configurada en /app/backend/.env del preview (el enunciado suponía lo contrario), por lo que el captcha del backend está activo; aún así el mapeo funciona porque se probó vía mock y también vía HTTP real (token=null → missing-input-response → expiración).",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_iteration55_signup_turnstile.py",
+    "/app/test_reports/pytest/iter55.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "/app/backend/routes/signup.py L43-80 _verify_turnstile devuelve tuple (ok, code) y devuelve codes[0] (primer error-code); esto es correcto y coincide con el mapeo del endpoint. La lista de hints en logs (hostname-mismatch/invalid-input-secret/etc.) queda para diagnóstico. OK.",
+    "/app/backend/routes/signup.py L132-136 mapeo: {timeout-or-duplicate, invalid-input-response, missing-input-response} → 400 con mensaje de expiración + marcador '[turnstile:timeout-or-duplicate]'. Cualquier otro code (incluido '' y 'internal-error') → 400 genérico. Cubre exactamente el requisito.",
+    "/app/frontend/src/pages/Signup.jsx L47 tras cualquier error se ejecuta turnstileRef.current?.reset?.() + setCaptchaToken(null) SIEMPRE que siteKey esté definido. Uso de optional-chaining evita crashes si el widget aún no montó. OK.",
+    "/app/frontend/src/pages/Signup.jsx L48 regex /timeout-or-duplicate|verificaci[óo]n expir/i cubre tanto el marcador como el texto de expiración (con o sin acento en la 'o'). Verificado en browser: 4 casos (marcador, texto expiración, duplicado, genérico) mapean correctamente.",
+    "/app/frontend/src/pages/Signup.jsx L148-159 render condicional siteKey ? <Turnstile ref/> : <aviso data-testid='signup-turnstile-missing'/>. Correcto. En preview la key SÍ está y por eso siempre se ve el widget; el aviso ámbar solo se probaría desmarcando REACT_APP_TURNSTILE_SITE_KEY del build (revisión de código confirma la lógica).",
+    "Sugerencia menor no bloqueante: el guard L33 muestra 'Por favor completa el captcha.' cuando siteKey && !captchaToken; podría además desactivar el botón de submit hasta que captchaToken exista, para dar feedback más temprano — pero el flujo actual funciona correctamente y coincide con la UX esperada."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_iteration55_signup_turnstile.py"
+  ],
+  "success_rate": {
+    "backend": "100% (22/22 pytest)",
+    "frontend": "100% (widget render + guard + regex mapping verificados; el flujo completo con captcha resuelto no es automatizable, pero el path de error sí lo es)"
+  },
+  "test_credentials": "admin@aventurate.mx / Demo2026! (leído de /app/memory/test_credentials.md, usado para forzar 'correo duplicado' en test_success_verify_reaches_email_dup_check)",
+  "seed_data_creation": "Solo se creó 1 tenant_request efímero en test_success_verify_creates_pending_request (email newuser_{suf}@example.com); teardown del fixture 'created' lo elimina junto con signup_attempts asociados. Cleanup verificado en MongoDB al final (0 registros TEST_/iter55 residuales, admin@aventurate.mx intacto).",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "El fix de Turnstile queda cubierto por /app/backend/tests/test_iteration55_signup_turnstile.py (22 tests: unit + TestClient in-process + HTTP real). Reutilizable como regresión. IMPORTANTE: TURNSTILE_SECRET_KEY está configurada en el backend .env del preview — si en el futuro se cambia a vacía, el test_null_token_maps_to_expiration_via_http fallará (deberá esperarse 201 en vez de 400); en ese caso, ajustar el test o marcarlo con skipif basado en la variable. El widget Cloudflare a veces devuelve Error 110200 en el preview (hostname del preview no está en la allowlist del widget) — no afecta al backend porque la SECRET key es válida contra el dominio de prod. El fix del frontend (reset del widget tras error + regex de mapeo) fue verificado por (i) render condicional + guard, (ii) regex probada en 4 casos vía page.evaluate. NO se tocó pricing.py, Paquete Armado, ni ningún flujo P2."
+}

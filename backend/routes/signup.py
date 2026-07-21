@@ -40,13 +40,14 @@ def _client_ip(request: Request) -> str:
     return request.client.host if request.client else "unknown"
 
 
-async def _verify_turnstile(token: str | None, ip: str) -> bool:
-    """Verify a Cloudflare Turnstile token. Skips when no secret key is set."""
+async def _verify_turnstile(token: str | None, ip: str) -> tuple[bool, str]:
+    """Verify a Cloudflare Turnstile token. Skips when no secret key is set.
+    Returns (ok, code) where code is the primary Cloudflare error-code (or '')."""
     if not TURNSTILE_SECRET_KEY:
-        return True
+        return True, ""
     if not token:
         log.warning("Turnstile: token vacío recibido del frontend")
-        return False
+        return False, "missing-input-response"
     try:
         async with httpx.AsyncClient(timeout=10) as client:
             resp = await client.post(
@@ -55,13 +56,13 @@ async def _verify_turnstile(token: str | None, ip: str) -> bool:
             )
             data = resp.json()
             ok = bool(data.get("success", False))
+            codes = data.get("error-codes") or []
             if not ok:
                 # error-codes diagnostica el problema exacto:
                 #   invalid-input-secret     -> el TURNSTILE_SECRET_KEY es incorrecto
                 #   invalid-input-response   -> token vencido/reusado (recargar widget)
                 #   hostname-mismatch        -> el dominio (routiq.com.mx) no está permitido en el widget de Cloudflare
                 #   timeout-or-duplicate     -> token reutilizado
-                codes = data.get("error-codes") or []
                 hint = ""
                 if "hostname-mismatch" in codes:
                     hint = " => Revisa el dominio permitido del widget en el panel de Cloudflare Turnstile (debe incluir routiq.com.mx)."
@@ -73,10 +74,10 @@ async def _verify_turnstile(token: str | None, ip: str) -> bool:
                             codes, data.get("hostname"), ip, hint)
             else:
                 log.info("Turnstile OK hostname=%s", data.get("hostname"))
-            return ok
+            return ok, (codes[0] if codes else "")
     except Exception:
         log.exception("Turnstile verify failed")
-        return False
+        return False, "internal-error"
 
 
 async def _rate_limited(db, ip: str) -> bool:
@@ -128,7 +129,10 @@ async def submit_signup(payload: SignupRequest, request: Request):
     if await _rate_limited(db, ip):
         raise HTTPException(status_code=429, detail="Demasiadas solicitudes. Intenta de nuevo más tarde.")
     # Captcha (skipped if no secret key configured)
-    if not await _verify_turnstile(payload.turnstile_token, ip):
+    ok, code = await _verify_turnstile(payload.turnstile_token, ip)
+    if not ok:
+        if code in ("timeout-or-duplicate", "invalid-input-response", "missing-input-response"):
+            raise HTTPException(status_code=400, detail="La verificación expiró, inténtalo de nuevo. [turnstile:timeout-or-duplicate]")
         raise HTTPException(status_code=400, detail="No pudimos verificar el captcha. Recárgalo e intenta de nuevo.")
 
     email = payload.admin_email.lower().strip()
