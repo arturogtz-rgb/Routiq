@@ -146,6 +146,7 @@ export default function BookingConfirmation() {
   useEffect(() => { load(); /* eslint-disable-next-line */ }, [id]);
 
   const refreshAmounts = async () => {
+    if (!conf) return;
     setRefreshing(true); setError(''); setOk('');
     try {
       await api.post(`/quotations/${id}/booking-confirmation/refresh-amounts`);

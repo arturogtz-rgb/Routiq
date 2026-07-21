@@ -7,6 +7,17 @@ Plataforma SaaS PWA multi-tenant para **cotización y seguimiento turístico** p
 - **Producción: https://routiq.com.mx** ✅ (VPS Hostinger 177.7.36.75, Docker + Nginx + Let's Encrypt)
 - Iteración actual: **v2.4** (iter_24: registro de uso/costo de IA en Master + generar respaldo on-demand + revisión de seguridad pre-lanzamiento)
 
+## Iteración 56 (jun-2026) — BUG P0: Confirmación de Reserva con desfase vs. cotización (COMPLETADO ✅)
+**Problema:** El PDF/página de Confirmación de Reserva mostraba montos y datos de viaje obsoletos si la cotización cambiaba de precio (p. ej. tras aplicar un descuento) DESPUÉS de crear la confirmación por primera vez. El ejecutivo enviaba PDFs con precios viejos sin darse cuenta.
+**Solución (actualización 100% MANUAL, nunca automática):**
+- **Backend (`routes/booking.py`):**
+  - `_recompute_from_quotation(db, q)` recalcula AL VUELO desde la cotización: `total_amount, price_per_person, num_persons, hotel, checkin, checkout, nights, room_type`.
+  - `GET /api/quotations/{quotation_id}/booking-confirmation` expone esos valores actuales en la clave **`_expected`** (además de la confirmación guardada).
+  - **Endpoint real de sincronización:** `POST /api/quotations/{quotation_id}/booking-confirmation/refresh-amounts` — actualiza montos + `lodging[0]` (hotel/checkin/checkout/nights/room_type) **conservando** `confirmation_number`, `guest_name` y `plan` que el ejecutivo capturó a propósito. Registra en el Historial de la cotización `action='confirmation_updated'` (detalle conciso con el monto formateado). ⚠️ El handoff previo lo documentaba erróneamente como `sync-pricing` — ese nombre NO existe.
+- **Frontend (`pages/BookingConfirmation.jsx`, ruta real `/app/quotations/:id/confirmacion`):** banner de alerta `price-mismatch-banner` que compara la confirmación GUARDADA (`conf`) vs. `_expected` en 8 campos y lista los desfasados (`mismatch-{i}` con `from`/`to`), más botón `refresh-amounts-btn` que sincroniza y hace desaparecer el banner. Los campos exclusivos de la reserva (N° de confirmación/huésped/plan) NO se comparan ni sincronizan por diseño.
+- Tests: `/app/test_reports/iteration_56.json` — backend 4/4 pytest PASS (`tests/test_iteration56_booking_refresh.py`) + frontend Playwright (banner, refresh, sin-desfase, history) 100%. NO se tocó `pricing.py` ni Paquete Armado.
+
+
 ## Iteración 42 (jun-2026) — Campos por tipo de concepto (Programa Personalizado) + validación server-side
 **Tarea 1 — Campos condicionales por categoría** (`CustomQuotationBuilder.jsx`, reflejado en PDF y `/q/:token`):
 - **Hospedaje:** Check-in, Check-out, Noches (auto = checkout−checkin, NO editable; qty = noches). Sin horas.
