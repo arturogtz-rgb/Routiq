@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import AppShell from '@/components/AppShell';
 import api from '@/lib/api';
@@ -13,7 +13,11 @@ const STATE_TONES = {
   enviada: 'bg-blue-100 text-blue-700', negociacion: 'bg-peach-100 text-amber-800',
   ganada: 'bg-amber-400 text-amber-950 ring-1 ring-amber-500 font-bold', perdida: 'bg-red-100 text-red-700',
 };
+const MESES = ['Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'];
 function money(v, c = 'MXN') { return `$${Number(v || 0).toLocaleString('es-MX')} ${c}`; }
+function monthKeyOf(x) { return (x.created_at || '').slice(0, 7); }
+function monthLabel(ym) { const [y, m] = ym.split('-'); return `${MESES[Number(m) - 1] || ''} ${y}`; }
+function displayTotal(x) { return x.final_total != null ? x.final_total : x.total; }
 
 export default function QuotationsList() {
   const [items, setItems] = useState([]);
@@ -22,6 +26,8 @@ export default function QuotationsList() {
   const [showArchived, setShowArchived] = useState(false);
   const [onlyPaid, setOnlyPaid] = useState(false);
   const [month, setMonth] = useState('');
+  const [openOlder, setOpenOlder] = useState('');
+  const [yearSel, setYearSel] = useState('');
 
   useEffect(() => {
     (async () => {
@@ -36,7 +42,7 @@ export default function QuotationsList() {
     })();
   }, [showArchived, month]);
 
-  const filtered = items.filter((x) => {
+  const filtered = useMemo(() => items.filter((x) => {
     if (onlyPaid && x.payment_status !== 'paid') return false;
     if (state && x.state !== state) return false;
     if (q) {
@@ -44,14 +50,66 @@ export default function QuotationsList() {
       return ((x.code || '') + (x.client_snapshot?.name || '') + (x.package_snapshot?.name || '')).toLowerCase().includes(s);
     }
     return true;
-  });
+  }), [items, onlyPaid, state, q]);
+
+  const { groups, monthKeys } = useMemo(() => {
+    const g = {};
+    for (const x of filtered) {
+      const k = monthKeyOf(x) || '0000-00';
+      (g[k] = g[k] || []).push(x);
+    }
+    return { groups: g, monthKeys: Object.keys(g).sort().reverse() };
+  }, [filtered]);
+
+  const topMonths = monthKeys.slice(0, 3);
+  const olderMonths = monthKeys.slice(3);
+  const currentYear = String(new Date().getFullYear());
+  const olderThisYear = olderMonths.filter((k) => k.startsWith(currentYear));
+  const olderYears = [...new Set(olderMonths.filter((k) => !k.startsWith(currentYear)).map((k) => k.slice(0, 4)))].sort().reverse();
+  const yearMonths = yearSel ? olderMonths.filter((k) => k.startsWith(yearSel)) : [];
+  const olderTabs = [...olderThisYear, ...yearMonths];
+
+  const paidTotal = filtered.reduce((sum, x) => sum + (Number(x.amount_paid) || 0), 0);
+
+  const Row = (x) => (
+    <Link key={x.id} to={`/app/quotations/${x.id}`} data-testid={`row-${x.code}`}
+      className="grid grid-cols-12 gap-2 px-6 py-4 border-b border-ink-100 last:border-0 hover:bg-brand-50/40 transition-colors">
+      <div className="col-span-12 md:col-span-2 font-mono text-sm text-brand-500 font-semibold">{x.code}</div>
+      <div className="col-span-6 md:col-span-2 text-sm text-ink-900 font-medium">
+        {x.client_snapshot?.name}
+        <span className="block text-xs text-ink-400 font-normal truncate">{x.package_snapshot?.name || 'Servicios a la carta'}</span>
+      </div>
+      <div className="col-span-6 md:col-span-2 text-sm text-ink-700 truncate" data-testid={`row-traveler-${x.code}`}>{x.contacts?.traveler?.name || '—'}</div>
+      <div className="col-span-6 md:col-span-2 text-sm text-ink-500 truncate" data-testid={`row-agent-${x.code}`}>{x.agent_name || '—'}</div>
+      <div className="col-span-6 md:col-span-2"><span className={`pill ${STATE_TONES[x.state]}`}>{STATE_LABELS[x.state]}</span></div>
+      <div className="col-span-6 md:col-span-2 md:text-right font-display font-semibold text-ink-900" data-testid={`row-total-${x.code}`}>
+        {money(displayTotal(x), x.currency)}
+        {x.payment_status === 'paid' && <span className="ml-2 pill bg-emerald-100 text-emerald-700 text-[10px]" data-testid={`row-paid-${x.code}`}>Pagado</span>}
+      </div>
+    </Link>
+  );
+
+  const MonthBlock = (ym) => (
+    <div key={ym} className="card-surface overflow-hidden" data-testid={`month-group-${ym}`}>
+      <div className="flex items-center justify-between px-6 py-3 bg-cream border-b border-ink-100" data-testid={`month-header-${ym}`}>
+        <h3 className="font-display font-semibold text-ink-900 capitalize">{monthLabel(ym)}</h3>
+        <span className="pill bg-white border border-ink-200 text-ink-500 text-xs">{groups[ym].length}</span>
+      </div>
+      <div className="hidden md:grid grid-cols-12 px-6 py-2 border-b border-ink-100 text-xs uppercase tracking-widest font-bold text-ink-400">
+        <div className="col-span-2">Código</div><div className="col-span-2">Cliente</div>
+        <div className="col-span-2">Cliente final</div><div className="col-span-2">Agente</div>
+        <div className="col-span-2">Estado</div><div className="col-span-2 text-right">Total</div>
+      </div>
+      {groups[ym].map(Row)}
+    </div>
+  );
 
   return (
     <AppShell>
       <div className="flex items-end justify-between gap-4 mb-8">
         <div>
           <h1 className="font-display text-3xl font-semibold text-ink-900 tracking-tight">Cotizaciones</h1>
-          <p className="text-ink-500 mt-1">{items.length} {showArchived ? 'archivadas' : (month ? 'en el mes' : 'en total')}</p>
+          <p className="text-ink-500 mt-1">{filtered.length} {showArchived ? 'archivadas' : (month ? 'en el mes' : 'en total')}</p>
         </div>
         <Link to="/app/quotations/new" className="btn-primary" data-testid="new-quotation-btn"><Plus className="w-4 h-4" /> Nueva</Link>
       </div>
@@ -82,45 +140,43 @@ export default function QuotationsList() {
             <p className="text-ink-500 text-sm">{filtered.length} reserva(s) pagada(s)</p>
           </div>
           <p className="font-display text-3xl font-bold text-emerald-700" data-testid="paid-revenue-total">
-            {money(filtered.reduce((sum, x) => sum + (Number(x.amount_paid) || 0), 0), filtered[0]?.currency || 'MXN')}
+            {money(paidTotal, filtered[0]?.currency || 'MXN')}
           </p>
         </div>
       )}
 
-      <div className="card-surface overflow-hidden" data-testid="quotations-table">
-        <div className="hidden md:grid grid-cols-12 px-6 py-3 border-b border-ink-100 text-xs uppercase tracking-widest font-bold text-ink-400">
-          <div className="col-span-2">Código</div><div className="col-span-2">Cliente</div>
-          <div className="col-span-2">Cliente final</div><div className="col-span-2">Agente</div>
-          <div className="col-span-2">Estado</div>
-          <div className="col-span-2 text-right">Total</div>
+      {filtered.length === 0 ? (
+        <div className="card-surface p-12 text-center" data-testid="empty-list">
+          <Search className="w-9 h-9 mx-auto text-ink-300" />
+          <p className="text-ink-700 font-semibold mt-3">{showArchived ? 'No hay cotizaciones archivadas' : 'Sin cotizaciones para estos filtros'}</p>
+          <p className="text-ink-400 text-sm mt-1">{showArchived ? 'Las cotizaciones que archives aparecerán aquí.' : 'Ajusta los filtros o crea una nueva cotización.'}</p>
+          {!showArchived && <Link to="/app/quotations/new" className="btn-secondary text-sm mt-4 inline-flex"><Plus className="w-4 h-4" /> Nueva cotización</Link>}
         </div>
-        {filtered.map((x) => (
-          <Link key={x.id} to={`/app/quotations/${x.id}`}
-            data-testid={`row-${x.code}`}
-            className="grid grid-cols-12 gap-2 px-6 py-4 border-b border-ink-100 last:border-0 hover:bg-brand-50/40 transition-colors">
-            <div className="col-span-12 md:col-span-2 font-mono text-sm text-brand-500 font-semibold">{x.code}</div>
-            <div className="col-span-6 md:col-span-2 text-sm text-ink-900 font-medium">
-              {x.client_snapshot?.name}
-              <span className="block text-xs text-ink-400 font-normal truncate">{x.package_snapshot?.name || 'Servicios a la carta'}</span>
+      ) : (
+        <div className="space-y-6" data-testid="quotations-grouped">
+          {topMonths.map(MonthBlock)}
+
+          {(olderTabs.length > 0 || olderYears.length > 0) && (
+            <div className="pt-2" data-testid="older-months">
+              <div className="flex flex-wrap items-center gap-2 mb-4">
+                <span className="text-xs uppercase tracking-widest font-bold text-ink-400 mr-1">Meses anteriores:</span>
+                {olderTabs.map((ym) => (
+                  <button key={ym} onClick={() => setOpenOlder((o) => (o === ym ? '' : ym))}
+                    className={`pill capitalize whitespace-nowrap ${openOlder === ym ? 'bg-brand-500 text-white' : 'bg-white border border-ink-200 text-ink-600'}`}
+                    data-testid={`older-month-tab-${ym}`}>{monthLabel(ym)}</button>
+                ))}
+                {olderYears.length > 0 && (
+                  <select value={yearSel} onChange={(e) => { setYearSel(e.target.value); setOpenOlder(''); }} className="input-field w-auto text-sm py-1.5" data-testid="older-year-select">
+                    <option value="">Años anteriores…</option>
+                    {olderYears.map((y) => <option key={y} value={y}>{y}</option>)}
+                  </select>
+                )}
+              </div>
+              {openOlder && groups[openOlder] && MonthBlock(openOlder)}
             </div>
-            <div className="col-span-6 md:col-span-2 text-sm text-ink-700 truncate" data-testid={`row-traveler-${x.code}`}>{x.contacts?.traveler?.name || '—'}</div>
-            <div className="col-span-6 md:col-span-2 text-sm text-ink-500 truncate" data-testid={`row-agent-${x.code}`}>{x.agent_name || '—'}</div>
-            <div className="col-span-6 md:col-span-2"><span className={`pill ${STATE_TONES[x.state]}`}>{STATE_LABELS[x.state]}</span></div>
-            <div className="col-span-6 md:col-span-2 md:text-right font-display font-semibold text-ink-900">
-              {money(x.total, x.currency)}
-              {x.payment_status === 'paid' && <span className="ml-2 pill bg-emerald-100 text-emerald-700 text-[10px]" data-testid={`row-paid-${x.code}`}>Pagado</span>}
-            </div>
-          </Link>
-        ))}
-        {filtered.length === 0 && (
-          <div className="p-12 text-center" data-testid="empty-list">
-            <Search className="w-9 h-9 mx-auto text-ink-300" />
-            <p className="text-ink-700 font-semibold mt-3">{showArchived ? 'No hay cotizaciones archivadas' : 'Aún no tienes cotizaciones'}</p>
-            <p className="text-ink-400 text-sm mt-1">{showArchived ? 'Las cotizaciones que archives aparecerán aquí.' : 'Crea tu primera cotización para empezar a vender.'}</p>
-            {!showArchived && <Link to="/app/quotations/new" className="btn-secondary text-sm mt-4 inline-flex"><Plus className="w-4 h-4" /> Nueva cotización</Link>}
-          </div>
-        )}
-      </div>
+          )}
+        </div>
+      )}
     </AppShell>
   );
 }

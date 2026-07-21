@@ -106,7 +106,7 @@ export default function Dashboard() {
               <div className="col-span-6 md:col-span-3 text-sm text-ink-900 font-medium">{q.client_snapshot?.name}</div>
               <div className="col-span-6 md:col-span-3 text-sm text-ink-500 truncate">{q.package_snapshot?.name}</div>
               <div className="col-span-6 md:col-span-2"><span className={`pill ${STATE_TONES[q.state]}`}>{STATE_LABELS[q.state]}</span></div>
-              <div className="col-span-6 md:col-span-2 md:text-right font-display font-semibold text-ink-900"><Money value={q.total} currency={q.currency || 'MXN'} /></div>
+              <div className="col-span-6 md:col-span-2 md:text-right font-display font-semibold text-ink-900"><Money value={q.final_total != null ? q.final_total : q.total} currency={q.currency || 'MXN'} /></div>
             </Link>
           ))}
         </div>

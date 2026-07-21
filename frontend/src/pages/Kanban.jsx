@@ -42,7 +42,7 @@ function Card({ q }) {
         <span className="text-[11px] text-ink-400 inline-flex items-center gap-1">
           <Clock className="w-3 h-3" />{q.dates?.start ? formatDateEs(q.dates.start) : formatDateEs(q.created_at)}
         </span>
-        <span className="font-display font-semibold text-ink-900 text-sm">{money(q.total, q.currency)}</span>
+        <span className="font-display font-semibold text-ink-900 text-sm">{money(q.final_total != null ? q.final_total : q.total, q.currency)}</span>
       </div>
       <Link to={`/app/quotations/${q.id}`} className="text-xs text-brand-500 hover:underline mt-2 inline-block" data-testid={`open-quotation-${q.code}`}>Abrir →</Link>
     </div>

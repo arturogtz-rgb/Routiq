@@ -1,0 +1,24 @@
+{
+  "summary": "Iteración 54 — Los 4 ajustes de cotizaciones (Iter3) verificados 100% end-to-end. Backend pytest 12/12 PASS (Punto 1 descuento + fallback en listado; Punto 2 servicios acepta custom_items con description y compute_quotation con pack=None los incluye en items; Punto 3 PDF 200 y GET /public/quotations/{token} expone items[].description; Punto 4 seed multi-mes vía pymongo + verificación de listado con created_at en 4 meses distintos y filtro date_from/date_to). Regresión motor de precios OK: subtotal-commission==total (±0.02) para paquete y servicios con conceptos. Frontend Playwright: PUNTO 1 en QuotationsList row-total-COT-2026061 muestra $23,184.51 (final_total tras 1.01% descuento) en vez de $23,421.06 (total); en Kanban misma tarjeta también muestra $23,184.51 mientras los clones UITEST_ITER54_* (final_total=null) muestran $23,421.06 → fallback confirmado. PUNTO 4 QuotationsList: 3 meses desplegados (jul-2026, jun-2026, may-2026) + pestañas older-month-tab-2026-04 y older-month-tab-2026-03 + older-year-select con opción 2025; clic en pestaña despliega el month-group-{ym}. PUNTO 2 en step-servicios-panel: custom-concepts-section presente con add-concept-btn; al hacer clic crea concept-row-0 con concept-name-0 y concept-detail-0. PUNTO 3 comprobado por JSON del endpoint público (description igual al enviado). NO se tocó pricing.py ni Paquete Armado. Datos demo restaurados al final (descuento removido en COT-2026061, 4 clones borrados, cotizaciones TEST_ archivadas).",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {"ui_bugs": [], "integration_issues": [], "design_issues": []},
+  "test_report_links": [
+    "/app/backend/tests/test_iteration54_quot_adjustments.py",
+    "/app/test_reports/pytest/iter54.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "/app/frontend/src/pages/QuotationsList.jsx L20 displayTotal = final_total != null ? final_total : total — patrón correcto. Idéntico en Dashboard.jsx L109 y Kanban.jsx L45. Los 3 usan la misma comprobación null-safe.",
+    "/app/frontend/src/pages/QuotationsList.jsx L64-70 topMonths=slice(0,3), olderMonths=slice(3), split en olderThisYear vs olderYears. Consistente con requisito. Nota: si el año en curso cambia mientras el usuario está en la app (poco probable), currentYear se recalcula al montar el componente (useMemo no, es const de render).",
+    "/app/frontend/src/pages/QuotationBuilder.jsx L836-882 (paquete) y L923-969 (servicios) contienen bloques idénticos de conceptos adicionales — 47 líneas duplicadas. Sugerencia DRY: extraer a un componente <CustomConceptsSection items updateConcept removeConcept addConcept subtotal /> para futura mantenibilidad. No bloqueante, funciona correctamente en ambos flujos.",
+    "/app/backend/pricing.py L194 description=ci.get('description','') or '' — correctamente incluida en el item devuelto por _price_custom_item; se propaga al PDF (pdf_generator.py L435) y al enlace público (PublicQuotation.jsx L319).",
+    "/app/backend/routes/quotations.py L278 pricing-adjust setea final_total y mantiene total intacto — correcto. discount.amount se calcula y guarda para trazabilidad."
+  ],
+  "updated_files": ["/app/backend/tests/test_iteration54_quot_adjustments.py"],
+  "success_rate": {"backend": "100% (12/12 pytest)", "frontend": "100% (Punto 1 listado+kanban, Punto 2 UI en servicios, Punto 3 vía JSON público, Punto 4 grouping+tabs+year-select)"},
+  "test_credentials": "admin@aventurate.mx / Demo2026! (leído de /app/memory/test_credentials.md)",
+  "seed_data_creation": "Backend pytest: seed_multi_month insertó 4 clones de COT-2026061 con created_at en may-2026/apr-2026/mar-2026/dec-2025 y prefix TEST_ITER54_ (teardown automático borra por _id); creó 1 cotización servicios con custom_item.description (archivada en teardown). UI Playwright: 4 clones UITEST_ITER54_* con final_total=None para probar el fallback en Kanban/List, y descuento 1.01% aplicado a COT-2026061. Cleanup final ejecutado: 4 UITEST_* borrados, descuento removido de COT-2026061, cotizaciones TEST_ITER54 servicios archivadas. Demo restaurada.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Iter3 (4 ajustes) al 100%. El file /app/backend/tests/test_iteration54_quot_adjustments.py queda como regresión completa: (i) descuento fija final_total<total y listado incluye ambos campos; (ii) servicios acepta custom_items con description y compute_quotation los incluye; (iii) PDF 200 y /public/quotations/{token} devuelve items con description; (iv) filtro date_from/date_to y listado con multi-mes. Motor de precios intacto (±0.02). El único código posiblemente mejorable (no bloqueante) es el bloque duplicado de conceptos en QuotationBuilder.jsx (47 líneas repetidas entre step 'services' del paquete y step 'servicios' del flujo servicios). No hay bugs abiertos."
+}
