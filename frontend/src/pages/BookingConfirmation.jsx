@@ -12,7 +12,7 @@ import {
   SortableContext, sortableKeyboardCoordinates, verticalListSortingStrategy, useSortable, arrayMove,
 } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
-import { ArrowLeft, Plus, Trash2, Save, Download, Mail, MessageCircle, Loader2, CheckCircle2, Link2, GripVertical, CalendarDays } from 'lucide-react';
+import { ArrowLeft, Plus, Trash2, Save, Download, Mail, MessageCircle, Loader2, CheckCircle2, Link2, GripVertical, CalendarDays, AlertTriangle, RefreshCw } from 'lucide-react';
 
 let RID = 0;
 const rid = () => `r${Date.now().toString(36)}${(RID++).toString(36)}`;
@@ -156,6 +156,33 @@ export default function BookingConfirmation() {
     finally { setRefreshing(false); }
   };
 
+  // Detección de desfase: compara la confirmación GUARDADA vs. el estado ACTUAL de la
+  // cotización (expected). Los campos exclusivos de la confirmación (N° de confirmación,
+  // huésped, plan) NO se comparan ni sincronizan: son datos que el ejecutivo captura a
+  // propósito en la reserva y no viven en la cotización.
+  const numEq = (a, b) => Math.abs((Number(a) || 0) - (Number(b) || 0)) < 0.01;
+  const strEq = (a, b) => String(a ?? '').trim() === String(b ?? '').trim();
+  const fmtMoney = (n) => `$${(Number(n) || 0).toLocaleString('es-MX', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+  const mismatches = (() => {
+    if (!conf || !expected) return [];
+    const out = [];
+    if (!numEq(conf.total_amount, expected.total_amount))
+      out.push({ label: 'Total a pagar', from: fmtMoney(conf.total_amount), to: fmtMoney(expected.total_amount) });
+    if (!numEq(conf.price_per_person, expected.price_per_person))
+      out.push({ label: 'Precio por persona', from: fmtMoney(conf.price_per_person), to: fmtMoney(expected.price_per_person) });
+    if (!strEq(conf.num_persons, expected.num_persons))
+      out.push({ label: 'Número de personas', from: conf.num_persons || '—', to: expected.num_persons || '—' });
+    const lod = (conf.lodging || [])[0];
+    if (lod) {
+      if (!strEq(lod.hotel, expected.hotel)) out.push({ label: 'Hotel', from: lod.hotel || '—', to: expected.hotel || '—' });
+      if (!strEq(lod.checkin, expected.checkin)) out.push({ label: 'Check-in', from: lod.checkin ? formatDateEs(lod.checkin) : '—', to: expected.checkin ? formatDateEs(expected.checkin) : '—' });
+      if (!strEq(lod.checkout, expected.checkout)) out.push({ label: 'Check-out', from: lod.checkout ? formatDateEs(lod.checkout) : '—', to: expected.checkout ? formatDateEs(expected.checkout) : '—' });
+      if (!strEq(lod.nights, expected.nights)) out.push({ label: 'Noches', from: lod.nights || '—', to: expected.nights || '—' });
+      if (!strEq(lod.room_type, expected.room_type)) out.push({ label: 'Tipo de habitación', from: lod.room_type || '—', to: expected.room_type || '—' });
+    }
+    return out;
+  })();
+
   const setField = (k, v) => setForm((f) => ({ ...f, [k]: v }));
   const updRow = (key, i, patch) => setForm((f) => ({ ...f, [key]: f[key].map((r, idx) => idx === i ? { ...r, ...patch } : r) }));
   const addRow = (key, empty) => setForm((f) => ({ ...f, [key]: [...f[key], empty] }));
@@ -244,6 +271,32 @@ export default function BookingConfirmation() {
 
         {error && <div className="rounded-xl border border-red-200 bg-red-50 text-red-700 px-4 py-3 text-sm mb-4" data-testid="confirmation-error">{error}</div>}
         {ok && <div className="rounded-xl border border-emerald-200 bg-mint-100 text-emerald-800 px-4 py-3 text-sm mb-4 flex items-center gap-2" data-testid="confirmation-ok"><CheckCircle2 className="w-4 h-4" /> {ok}</div>}
+
+        {/* Alerta de desfase vs. cotización + actualización manual (nunca automática) */}
+        {mismatches.length > 0 && (
+          <div className="rounded-xl border border-amber-300 bg-amber-50 px-4 py-4 mb-5" data-testid="price-mismatch-banner">
+            <div className="flex items-start gap-3">
+              <AlertTriangle className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
+              <div className="flex-1">
+                <h3 className="font-semibold text-amber-900 text-sm">La cotización cambió después de crear esta confirmación</h3>
+                <p className="text-sm text-amber-800 mt-1">Los siguientes datos no coinciden con el estado actual de la cotización. Actualízalos manualmente para reflejar los valores vigentes; esto sobrescribe montos y datos de viaje, pero conserva el N° de confirmación, el huésped y el plan que hayas capturado.</p>
+                <ul className="mt-3 space-y-1.5" data-testid="price-mismatch-list">
+                  {mismatches.map((m, i) => (
+                    <li key={i} className="text-sm text-amber-900 flex flex-wrap items-center gap-x-2" data-testid={`mismatch-${i}`}>
+                      <span className="font-medium">{m.label}:</span>
+                      <span className="line-through text-amber-600" data-testid={`mismatch-from-${i}`}>{m.from}</span>
+                      <span aria-hidden>→</span>
+                      <span className="font-semibold" data-testid={`mismatch-to-${i}`}>{m.to}</span>
+                    </li>
+                  ))}
+                </ul>
+                <button onClick={refreshAmounts} disabled={refreshing} className="btn-primary text-sm mt-4" data-testid="refresh-amounts-btn">
+                  <RefreshCw className={`w-4 h-4 ${refreshing ? 'animate-spin' : ''}`} /> {refreshing ? 'Actualizando…' : 'Actualizar montos desde la cotización'}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* Encabezado */}
         <div className="card-surface p-6 mb-5">
