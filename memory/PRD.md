@@ -453,5 +453,11 @@ Ver `/app/memory/test_credentials.md`. Seed automático en cada startup.
 - Pendiente: Captcha Turnstile (solo diagnóstico leyendo log en producción). Subir a GitHub para validación previa a despliegue.
 - Mejora historial de envíos (Iter 2, cierre): cada envío directo (cotización/cobro/pre-pago/post-venta/mensaje) registra entrada concisa "Envió {tipo} por {WhatsApp|correo}" en el historial (POST /quotations/{id}/log-send para WhatsApp; send-message loguea al enviar correo). Solo acción + canal, sin texto (queda en el Inbox). Verificado por curl.
 - Fix quirúrgico (iter_53): GET /api/whatsapp/chats — el pipeline ahora toma el ÚLTIMO contact_name NO vacío del chat (names:$push + $addFields $filter+$first), corrigiendo que un último mensaje saliente (contact_name='') borrara el push_name de entrantes previos. Beneficia Inbox, modal "Vincular conversación" y encabezado (mismo endpoint). Cruce CRM (F2) y filtro de grupos (F4) intactos. Verificado 8/8 pytest.
+## [2026-07-21] ITERACIÓN 3 — Ajustes de cotizaciones (COMPLETADO ✅, iter_54)
+- P1 (bug): listados muestran final_total (fallback a total) en QuotationsList, Dashboard y Kanban.
+- P2: bloque "Conceptos adicionales" replicado en el flujo Servicios a la carta; subtotal del builder incluye customItemsSubtotal para isServices; save envía custom_items en servicios (backend ya los calculaba con pack=None).
+- P3: "Detalle (opcional)" (description) de conceptos se renderiza en la columna Detalle del desglose del PDF de cotización y en el enlace público (ya soportado en código; ahora alimentado por P2).
+- P4: /app/quotations agrupa por mes de creación — 3 meses recientes desplegados (más reciente arriba) + pestañas de meses con actividad del año en curso + selector de años anteriores; convive con todos los filtros.
+- Verificado iter_54: backend 12/12 pytest, frontend Playwright 100%, motor de precios intacto (subtotal-commission==total ±0.02). NO se tocó pricing.py ni Paquete Armado.
 - Backlog P2 (fuera de esta iteración): miniaturas WhatsApp, dry-run Excel, pago por ocupación, top agencias/ejecutivos, timeline público, comparar dos meses.
 - Pendiente (próximo): Lote E — reportes por mes calendario + filtros date_from/date_to en GET /quotations + selector de mes + comparativa mes vs mes anterior en stats.py.
