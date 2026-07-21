@@ -12,6 +12,7 @@ from auth import require_tenant
 from models import BookingConfirmationSave, BookingSendRequest
 from pdf_generator import generate_booking_confirmation_pdf
 from notifications import send_email
+from deps import _append_history
 
 router = APIRouter()
 
@@ -86,16 +87,44 @@ async def _prefill_itinerary(db, q: dict, pack: dict | None) -> list:
     return entries
 
 
+async def _recompute_from_quotation(db, q: dict) -> dict:
+    """Valores que la Confirmación copia de la cotización, recalculados AL VUELO desde
+    el estado actual de la cotización (para detectar desfase y para la actualización manual)."""
+    pax = q.get("pax") or {}
+    rooms = pax.get("rooms") or []
+    if rooms:
+        total_pax = sum(OCC_CNT.get(r.get("ocupacion", "doble"), 1) * int(r.get("count", 1)) for r in rooms) + int(pax.get("menores", 0))
+        occ = rooms[0].get("ocupacion", "doble")
+    else:
+        total_pax = int(pax.get("adultos", 0) or 0) + int(pax.get("menores", 0) or 0)
+        occ = pax.get("ocupacion", "doble")
+    total = q.get("final_total") if q.get("final_total") is not None else q.get("total", 0)
+    dates = q.get("dates") or {}
+    return {
+        "total_amount": total or 0,
+        "price_per_person": round(total / total_pax, 2) if total_pax else 0,
+        "num_persons": str(total_pax) if total_pax else "",
+        "hotel": q.get("hotel_selected", ""),
+        "checkin": dates.get("start", ""),
+        "checkout": dates.get("end", ""),
+        "nights": str(q.get("nights_total", "") or ""),
+        "room_type": OCC_LABEL.get(occ, ""),
+    }
+
+
 @router.get("/quotations/{quotation_id}/booking-confirmation")
 async def get_booking_confirmation(quotation_id: str, user: dict = Depends(require_tenant)):
     db = get_db()
     conf = await db.booking_confirmations.find_one(
         {"quotation_id": quotation_id, "tenant_id": user["tenant_id"]}, {"_id": 0})
     if conf:
+        qc = await db.quotations.find_one({"id": quotation_id, "tenant_id": user["tenant_id"]}, {"_id": 0}) or {}
         if not conf.get("itinerary"):
-            qc = await db.quotations.find_one({"id": quotation_id, "tenant_id": user["tenant_id"]}, {"_id": 0}) or {}
             packc = await db.packages.find_one({"id": qc.get("package_id")}, {"_id": 0}) if qc.get("package_id") else None
             conf["itinerary"] = await _prefill_itinerary(db, qc, packc)
+        # Detección de desfase: exponer los valores ACTUALES de la cotización.
+        if qc:
+            conf["_expected"] = await _recompute_from_quotation(db, qc)
         return conf
 
     # Sin confirmación previa -> devolver un BORRADOR prellenado desde la cotización.
@@ -184,6 +213,41 @@ async def save_booking_confirmation(quotation_id: str, payload: BookingConfirmat
     }
     await db.booking_confirmations.insert_one(dict(doc))
     return await db.booking_confirmations.find_one({"id": doc["id"]}, {"_id": 0})
+
+
+@router.post("/quotations/{quotation_id}/booking-confirmation/refresh-amounts")
+async def refresh_booking_amounts(quotation_id: str, user: dict = Depends(require_tenant)):
+    """Actualiza manualmente los montos (y datos de viaje) de la Confirmación guardada con
+    los valores ACTUALES de la cotización. Explícito, nunca automático."""
+    db = get_db()
+    conf = await db.booking_confirmations.find_one(
+        {"quotation_id": quotation_id, "tenant_id": user["tenant_id"]}, {"_id": 0})
+    if not conf:
+        raise HTTPException(status_code=404, detail="Confirmación no encontrada")
+    q = await db.quotations.find_one({"id": quotation_id, "tenant_id": user["tenant_id"]}, {"_id": 0})
+    if not q:
+        raise HTTPException(status_code=404, detail="Cotización no encontrada")
+    exp = await _recompute_from_quotation(db, q)
+    updates = {
+        "total_amount": exp["total_amount"],
+        "price_per_person": exp["price_per_person"],
+        "num_persons": exp["num_persons"],
+        "updated_at": now_iso(),
+    }
+    # Actualiza los datos de viaje del hospedaje conservando lo que el ejecutivo editó
+    # (n° de confirmación, nombre del huésped, plan).
+    lodging = [dict(r) for r in (conf.get("lodging") or [])]
+    if lodging:
+        lodging[0].update({
+            "hotel": exp["hotel"], "checkin": exp["checkin"], "checkout": exp["checkout"],
+            "nights": exp["nights"], "room_type": exp["room_type"],
+        })
+        updates["lodging"] = lodging
+    await db.booking_confirmations.update_one({"id": conf["id"]}, {"$set": updates})
+    cur = f"${float(exp['total_amount'] or 0):,.2f}".rstrip("0").rstrip(".") if exp["total_amount"] else "$0"
+    await _append_history(db, quotation_id, user, "confirmation_updated",
+                          f"Actualizó los montos de la Confirmación de Reserva desde la cotización ({cur} {conf.get('currency', 'MXN')})")
+    return await db.booking_confirmations.find_one({"id": conf["id"]}, {"_id": 0})
 
 
 @router.get("/booking-confirmations/{conf_id}/pdf")

@@ -84,6 +84,8 @@ export default function BookingConfirmation() {
   const [ok, setOk] = useState('');
   const [saving, setSaving] = useState(false);
   const [sending, setSending] = useState(false);
+  const [expected, setExpected] = useState(null);
+  const [refreshing, setRefreshing] = useState(false);
   const [form, setForm] = useState({
     agent_name: '', agent_phone: '', agent_company: '', agent_email: '', reservation_date: '',
     passenger_name: '', passenger_phone: '', num_persons: '',
@@ -96,51 +98,63 @@ export default function BookingConfirmation() {
     useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
   );
 
-  useEffect(() => {
-    (async () => {
-      try {
-        const [qr, cr] = await Promise.all([
-          api.get(`/quotations/${id}`),
-          api.get(`/quotations/${id}/booking-confirmation`),
-        ]);
-        setQ(qr.data);
-        const OCC = { sencilla: 1, doble: 2, triple: 3, cuadruple: 4 };
-        const px = qr.data.pax || {};
-        const paxTotal = (px.rooms?.length
-          ? px.rooms.reduce((s, r) => s + (OCC[r.ocupacion] || 1) * (r.count || 1), 0)
-          : (px.adultos || 0)) + (px.menores || 0);
-        const paxStr = paxTotal ? String(paxTotal) : '';
-        const existing = cr.data && cr.data.id ? cr.data : null;
-        if (existing) {
-          setConf(existing);
-          setForm({
-            agent_name: existing.agent_name || '', agent_phone: existing.agent_phone || '',
-            agent_company: existing.agent_company || '', agent_email: existing.agent_email || '', reservation_date: existing.reservation_date || '',
-            passenger_name: existing.passenger_name || '', passenger_phone: existing.passenger_phone || '',
-            num_persons: existing.num_persons || paxStr,
-            services: existing.services?.length ? withRid(existing.services) : [newSvc()],
-            lodging: existing.lodging?.length ? existing.lodging : [{ ...EMPTY_LODGING }],
-            itinerary: existing.itinerary || [],
-            general_observations: existing.general_observations || '',
-            price_per_person: existing.price_per_person || 0, total_amount: existing.total_amount || 0,
-          });
-        } else if (cr.data && cr.data._prefill) {
-          const p = cr.data;
-          setForm({
-            agent_name: p.agent_name || '', agent_phone: p.agent_phone || '',
-            agent_company: p.agent_company || '', agent_email: p.agent_email || '', reservation_date: p.reservation_date || '',
-            passenger_name: p.passenger_name || '', passenger_phone: p.passenger_phone || '',
-            num_persons: p.num_persons || paxStr,
-            services: p.services?.length ? withRid(p.services) : [newSvc()],
-            lodging: p.lodging?.length ? p.lodging : [{ ...EMPTY_LODGING }],
-            itinerary: p.itinerary || [],
-            general_observations: p.general_observations || '',
-            price_per_person: p.price_per_person || 0, total_amount: p.total_amount || 0,
-          });
-        }
-      } catch (e) { setError(formatApiError(e)); }
-    })();
-  }, [id]);
+  const load = async () => {
+    try {
+      const [qr, cr] = await Promise.all([
+        api.get(`/quotations/${id}`),
+        api.get(`/quotations/${id}/booking-confirmation`),
+      ]);
+      setQ(qr.data);
+      const OCC = { sencilla: 1, doble: 2, triple: 3, cuadruple: 4 };
+      const px = qr.data.pax || {};
+      const paxTotal = (px.rooms?.length
+        ? px.rooms.reduce((s, r) => s + (OCC[r.ocupacion] || 1) * (r.count || 1), 0)
+        : (px.adultos || 0)) + (px.menores || 0);
+      const paxStr = paxTotal ? String(paxTotal) : '';
+      const existing = cr.data && cr.data.id ? cr.data : null;
+      if (existing) {
+        setConf(existing);
+        setExpected(existing._expected || null);
+        setForm({
+          agent_name: existing.agent_name || '', agent_phone: existing.agent_phone || '',
+          agent_company: existing.agent_company || '', agent_email: existing.agent_email || '', reservation_date: existing.reservation_date || '',
+          passenger_name: existing.passenger_name || '', passenger_phone: existing.passenger_phone || '',
+          num_persons: existing.num_persons || paxStr,
+          services: existing.services?.length ? withRid(existing.services) : [newSvc()],
+          lodging: existing.lodging?.length ? existing.lodging : [{ ...EMPTY_LODGING }],
+          itinerary: existing.itinerary || [],
+          general_observations: existing.general_observations || '',
+          price_per_person: existing.price_per_person || 0, total_amount: existing.total_amount || 0,
+        });
+      } else if (cr.data && cr.data._prefill) {
+        const p = cr.data;
+        setForm({
+          agent_name: p.agent_name || '', agent_phone: p.agent_phone || '',
+          agent_company: p.agent_company || '', agent_email: p.agent_email || '', reservation_date: p.reservation_date || '',
+          passenger_name: p.passenger_name || '', passenger_phone: p.passenger_phone || '',
+          num_persons: p.num_persons || paxStr,
+          services: p.services?.length ? withRid(p.services) : [newSvc()],
+          lodging: p.lodging?.length ? p.lodging : [{ ...EMPTY_LODGING }],
+          itinerary: p.itinerary || [],
+          general_observations: p.general_observations || '',
+          price_per_person: p.price_per_person || 0, total_amount: p.total_amount || 0,
+        });
+      }
+    } catch (e) { setError(formatApiError(e)); }
+  };
+
+  useEffect(() => { load(); /* eslint-disable-next-line */ }, [id]);
+
+  const refreshAmounts = async () => {
+    setRefreshing(true); setError(''); setOk('');
+    try {
+      await api.post(`/quotations/${id}/booking-confirmation/refresh-amounts`);
+      await load();
+      setOk('Montos actualizados desde la cotización.');
+      setTimeout(() => setOk(''), 3000);
+    } catch (e) { setError(formatApiError(e)); }
+    finally { setRefreshing(false); }
+  };
 
   const setField = (k, v) => setForm((f) => ({ ...f, [k]: v }));
   const updRow = (key, i, patch) => setForm((f) => ({ ...f, [key]: f[key].map((r, idx) => idx === i ? { ...r, ...patch } : r) }));

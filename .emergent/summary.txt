@@ -1,144 +1,146 @@
-<analysis>**original_problem_statement**: Rediseño estructural y visual completo del PDF de cotización, réplica en enlace público (), confirmación de reservas interactivas (), gestión de clientes en dos niveles (Empresa + Ejecutivos), y mejoras avanzadas en el constructor de cotizaciones (desgloses simples/detallados, campos condicionales por tipo de servicio). PRODUCT REQUIREMENTS: La cotización y PDF deben ser idénticos, Hospedaje requiere cálculo .
+<analysis>**original_problem_statement**: Desarrollo y refinamiento continuo del SaaS Routiq (SaaS PWA multi-tenant de cotizaciones turísticas). El usuario aprobó las Iteraciones 1 y 2. Actualmente se está trabajando en ajustes finales de la Iteración 3, específicamente corrigiendo un BUG crítico donde el PDF de Confirmación de Reserva muestra un monto desfasado si la cotización original cambió de precio después de generar la confirmación por primera vez. PRODUCT REQUIREMENTS: Agregar una alerta visible en pantalla de desfase de precios y un botón para actualización manual en la confirmación.
 
-**User's preferred language**: Spanish (You MUST automatically detect the user's primary language from their messages inside the <trajectory> tag and INSTRUCT next agent to respond in Spanish ONLY)
+**User's preferred language**: Spanish (INSTRUCT next agent to respond in Spanish ONLY)
 
-**what currently exists?**: SaaS PWA multi-tenant para cotizaciones turísticas. Generación de PDFs y enlaces web interactivos sincronizados. Confirmación de reservas prellenada. Módulo de clientes con estructura de 2 niveles (Empresas con múltiples Ejecutivos). Constructor de cotizaciones Programa Personalizado con campos condicionales (Hospedaje, Traslado, Tour, etc.) y desglose de precios dinámico.
+**what currently exists?**: SaaS PWA B2B maduro con cotizador (paquetes, servicios, a la carta), confirmaciones de reserva en PDF, catálogos públicos, integración de WhatsApp nativa (Baileys), pagos, módulo CRM de clientes en 2 niveles y motor AI integrado estilo BYOK.
 
-**Last working item**: 
-    - Last item agent was working: Fix en el cálculo del concepto de Hospedaje dentro del Programa Personalizado ( y ). La Cantidad debe ser un campo libre y editable (representando habitaciones o personas) e independiente del campo Noches (el cual se autocalcula por check-in/out). El subtotal para Hospedaje debe ser . El agente acaba de modificar el código pero no ha probado los cambios.
-    - Status: IN PROGRESS
+**Last working item**:
+    - Last item agent was working: Corrección del BUG de Confirmación de Reserva con monto desfasado. El agente ya modificó el backend () para enviar una bandera de desfase () y un endpoint de sincronización, y modificó el frontend () para mostrar el banner de alerta y el botón de actualización. La sesión terminó justo antes de ejecutar las pruebas.
+    - Status: TESTING PENDING
     - Agent Testing Done: N
-    - Which testing method agent to use?: both (Backend test / curl for pricing validation, and Frontend screenshot/testing agent to verify the input fields in the builder).
+    - Which testing method agent to use?: testing agent
     - User Testing Done: N
 
-**All Pending/In progress Issue list**:  
-  - Issue 1: Fix cálculo y UI de Hospedaje en Programa Personalizado (P0)
-     - Attempted fixes: El agente editó  (función ) y  para independizar Cantidad de las Noches y multiplicar el subtotal. 
-     - Next debug checklist: 
-        - Frontend (): Asegurar que el campo Cantidad () esté habilitado y editable para la categoría . Confirmar que el cálculo visual del subtotal incluya .
-        - Backend (): Confirmar que  multiplique  correctamente para hospedaje.
-        - Probar ambos y llamar al testing agent o probar manualmente.
-     - Why fix this issue and what will be achieved with the fix?: Para evitar que el sistema asuma que la Cantidad es igual al número de Noches, permitiendo cotizar múltiples habitaciones.
-     - Status: IN PROGRESS
+**All Pending/In progress Issue list**:
+  Issue 1: BUG — Confirmación de Reserva con monto desfasado respecto a la cotización (Prioridad P0).
+     - Attempted fixes: El agente ya escribió el código en  y . Falta ejecutar la prueba obligatoria.
+     - Next debug checklist: Revisa que el código en  funcione y renderice el banner correctamente cuando  no coincida con el cotizado.
+     - Why fix this issue and what will be achieved with this?: Evita que los ejecutivos envíen PDFs de confirmación con precios obsoletos sin darse cuenta.
+     - Status: TESTING PENDING
      - Is recurring issue? N
-     - Should Test frontend/backend/both after fix?: both
+     - Should Test frontend/backend/both after fix?: both (using  as strictly required by user)
      - Blocked on other issue: None
 
 **In progress Task List**:
-  - Task 1: Validación y test del fix de Hospedaje
-     - Where to resume: Ejecutar validación del backend para confirmar el cálculo matemático () y renderizar el frontend () para confirmar que el campo Cantidad es editable sin afectar la diferencia de fechas de las Noches.
-     - What will be achieved with this?: Finalización de las correcciones de la fase actual.
+  Task 1: Validación obligatoria del Bug de Confirmación Desfasada
+     - Where to resume: Llama al  para validar los cambios que el agente anterior introdujo en  y .
+     - What will be achieved with this?: Finalización segura del issue respetando la directiva estricta del usuario (only testing_agent report counts).
      - Status: TESTING PENDING
      - Should Test frontend/backend/both after fix?: both
-     - Blocked on something: Nothing
+     - Blocked on something: None
 
-**Upcoming and Future Tasks**
+**Upcoming and Future Tasks**:
     Upcoming Tasks:
-    - P2: Personalización de porcentaje de comisión específico por cliente (sobreescribiendo el global del canal).
-    - P2: Modo vista previa (dry-run) al importar Excel masivamente.
-    - P2: Pago ligado al total de la ocupación elegida en el enlace público.
-    - P2: Mini-panel Top agencias/ejecutivos por ventas en Dashboard.
+    - Refactor de : Extraer Conceptos adicionales (actualmente duplicado 47 líneas) a un componente reutilizable. (Nota: Esto se debe hacer *después* del despliegue de la Iteración 3 actual como tarea aislada).
+    
+    Future Tasks (Backlog P2 - NO ARRANCAR EN ESTA ITERACIÓN):
+    - P2: Miniaturas/enlaces de imágenes y documentos en WhatsApp Inbox.
+    - P2: Vista previa (dry-run) en importación Excel.
+    - P2: Pago ligado a ocupación elegida en enlace público.
+    - P2: Mini-panel Top agencias/ejecutivos por ventas.
+    - P2: Timeline del viaje en enlace público.
+    - P2: Comparar dos meses en Ventas.
 
-**Completed work in this session**
-- Rediseño completo de PDF y enlace público (Página 1: desglose, Página 2: itinerario) (DONE)
-- Botón Descargar PDF interactivo en vista pública  (DONE)
-- Selección interactiva de ocupación en  (DONE)
-- Generación de Confirmación de Reserva () con prellenado automático y botones ICS/Google Calendar (DONE)
-- Toggle Mostrar desglose detallado de precios en PDF/Link (ON/OFF) (DONE)
-- Checkboxes ¿Qué incluye? en paquetes armados y conceptos adicionales (DONE)
-- Fase B: Estructura de clientes en 2 niveles (Empresa + array de Ejecutivos) integrados en CRUD y PDF (DONE)
-- Campos condicionales por categoría (Hospedaje, Tour, Traslado, Acceso, Extra) en Custom Builder (DONE)
-- Endpoint GET  y validación de  (DONE)
+**Completed work in this session**:
+- Lote C: ServiceEditor.jsx separado, flag is_private, Calendario y DnD en BookingConfirmation (DONE)
+- Lote D: Cliente favorito (4.1), Itinerario por tipo en PDF Confirmación (DONE)
+- Lote E: Reportes de Ventas por mes calendario, Filtros date_from/date_to en Cotizaciones (DONE)
+- Iteración 2 (WhatsApp): Envío directo vía Baileys, cruce de nombres CRM, búsqueda modal, grupos ocultos por defecto, scroll Inbox, URL public share correcta (DONE)
+- Iteración 2 (IA): Endpoint BYOK seguimientos B2B pre-pago/post-venta, remoción botones viejos (DONE)
+- Iteración 2 (Correcciones): Diff real en historial con FIELD_ES humano, detalles de conceptos personalizados (DONE)
+- Iteración 3: Mostrar  (con descuento) en listado/kanban, Conceptos adicionales en flujo Servicios, Detalle custom en PDF, Agrupación mensual en lista (DONE)
+- Fix Turnstile: Reset de widget y token de un solo uso tras error (DONE)
 
-**Earlier issues found/mentioned but not fixed**
-   - None
+**Earlier issues found/mentioned but not fixed**:
+  Ninguno.
 
-**Known issue recurrence from previous fork**
-  - None
+**Known issue recurrence from previous fork**:
+  - Issue recurrence in previous fork: Error de Turnstile (timeout-or-duplicate) por reuso de token vencido en el frontend.
+  - Recurrence count: 1
   - Status: RESOLVED
 
-**Code Architecture**
+**Code Architecture**:
 /app
 ├── backend/
-│   ├── server.py
-│   ├── pricing.py (Lógica de cálculo de precios)
-│   ├── pdf_generator.py (Lógica de renderizado de PDF)
-│   ├── ai_service.py (Generación de texto con IA)
-│   └── routes/ (booking.py, public_payments.py, quotations.py, etc.)
+│   ├── ai_service.py (BYOK AI implementation)
+│   ├── server.py, models.py, pricing.py, pdf_generator.py
+│   └── routes/ (booking.py, quotations.py, whatsapp.py, signup.py, etc.)
 ├── frontend/
 │   └── src/
-│       ├── pages/ (CustomQuotationBuilder.jsx, PublicQuotation.jsx, BookingConfirmation.jsx, Clients.jsx)
+│       ├── pages/ (BookingConfirmation.jsx, QuotationsList.jsx, WhatsAppInbox.jsx, Signup.jsx, QuotationDetail.jsx, etc.)
 │       └── components/
+└── baileys-service/
 
-**Key Technical Concepts**
-React, Tailwind CSS, FastAPI, MongoDB, ReportLab (PDF), openpyxl, emergenintegrations (Claude Sonnet / GPT-4o for presentations).
+**Key Technical Concepts**:
+React, Tailwind CSS, FastAPI, MongoDB, ReportLab (PDF), Baileys (WhatsApp API proxy), Cloudflare Turnstile, IA BYOK (proveedores gestionados vía Panel Master, no hardcodeados).
 
-**key DB schema**
+**key DB schema**:
   - : 
   - : 
   - : 
 
-**changes in tech stack**
-  - None
+**changes in tech stack**:
+  - Ninguno.
 
-**All files of reference**
-  - : Updated for Hospedaje calculation.
-  - : Updated for qty/nights independence.
-  - : Updated for dynamic fields by category and simple/detailed breakdown tables.
-  - : Replicates PDF changes.
-  - : Added executives array to clients and contacts schema to quotations.
+**All files of reference**:
+  -  (Actualizado con helper de validación de desfase y endpoint de sincronización de precio).
+  -  (Actualizado con banner de alerta de precio y botón ).
 
 **Areas that need refactoring**:
-  -  and  are growing significantly due to the branching logic for conditional categories and pricing toggles.
+  - : El bloque de Conceptos adicionales está duplicado entre el step 'services' (paquete) y 'servicios' (flujo servicios) (~47 líneas). User requirió extraerlo a un componente aislado más adelante, sin alterar el .
 
-**key api endpoints**
+**key api endpoints**:
   - 
-  - 
-  - 
-  - 
+  -  (Nuevo endpoint de este fork)
 
-**Critical Info for New Agent**
-The last task requested by the user is the correction of the Hospedaje category inside the Programa Personalizado. The mathematical formula MUST be  where  is editable by the user (rooms/pax) and  is an auto-calculated, non-editable field driven by Check-in / Check-out dates. The agent has replaced code in  and  but stopped execution before verifying. Your FIRST step must be to verify this implementation via testing.
+**Critical Info for New Agent**:
+El usuario especificó reglas **estrictas**: cualquier bug que se reporte debe ser validado con  antes de darse por terminado (only the testing_agent report counts). En este fork, el agente insertó la solución al BUG del desfase de precios en la Confirmación de Reserva, pero se detuvo antes de llamar a . **TU PRIMERA ACCIÓN DEBE SER EJECUTAR EL  PARA ESTE BUG**. No des por terminado el bug con tus propios curls, y NO inicies ninguna de las tareas del Backlog P2.
 
-**documents and test reports created in this job**
-  - 
-  - 
-  - 
-  - 
-  - 
-  - 
-  -  (Check for pre-seeded user roles)
+**documents and test reports created in this job**:
+  -  hasta 
 
-**Last 10 User Messages and any pending HUMAN messages** 
- - (Completed) Ajustes de diseño para PDF y enlace público.
- - (Completed) Añadir botón Descargar PDF, interactividad en tabla de ocupación pública y link calendario.
- - (Completed) Fase A: Checkbox para tabla simple/detallada, Checkboxes ¿Qué incluye? y prellenado de confirmación web.
- - (Completed) Fase B: Clientes en 2 niveles (Empresa + array de Ejecutivos).
- - (Completed) Campos por tipo de concepto (Hospedaje, Tour, Traslado, etc.) y validación de .
- - **PENDING HUMAN MESSAGE**: Fix en el concepto de Hospedaje. Cantidad debe ser editable libremente, Noches se autocalcula y el subtotal es . Actuar sobre este mensaje.
+**Last 10 User Messages and any pending HUMAN messages**:
+ 1. (Aprobado) Iteración 2 (WhatsApp e IA) OK.
+ 2. (Solicitud) Mejora de historial: registrar envíos directos desde WhatsApp/correo como entradas.
+ 3. (Aprobado) Fix Historial OK.
+ 4. (Solicitud) Fix de agregación en nombres de chat WhatsApp (último mensaje saliente vaciaba el nombre).
+ 5. (Aprobado) Fix WhatsApp OK.
+ 6. (Solicitud) Iteración 3 ajustes: BUG total con descuento, Conceptos en servicios, Agrupación mes, Detalles en PDF.
+ 7. (Aprobado) Iter 3 OK. Solicitud extra: Fix Turnstile token de un solo uso tras error.
+ 8. (Aprobado) Fix Turnstile OK.
+ 9. **PENDING BUG**: Confirmación de Reserva tiene monto desfasado si la cotización original cambia. Pide banner de aviso y botón de sincronización explícito. No tocar pricing. Testear obligatoriamente con .
 
-**Project Health Check:**
-Healthy. No broken dependencies.
+**Project Health Check**:
+Healthy.
 
-**3rd Party Integrations**
-  - OpenAI / Anthropic Claude Sonnet — uses Emergent LLM Key (for )
+**3rd Party Integrations**:
+  - Cloudflare Turnstile (Captcha) — requires User Secret Key
   - Stripe (Payments) — requires User API Key
+  - AI Service (OpenAI/Anthropic/Gemini) — BYOK (Bring Your Own Key configurada dinámicamente en BBDD  vía Panel Master, no requiere Emergent LLM Key explícita).
 
-**Testing status**
-  - Testing agent used after significant changes: YES (multiple times, Iterations 36-41).
+**Testing status**:
+  - Testing agent used after significant changes: YES (Iter 49 a 55). PENDING FOR CURRENT BUG.
   - Troubleshoot agent used after agent stuck in loop: NO
-  - Test files created: Tests generated in 
-  - Known regressions: None currently known.
+  - Test files created:  (último completado)
+  - Known regressions: Ninguna.
 
 **Credentials to test flow:**
-Admin demo:  (Password in )
+   (Admin: , Master:  / )
 
-**What agent forgot to execute**
-The agent modified  and  for the Hospedaje calculation but called no tests (, , or ) to verify the implementation. 
+**What agent forgot to execute**:
+El agente implementó el código para el aviso de desfase de precios en  y , pero el contexto se terminó antes de poder invocar a la herramienta  para validar el fix, lo cual era una orden estricta del usuario.
 
-**Debugging checklist for current issue**
-    Issue: Hospedaje subtotal computation and UI
+**Debugging checklist for current issue**:
+    Issue: Confirmación de Reserva con monto desfasado (Testing pendiente)
     Frontend files to check: 
-      -  (Check the  input field binding and visual  math)
+      -  (Verificar que se active el banner cuando la data de cotización pre-calculada difiera de la reservación guardada).
     Backend files to check:
-      -  (Check  applies  strictly as a multiplier alongside  when )</analysis>
+      -  (Revisar que  envíe la info  correctamente y que el endpoint de actualización guarde el historial).
+    ============================= test session starts ==============================
+platform linux -- Python 3.11.15, pytest-9.0.3, pluggy-1.6.0
+rootdir: /
+plugins: asyncio-1.4.0, anyio-4.13.0
+asyncio: mode=Mode.STRICT, debug=False, asyncio_default_fixture_loop_scope=None, asyncio_default_test_loop_scope=function
+collected 0 items
+
+============================ no tests ran in 0.04s =============================</analysis>
