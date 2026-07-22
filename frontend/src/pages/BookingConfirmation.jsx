@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import AppShell from '@/components/AppShell';
 import api, { formatApiError } from '@/lib/api';
+import { useConfirm } from '@/components/ConfirmDialog';
 import { formatDateEs } from '@/lib/dates';
 import { Popover, PopoverTrigger, PopoverContent } from '@/components/ui/popover';
 import { Calendar } from '@/components/ui/calendar';
@@ -78,6 +79,7 @@ function SortableServiceRow({ row, i, updRow, delRow }) {
 export default function BookingConfirmation() {
   const { id } = useParams();
   const navigate = useNavigate();
+  const confirm = useConfirm();
   const [q, setQ] = useState(null);
   const [conf, setConf] = useState(null);
   const [error, setError] = useState('');
@@ -184,6 +186,21 @@ export default function BookingConfirmation() {
     return out;
   })();
 
+  // Advertencia consciente antes de descargar/enviar con desfase. Reutiliza `mismatches`
+  // (comparación _expected ya construida). No bloquea: el ejecutivo puede continuar.
+  const guardMismatch = async (actionLabel) => {
+    if (mismatches.length === 0) return true;
+    const proceed = await confirm({
+      title: 'La confirmación está desfasada respecto a la cotización',
+      description: `Los montos y/o datos de viaje de esta confirmación no coinciden con la cotización actual. Puedes actualizarlos antes de ${actionLabel}, o continuar de todos modos.`,
+      confirmText: `${actionLabel[0].toUpperCase()}${actionLabel.slice(1)} de todos modos`,
+      cancelText: 'Actualizar primero',
+      danger: true,
+    });
+    if (!proceed) { await refreshAmounts(); return false; }
+    return true;
+  };
+
   const setField = (k, v) => setForm((f) => ({ ...f, [k]: v }));
   const updRow = (key, i, patch) => setForm((f) => ({ ...f, [key]: f[key].map((r, idx) => idx === i ? { ...r, ...patch } : r) }));
   const addRow = (key, empty) => setForm((f) => ({ ...f, [key]: [...f[key], empty] }));
@@ -219,6 +236,7 @@ export default function BookingConfirmation() {
 
   const downloadPdf = async () => {
     if (!conf) return;
+    if (!(await guardMismatch('descargar'))) return;
     try {
       const res = await api.get(`/booking-confirmations/${conf.id}/pdf`, { responseType: 'blob' });
       const url = window.URL.createObjectURL(new Blob([res.data], { type: 'application/pdf' }));
@@ -230,6 +248,7 @@ export default function BookingConfirmation() {
 
   const send = async (channel) => {
     if (!conf) return;
+    if (!(await guardMismatch(channel === 'whatsapp' ? 'enviar por WhatsApp' : 'enviar por correo'))) return;
     setError(''); setOk(''); setSending(true);
     try {
       const to = channel === 'email'
