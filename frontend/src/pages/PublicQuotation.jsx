@@ -405,17 +405,29 @@ export default function PublicQuotation() {
             <>
               {payment?.enabled && (
                 <div className="space-y-2 mb-3" data-testid="payment-buttons">
-                  <button onClick={() => pay('total')} disabled={paying}
-                    className="w-full text-white font-display font-semibold py-4 rounded-2xl text-lg transition-all hover:scale-[1.01] disabled:opacity-60 flex items-center justify-center gap-2"
-                    style={{ background: primary }} data-testid="pay-total-btn">
-                    {paying ? <Loader2 className="w-5 h-5 animate-spin" /> : <CreditCard className="w-5 h-5" />}
-                    Pagar {money(amountDue, q.currency)}
-                  </button>
-                  <button onClick={() => pay('deposit')} disabled={paying}
-                    className="w-full font-display font-semibold py-3 rounded-2xl border-2 transition-all hover:bg-brand-50 disabled:opacity-60"
-                    style={{ borderColor: primary, color: primary }} data-testid="pay-deposit-btn">
-                    Pagar anticipo ({payment.deposit_percent}%)
-                  </button>
+                  {payment?.card_fee_enabled && payment?.card_fee_amount > 0 && (
+                    <div className="rounded-xl bg-cream border border-ink-100 p-3 text-sm mb-1" data-testid="card-fee-breakdown">
+                      <div className="flex justify-between"><span className="text-ink-500">Subtotal reserva</span><span className="text-ink-800">{money(amountDue, q.currency)}</span></div>
+                      <div className="flex justify-between"><span className="text-ink-500">Comisión bancaria ({payment.card_fee_percent}%)</span><span className="text-ink-800">{money(payment.card_fee_amount, q.currency)}</span></div>
+                      <div className="flex justify-between pt-1 mt-1 border-t border-ink-100 font-semibold"><span className="text-ink-900">Total a pagar con tarjeta</span><span className="text-ink-900">{money(amountDue + payment.card_fee_amount, q.currency)}</span></div>
+                    </div>
+                  )}
+                  {payment.allowed_pay_type !== 'deposit' && (
+                    <button onClick={() => pay('total')} disabled={paying}
+                      className="w-full text-white font-display font-semibold py-4 rounded-2xl text-lg transition-all hover:scale-[1.01] disabled:opacity-60 flex items-center justify-center gap-2"
+                      style={{ background: primary }} data-testid="pay-total-btn">
+                      {paying ? <Loader2 className="w-5 h-5 animate-spin" /> : <CreditCard className="w-5 h-5" />}
+                      Pagar {money(payment?.card_fee_amount > 0 ? amountDue + payment.card_fee_amount : amountDue, q.currency)}
+                    </button>
+                  )}
+                  {payment.allowed_pay_type === 'deposit' && (
+                    <button onClick={() => pay('deposit')} disabled={paying}
+                      className="w-full text-white font-display font-semibold py-4 rounded-2xl text-lg transition-all hover:scale-[1.01] disabled:opacity-60 flex items-center justify-center gap-2"
+                      style={{ background: primary }} data-testid="pay-deposit-btn">
+                      {paying ? <Loader2 className="w-5 h-5 animate-spin" /> : <CreditCard className="w-5 h-5" />}
+                      Pagar anticipo ({payment.deposit_percent}%)
+                    </button>
+                  )}
                 </div>
               )}
               {payment?.transfer_enabled && payment?.bank && (

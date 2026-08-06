@@ -12,7 +12,7 @@ const STATES = [
   { id: 'cotizando', label: 'Cotizando' },
   { id: 'enviada', label: 'Enviada' },
   { id: 'negociacion', label: 'En negociación' },
-  { id: 'ganada', label: 'Ganada' },
+  { id: 'ganada', label: 'Aceptada' },
   { id: 'perdida', label: 'Perdida' },
 ];
 
@@ -48,6 +48,8 @@ export default function QuotationDetail() {
   const [payMethod, setPayMethod] = useState('transfer');
   const [payDate, setPayDate] = useState(new Date().toISOString().slice(0, 10));
   const [payMsg, setPayMsg] = useState('');
+  const [payCfg, setPayCfg] = useState({ payment_enabled: false, allowed_pay_type: 'full', card_fee_enabled: false, card_fee_percent: 4.5 });
+  const [payCfgMsg, setPayCfgMsg] = useState('');
   const [sendingEmail, setSendingEmail] = useState(false);
   // WhatsApp link
   const [waLink, setWaLink] = useState(null);
@@ -64,6 +66,12 @@ export default function QuotationDetail() {
     const { data } = await api.get(`/quotations/${id}`);
     setQ(data);
     setPublicToken(data?.public_link?.token || '');
+    setPayCfg({
+      payment_enabled: !!data.payment_enabled,
+      allowed_pay_type: data.allowed_pay_type || 'full',
+      card_fee_enabled: !!data.card_fee_enabled,
+      card_fee_percent: data.card_fee_percent ?? 4.5,
+    });
     if (data?.discount) setDiscount({ discount_type: data.discount.type, discount_value: data.discount.value });
     api.get(`/whatsapp/links/by-quotation/${id}`).then(({ data: l }) => setWaLink(l && l.chat_id ? l : null)).catch(() => {});
     api.get('/whatsapp/numbers').then(({ data }) => setWaNumbers(data || [])).catch(() => {});
@@ -274,6 +282,17 @@ export default function QuotationDetail() {
       await load();
     } catch (e) { setPayMsg(formatApiError(e)); }
     finally { setSendingEmail(false); }
+  };
+
+  const savePayCfg = async (patch) => {
+    const next = { ...payCfg, ...patch };
+    setPayCfg(next); setPayCfgMsg('');
+    try {
+      await api.patch(`/quotations/${id}/payment-config`, next);
+      await load();
+      setPayCfgMsg('✓ Configuración de pago guardada');
+      setTimeout(() => setPayCfgMsg(''), 2500);
+    } catch (e) { setPayCfgMsg(formatApiError(e)); }
   };
 
   if (!q) return <AppShell><div className="p-8 text-ink-400">Cargando…</div></AppShell>;
@@ -614,11 +633,54 @@ export default function QuotationDetail() {
             <div className="mt-4 pt-4 border-t border-ink-100" data-testid="payment-status">
               <p className="text-xs uppercase tracking-widest text-ink-400 font-bold mb-2 flex items-center gap-1.5"><CreditCard className="w-3.5 h-3.5" /> Pago</p>
               <div className="flex items-center justify-between text-sm">
-                <span className={`pill ${q.payment_status === 'paid' ? 'bg-mint-100 text-emerald-700' : q.payment_status === 'partial' ? 'bg-peach-100 text-amber-700' : 'bg-ink-100 text-ink-500'}`} data-testid="payment-badge">
-                  {q.payment_status === 'paid' ? 'Pagado' : q.payment_status === 'partial' ? 'Pago parcial' : 'Sin pagar'}
+                <span className={`pill ${q.payment_status === 'paid' ? 'bg-amber-400 text-amber-950 ring-1 ring-amber-500 font-bold' : q.payment_status === 'partial' ? 'bg-peach-100 text-amber-700' : 'bg-ink-100 text-ink-500'}`} data-testid="payment-badge">
+                  {q.payment_status === 'paid' ? 'Pagada' : q.payment_status === 'partial' ? 'Pago parcial' : 'Sin pagar'}
                 </span>
                 <span className="text-ink-700">Pagado: <b>{money(q.amount_paid || 0, q.currency)}</b></span>
               </div>
+
+              {/* Gating de pago por etapas (Iter 4 punto 1 y 2) */}
+              <div className="mt-3 rounded-xl border border-ink-100 bg-cream p-3" data-testid="payment-gating">
+                {!(q.public_link?.accepted_at || q.state === 'ganada') ? (
+                  <p className="text-xs text-ink-500">El cliente debe <b>aceptar</b> la cotización desde el enlace antes de habilitar el pago.</p>
+                ) : (
+                  <>
+                    <label className="flex items-center gap-2 cursor-pointer">
+                      <input type="checkbox" checked={payCfg.payment_enabled} onChange={(e) => savePayCfg({ payment_enabled: e.target.checked })} data-testid="payment-enabled-toggle" />
+                      <span className="text-sm font-medium text-ink-800">Habilitar pago en el enlace del cliente</span>
+                    </label>
+                    {payCfg.payment_enabled && (
+                      <div className="mt-3 space-y-3" data-testid="payment-options">
+                        <div>
+                          <p className="text-xs uppercase tracking-widest text-ink-400 font-bold mb-1.5">Tipo de pago permitido</p>
+                          <div className="flex gap-2">
+                            <button type="button" onClick={() => savePayCfg({ allowed_pay_type: 'full' })}
+                              className={`pill flex-1 justify-center ${payCfg.allowed_pay_type === 'full' ? 'bg-brand-500 text-white' : 'bg-white border border-ink-100 text-ink-700'}`} data-testid="pay-type-full">Total</button>
+                            <button type="button" onClick={() => savePayCfg({ allowed_pay_type: 'deposit' })}
+                              className={`pill flex-1 justify-center ${payCfg.allowed_pay_type === 'deposit' ? 'bg-brand-500 text-white' : 'bg-white border border-ink-100 text-ink-700'}`} data-testid="pay-type-deposit">Anticipo</button>
+                          </div>
+                        </div>
+                        <label className="flex items-center gap-2 cursor-pointer">
+                          <input type="checkbox" checked={payCfg.card_fee_enabled} onChange={(e) => savePayCfg({ card_fee_enabled: e.target.checked })} data-testid="card-fee-toggle" />
+                          <span className="text-sm text-ink-700">Agregar comisión bancaria (solo tarjeta)</span>
+                        </label>
+                        {payCfg.card_fee_enabled && (
+                          <div className="flex items-center gap-2">
+                            <label className="text-xs text-ink-500">Comisión %</label>
+                            <input type="number" min="0" max="20" step="0.1" className="input-field text-sm w-24"
+                              value={payCfg.card_fee_percent}
+                              onChange={(e) => setPayCfg((c) => ({ ...c, card_fee_percent: +e.target.value }))}
+                              onBlur={() => savePayCfg({})} data-testid="card-fee-percent-reservation" />
+                            <span className="text-xs text-ink-400">No aplica en transferencia.</span>
+                          </div>
+                        )}
+                      </div>
+                    )}
+                    {payCfgMsg && <p className="text-xs text-emerald-700 mt-2" data-testid="pay-cfg-msg">{payCfgMsg}</p>}
+                  </>
+                )}
+              </div>
+
               {q.payment_status !== 'paid' && (
                 <div className="mt-3" data-testid="mark-paid-control">
                   <p className="text-xs text-ink-500 mb-1.5">Registrar pago recibido:</p>

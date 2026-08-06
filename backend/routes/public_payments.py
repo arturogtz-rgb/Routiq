@@ -15,8 +15,9 @@ import currency
 import notifications
 from deps import (
     _append_history, _record_audit, _client_email, _bank_html,
-    _resolve_stripe_key, _apply_payment_to_quotation,
+    _resolve_stripe_key, _apply_payment_to_quotation, _reconcile_quotation_payments,
 )
+from models import PublicCheckoutRequest, ManualPaymentInput, SendPaymentInput, QuotationPaymentConfig
 from emergentintegrations.payments.stripe.checkout import StripeCheckout, CheckoutSessionRequest
 
 log = logging.getLogger("routiq")
@@ -33,6 +34,12 @@ async def get_public_quotation(token: str):
     if expires and datetime.fromisoformat(expires) < datetime.now(timezone.utc):
         raise HTTPException(status_code=410, detail="Enlace expirado")
     company = await db.companies.find_one({"id": q["tenant_id"]}, {"_id": 0})
+    # P0 anti-doble-cobro: reconciliar pagos en vuelo con Stripe antes de mostrar montos.
+    try:
+        await _reconcile_quotation_payments(db, q["id"], company or {})
+        q = await db.quotations.find_one({"public_link.token": token}, {"_id": 0}) or q
+    except Exception:
+        pass
     pack = None
     if q.get("package_id"):
         pack = await db.packages.find_one({"id": q["package_id"]}, {"_id": 0})
@@ -68,7 +75,15 @@ async def get_public_quotation(token: str):
     amount_paid = q.get("amount_paid", 0) or 0
     stripe_allowed = bool(company.get("stripe_allowed", True))
     transfer_allowed = bool(company.get("transfer_allowed", True))
-    payment_enabled = stripe_allowed and bool(((company.get("stripe") or {}).get("secret_key")) or os.environ.get("STRIPE_API_KEY"))
+    stripe_ready = stripe_allowed and bool(((company.get("stripe") or {}).get("secret_key")) or os.environ.get("STRIPE_API_KEY"))
+    # Gating por etapas (Iter 4 punto 1): el pago con tarjeta solo aparece si el ejecutivo lo habilitó.
+    payment_enabled = stripe_ready and bool(q.get("payment_enabled"))
+    allowed_pay_type = q.get("allowed_pay_type", "full")
+    amount_due = round(max(0.0, final_total - amount_paid), 2)
+    # Comisión bancaria (Iter 4 punto 2): recargo SOLO en tarjeta (Stripe), no en transferencia.
+    card_fee_enabled = bool(q.get("card_fee_enabled"))
+    card_fee_percent = float(q.get("card_fee_percent", company.get("card_fee_percent", 4.5)) or 0)
+    card_fee_amount = round(amount_due * card_fee_percent / 100.0, 2) if (card_fee_enabled and amount_due > 0) else 0.0
     bank = company.get("bank") or {}
     transfer_enabled = transfer_allowed and bool(bank.get("enabled")) and any(
         bank.get(k) for k in ("name", "clabe", "account", "usd_account"))
@@ -109,9 +124,13 @@ async def get_public_quotation(token: str):
         },
         "payment": {
             "enabled": payment_enabled,
+            "allowed_pay_type": allowed_pay_type,
             "transfer_enabled": transfer_enabled,
             "base_currency": base_currency,
             "deposit_percent": company.get("deposit_percent", 50),
+            "card_fee_enabled": card_fee_enabled,
+            "card_fee_percent": card_fee_percent,
+            "card_fee_amount": card_fee_amount,
             "total_usd_equivalent": total_usd,
             "equivalent_amount": equivalent_amount,
             "equivalent_currency": other_ccy,
@@ -333,6 +352,33 @@ async def mark_quotation_paid(quotation_id: str, payload: ManualPaymentInput, us
     return await db.quotations.find_one({"id": quotation_id, "tenant_id": user["tenant_id"]}, {"_id": 0})
 
 
+@router.patch("/quotations/{quotation_id}/payment-config")
+async def set_payment_config(quotation_id: str, payload: QuotationPaymentConfig, user: dict = Depends(require_tenant)):
+    """El ejecutivo habilita el pago por etapas (anticipo O total) y opcionalmente la
+    comisión bancaria (solo tarjeta). Iter 4 puntos 1 y 2."""
+    db = get_db()
+    q = await db.quotations.find_one({"id": quotation_id, "tenant_id": user["tenant_id"]}, {"_id": 0})
+    if not q:
+        raise HTTPException(status_code=404, detail="Cotización no encontrada")
+    updates = {"last_activity_at": now_iso()}
+    hist = []
+    if payload.payment_enabled is not None:
+        updates["payment_enabled"] = bool(payload.payment_enabled)
+        hist.append("pago " + ("habilitado" if payload.payment_enabled else "deshabilitado"))
+    if payload.allowed_pay_type is not None:
+        updates["allowed_pay_type"] = payload.allowed_pay_type
+        hist.append("tipo " + ("anticipo" if payload.allowed_pay_type == "deposit" else "total"))
+    if payload.card_fee_enabled is not None:
+        updates["card_fee_enabled"] = bool(payload.card_fee_enabled)
+        hist.append("comisión bancaria " + ("activada" if payload.card_fee_enabled else "desactivada"))
+    if payload.card_fee_percent is not None:
+        updates["card_fee_percent"] = float(payload.card_fee_percent)
+    await db.quotations.update_one({"id": quotation_id, "tenant_id": user["tenant_id"]}, {"$set": updates})
+    if hist:
+        await _append_history(db, quotation_id, user, "payment_config", "Configuración de pago: " + ", ".join(hist))
+    return await db.quotations.find_one({"id": quotation_id, "tenant_id": user["tenant_id"]}, {"_id": 0})
+
+
 @router.post("/quotations/{quotation_id}/send-payment")
 async def send_payment_link(quotation_id: str, payload: SendPaymentInput, user: dict = Depends(require_tenant)):
     """Email the client the public payment link (Stripe + transfer options)."""
@@ -383,6 +429,19 @@ async def public_checkout(token: str, payload: PublicCheckoutRequest, request: R
     if not api_key:
         raise HTTPException(status_code=400, detail="Pagos no configurados para esta empresa")
 
+    # Gating por etapas (Iter 4 punto 1): el ejecutivo debe habilitar el pago.
+    if not bool(q.get("payment_enabled")):
+        raise HTTPException(status_code=403, detail="El pago aún no está habilitado. El ejecutivo lo activará cuando la reserva esté lista.")
+    allowed = q.get("allowed_pay_type", "full")
+    req_type = "deposit" if payload.pay_type == "deposit" else "full"
+    if allowed != req_type:
+        raise HTTPException(status_code=400, detail="Este método de pago no está habilitado para esta reserva.")
+
+    # P0-B defensa en profundidad: reconciliar contra Stripe ANTES de crear un nuevo checkout,
+    # para que regenerar el enlace no permita un segundo cobro de algo ya pagado.
+    await _reconcile_quotation_payments(db, q["id"], company or {})
+    q = await db.quotations.find_one({"public_link.token": token}, {"_id": 0}) or q
+
     final_total = q.get("final_total")
     if final_total is None:
         final_total = q.get("total", 0)
@@ -399,6 +458,14 @@ async def public_checkout(token: str, payload: PublicCheckoutRequest, request: R
         amount = amount_due
     if amount <= 0:
         raise HTTPException(status_code=400, detail="Monto inválido")
+
+    # Comisión bancaria (Iter 4 punto 2): recargo SOLO en pago con tarjeta (Stripe).
+    base_amount = amount
+    card_fee_amount = 0.0
+    if bool(q.get("card_fee_enabled")):
+        pct = float(q.get("card_fee_percent", company.get("card_fee_percent", 4.5)) or 0)
+        card_fee_amount = round(base_amount * pct / 100.0, 2)
+        amount = round(base_amount + card_fee_amount, 2)
 
     base_currency = (company.get("base_currency") or q.get("currency", "MXN")).lower()
     origin = payload.origin_url.rstrip("/")
@@ -419,7 +486,9 @@ async def public_checkout(token: str, payload: PublicCheckoutRequest, request: R
     await db.payment_transactions.insert_one({
         "id": new_id(), "session_id": session.session_id,
         "quotation_id": q["id"], "tenant_id": q["tenant_id"],
-        "amount": float(amount), "currency": base_currency.upper(),
+        "amount": float(amount), "base_amount": float(base_amount),
+        "card_fee_amount": float(card_fee_amount),
+        "currency": base_currency.upper(),
         "pay_type": payload.pay_type, "metadata": metadata,
         "status": "initiated", "payment_status": "pending",
         "created_at": now_iso(),

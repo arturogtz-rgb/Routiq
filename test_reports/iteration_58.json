@@ -1,0 +1,33 @@
+{
+  "summary": "Iteración 4 (report iter58) — Backend + Frontend regression del flujo de pago con gating, comisión bancaria, reconciliación anti-doble-cobro, sello de PDF y rename Ganada→Aceptada. Backend: 13/13 PASS en /app/backend/tests/test_iteration58_payment_config.py (login admin@aventurate.mx → crear cliente/cotización paquete → habilitar payment-config → validar gating y guardas). Frontend: verificados TODOS los data-testid requeridos por la spec en preview URL (playwright E2E con login real).",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {"ui_bugs": [], "integration_issues": [], "design_issues": []},
+  "test_report_links": [
+    "/app/backend/tests/test_iteration58_payment_config.py",
+    "/app/test_reports/pytest/iter58.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "public_payments.py L37-42 y L442-443: `_reconcile_quotation_payments` se llama en get_public_quotation Y en public_checkout ANTES del cálculo de amount_due — defensa en profundidad correcta contra el bug P0. Idempotente por `find_one_and_update({payment_status: {$ne: 'paid'}})`.",
+    "deps.py L225-262 `_reconcile_quotation_payments`: filtra `payment_status: {$nin: [paid, expired, failed]}` — solo consulta a Stripe transacciones en vuelo, evita latencia extra en cotizaciones ya cerradas. try/except log-only por sesión, no rompe el request público si Stripe está caído.",
+    "deps.py L272-274 `_apply_payment_to_quotation`: `credit = txn.get('base_amount', txn['amount'])` acredita SOLO base_amount al amount_paid → la comisión bancaria NO infla lo pagado. Correcto para el punto 2. Fallback a `amount` cuando no hay base_amount (transacciones legacy).",
+    "public_payments.py L486-495 payment_transactions insert: guarda `amount` (reserva+comisión, lo que se cobra) y `base_amount` (solo reserva). Consistente con la contabilidad del punto 2.",
+    "public_payments.py L433-438 gating: 403 cuando `payment_enabled=false`, 400 cuando el pay_type no coincide con `allowed_pay_type`. Backend valida `req_type = 'deposit' if payload.pay_type=='deposit' else 'full'` para mapear la enum externa 'total' → 'full' interna.",
+    "public_payments.py L450-451: 400 con 'Esta cotización ya está pagada' cuando `amount_due <= 0` tras la reconciliación → 3ª capa de defensa anti-doble-cobro. Aunque un cliente refresque el link post-pago y el ejecutivo regenere el token, un nuevo checkout NO se puede crear.",
+    "quotations.py L262 STATE_LABELS: mapea 'ganada'→'Aceptada' solo para el texto de historia y el backend NO cambió el Literal del estado (models.py Quotation.state sigue 'ganada'). Compatibilidad total con clientes existentes.",
+    "models.py L219-224 QuotationPaymentConfig: campos Optional para permitir PATCH parcial (solo card_fee_percent, o solo payment_enabled, etc.). Validación numérica con Field(ge=0, le=20) para card_fee_percent — no permite valores irracionales.",
+    "PRE-EXISTENTE (no iter4): Hydration warning en /app/settings ('<span> cannot be a child of <option>') proveniente de EmailSettings.jsx L170 — Emergent injecta un <span data-ve-dynamic> dentro del <option>, no bloquea funcionalidad. No es un bug del código pero podría ensuciar logs. Reportable a plataforma.",
+    "MINOR: booking.py L187 default `payment_stamp: 'auto'` en la carga inicial; el POST /booking-confirmation acepta payload.payment_stamp y el PDF se re-genera con el sello correcto — flujo verificado en 3 casos (paid/pending/auto).",
+    "MINOR: Existe data-testid duplicado en QuotationBuilder.jsx L630 y CustomQuotationBuilder.jsx L380 para executive-option — están correctamente prefijados (`executive-option-{id}` vs `custom-executive-option-{id}`) evitando colisión en tests."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_iteration58_payment_config.py (NEW)"
+  ],
+  "success_rate": {"backend": "100% (13/13)", "frontend": "100% (5/5 data-testid + rename verificado en UI)"},
+  "test_credentials": "admin@aventurate.mx / Demo2026! (leído de /app/memory/test_credentials.md)",
+  "seed_data_creation": "Backend pytest: 1 cliente TEST_ITER58_Client + 1 cotización paquete con public_link. Cleanup en teardown del fixture (DELETE /quotations/{id} + /clients/{id}). En preview quedó 1 quotation UITEST_ITER57_212111 sin limpiar del iter57 previo — solo informativo, no de iter58.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Iter58 (report de la ITERACIÓN 4 del usuario) 100% verificado. Backend suite en /app/backend/tests/test_iteration58_payment_config.py cubre: (a) integrations card_fee_percent default 4.5 + persistencia PATCH; (b) gating público con payment_enabled=false → 403; (c) PATCH /quotations/{id}/payment-config setea payment_enabled/allowed_pay_type/card_fee_enabled/card_fee_percent y devuelve la cotización; (d) card_fee_amount = amount_due*pct/100 en respuesta pública; (e) mismatch allowed vs requested → 400 (ambas direcciones full↔deposit); (f) amount_due<=0 tras mark-paid → checkout 400 'Esta cotización ya está pagada'; (g) POST /booking-confirmation acepta payment_stamp='paid'|'pending'|'auto' y GET /booking-confirmations/{id}/pdf devuelve PDF válido (>1KB, header %PDF); (h) PATCH /quotations/{id}/state acepta 'ganada' (Literal no cambió). UI: card-fee-percent-input=4.5 en /app/settings→Pagos; client-search-input en /app/quotations/new; state-btn-ganada renderiza 'Aceptada' en QuotationDetail; historial muestra 'Configuración de pago: pago habilitado, tipo anticipo, comisión bancaria activada' confirmando que PATCH payment-config escribe history. NO se pudo probar completar un cobro real en Stripe en preview (proxy sk_test_emergent no devuelve webhooks) — validación limitada a la lógica de guardas por API tal como especificó el usuario. No se detectaron bugs en el fix P0-B: la reconciliación se dispara en get_public_quotation y en public_checkout, más el guard amount_due<=0.",
+  "rca of the issue": "N/A - la iteración 4 se implementó correctamente. El bug P0 de doble cobro reportado por el usuario se mitiga por 3 capas: (1) _reconcile_quotation_payments en get_public_quotation refresca el estado real desde Stripe antes de que el cliente vea montos, (2) misma reconciliación al inicio de public_checkout antes de calcular amount_due, (3) guard final amount_due<=0 → 400. No depende del webhook (emergentintegrations no registra endpoint en Stripe sin webhook secret firmado). La reconciliación es idempotente por find_one_and_update con filtro `payment_status: {$ne: 'paid'}`, así que múltiples requests concurrentes no crean pagos duplicados en amount_paid."
+}

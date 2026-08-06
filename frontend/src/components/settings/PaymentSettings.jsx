@@ -40,5 +40,11 @@ export const PaymentSettings = ({ integ, setInteg, clearStripeSecret }) => (
           onChange={(e) => setInteg((s) => ({ ...s, deposit_percent: +e.target.value }))} data-testid="deposit-percent-input" />
       </div>
     </div>
+    <div>
+      <label className="label-text">Comisión bancaria por tarjeta (%)</label>
+      <input type="number" min="0" max="20" step="0.1" className="input-field" value={integ.card_fee_percent ?? 4.5}
+        onChange={(e) => setInteg((s) => ({ ...s, card_fee_percent: +e.target.value }))} data-testid="card-fee-percent-input" />
+      <p className="text-xs text-ink-400 mt-1">Recargo por comisión de Stripe (default 4.5%). Se activa por reserva y solo aplica a pagos con tarjeta, nunca en transferencia. El ejecutivo puede ajustar el % en cada reserva.</p>
+    </div>
   </div>
 );

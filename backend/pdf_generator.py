@@ -625,7 +625,24 @@ def generate_booking_confirmation_pdf(company: dict, quotation: dict, confirmati
     story.append(header)
     story.append(Spacer(1, 6))
 
-    # Header table (datos del ejecutivo/pasajero)
+    # Sello de estado de pago (Iter 4 punto 3). auto = deriva de payment_status; el ejecutivo puede sobrescribir.
+    _stamp = confirmation.get("payment_stamp", "auto")
+    _paid = (quotation.get("payment_status") == "paid") if _stamp == "auto" else (_stamp == "paid")
+    _stamp_txt = "PAGADO" if _paid else "PENDIENTE DE PAGO"
+    _stamp_bg = colors.HexColor("#DCFCE7") if _paid else colors.HexColor("#FEF3C7")
+    _stamp_fg = "#15803D" if _paid else "#B45309"
+    _stamp_bd = colors.HexColor("#16A34A") if _paid else colors.HexColor("#D97706")
+    _stamp_cell = Paragraph(f"<b><font size=12 color='{_stamp_fg}'>{_stamp_txt}</font></b>", s["body"])
+    _stamp_tbl = Table([[_stamp_cell]], colWidths=[5.2 * cm], hAlign="RIGHT")
+    _stamp_tbl.setStyle(TableStyle([
+        ("BACKGROUND", (0, 0), (-1, -1), _stamp_bg),
+        ("BOX", (0, 0), (-1, -1), 1.2, _stamp_bd),
+        ("ALIGN", (0, 0), (-1, -1), "CENTER"),
+        ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+        ("TOPPADDING", (0, 0), (-1, -1), 6), ("BOTTOMPADDING", (0, 0), (-1, -1), 6),
+    ]))
+    story.append(_stamp_tbl)
+    story.append(Spacer(1, 8))
     story.append(_kv_table([
         ("Ejecutivo", confirmation.get("agent_name", "")),
         ("Empresa", confirmation.get("agent_company", "")),

@@ -12,7 +12,7 @@ const COLUMNS = [
   { id: 'cotizando', label: 'Cotizando', cls: 'kanban-col-cotizando' },
   { id: 'enviada', label: 'Enviada', cls: 'kanban-col-enviada' },
   { id: 'negociacion', label: 'En negociación', cls: 'kanban-col-negociacion' },
-  { id: 'ganada', label: 'Ganada', cls: 'kanban-col-ganada' },
+  { id: 'ganada', label: 'Aceptada', cls: 'kanban-col-ganada' },
   { id: 'perdida', label: 'Perdida', cls: 'kanban-col-perdida' },
 ];
 

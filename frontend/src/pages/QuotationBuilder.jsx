@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import AppShell from '@/components/AppShell';
 import api, { formatApiError } from '@/lib/api';
-import { ArrowLeft, ArrowRight, Check, User, Package, CalendarDays, Calculator, FileText, Plus, Trash2, Sparkles, AlertTriangle, Moon, Briefcase, Users, Wand2, Star } from 'lucide-react';
+import { ArrowLeft, ArrowRight, Check, User, Package, CalendarDays, Calculator, FileText, Plus, Trash2, Sparkles, AlertTriangle, Moon, Briefcase, Users, Wand2, Star, Search } from 'lucide-react';
 import { sortByFavorite } from '@/lib/clients';
 import { formatDateEs, nightsBetween, addDays, weekdayMon0, WEEKDAYS_ES } from '@/lib/dates';
 
@@ -26,6 +26,7 @@ export default function QuotationBuilder() {
   const editing = !!id;
   const [search] = useSearchParams();
   const [step, setStep] = useState(0);
+  const [clientSearch, setClientSearch] = useState('');
   const [svcCat, setSvcCat] = useState('todos');
   const [clients, setClients] = useState([]);
   const [packages, setPackages] = useState([]);
@@ -97,15 +98,18 @@ export default function QuotationBuilder() {
   const hotel = pack?.hotels?.find((h) => h.name === form.hotel_name);
   const client = clients.find((c) => c.id === form.client_id);
   const isB2B = !!client && client.channel !== 'directo';
+  const hasExecs = !!client && (client.executives || []).length > 0;
 
   const STEPS = isServices
     ? [
         { key: 'client', label: 'Cliente', icon: User },
+        ...(hasExecs ? [{ key: 'executive', label: 'Ejecutivo', icon: Briefcase }] : []),
         { key: 'servicios', label: 'Servicios', icon: Sparkles },
         { key: 'review', label: 'Revisión', icon: Calculator },
       ]
     : [
         { key: 'client', label: 'Cliente', icon: User },
+        ...(hasExecs ? [{ key: 'executive', label: 'Ejecutivo', icon: Briefcase }] : []),
         { key: 'package', label: 'Paquete', icon: Package },
         { key: 'dates', label: 'Fechas y pax', icon: CalendarDays },
         { key: 'services', label: 'Servicios', icon: Sparkles },
@@ -323,11 +327,9 @@ export default function QuotationBuilder() {
 
   const canNext = () => {
     if (cur === 'client') {
-      if (!form.client_id) return false;
-      const cl = clients.find((c) => c.id === form.client_id);
-      if (cl && (cl.executives || []).length > 0 && !form.executive_id) return false;
-      return true;
+      return !!form.client_id;
     }
+    if (cur === 'executive') return !!form.executive_id;
     if (cur === 'package') return !!form.package_id && !!form.hotel_name;
     if (cur === 'dates') return form.dates.start && form.dates.end && rooms.length > 0 && totalAdults > 0;
     if (cur === 'servicios') return totalAdults > 0 && (form.services || []).length > 0;
@@ -560,8 +562,19 @@ export default function QuotationBuilder() {
                 <button className="btn-primary" onClick={handleCreateClient} disabled={!newClient.name} data-testid="save-new-client">Guardar cliente</button>
               </div>
             )}
+            {!editing && clients.length > 0 && (
+              <div className="relative" data-testid="client-search-wrap">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-ink-400" />
+                <input className="input-field pl-10" placeholder="Buscar cliente por nombre, empresa o correo…"
+                  value={clientSearch} onChange={(e) => setClientSearch(e.target.value)} data-testid="client-search-input" />
+              </div>
+            )}
             <div className="grid md:grid-cols-2 gap-3">
-              {sortByFavorite(clients).map((c) => (
+              {sortByFavorite(clients.filter((c) => {
+                const s = clientSearch.trim().toLowerCase();
+                if (!s) return true;
+                return [c.name, c.email, c.phone, c.channel].some((v) => (v || '').toLowerCase().includes(s));
+              })).map((c) => (
                 <div key={c.id} className={`relative text-left rounded-xl border p-4 transition-all ${form.client_id === c.id ? 'border-brand-500 bg-brand-50' : 'border-ink-100 hover:border-brand-300'} ${editing && form.client_id !== c.id ? 'hidden' : ''}`}>
                   <button type="button" onClick={() => toggleFavorite(c)} title={c.is_favorite ? 'Quitar de favoritos' : 'Marcar como favorito'} className={`absolute top-3 right-3 ${c.is_favorite ? 'text-amber-500' : 'text-ink-300 hover:text-amber-500'}`} data-testid={`fav-client-${c.id}`}>
                     <Star className="w-4 h-4" fill={c.is_favorite ? 'currentColor' : 'none'} />
@@ -576,33 +589,10 @@ export default function QuotationBuilder() {
               {clients.length === 0 && <p className="text-ink-400 text-sm">No hay clientes. Crea uno.</p>}
             </div>
 
-            {/* Empresa con ejecutivos (nivel 2): elegir ejecutivo + turista */}
-            {client && (client.executives || []).length > 0 && (
-              <div className="grid md:grid-cols-2 gap-4 pt-4 border-t border-ink-100" data-testid="executive-block">
-                <div className="rounded-xl border border-ink-100 p-4 space-y-3">
-                  <p className="font-semibold text-ink-900 flex items-center gap-2"><Briefcase className="w-4 h-4 text-brand-500" /> Ejecutivo de {client.name}</p>
-                  <div className="space-y-2" data-testid="executive-options">
-                    {client.executives.map((ex) => (
-                      <button key={ex.id} type="button" onClick={() => selectExecutive(ex)} data-testid={`executive-option-${ex.id}`}
-                        className={`w-full text-left rounded-xl border p-3 transition-all ${form.executive_id === ex.id ? 'border-brand-500 bg-brand-50' : 'border-ink-100 hover:border-brand-300'}`}>
-                        <p className="font-medium text-ink-900">{ex.name || 'Sin nombre'}</p>
-                        <p className="text-xs text-ink-500">{[ex.phone, ex.email].filter(Boolean).join(' · ') || '—'}</p>
-                      </button>
-                    ))}
-                  </div>
-                  <p className="text-xs text-ink-400">En el PDF y el enlace: <b>{client.name}</b> + el ejecutivo seleccionado (teléfono y correo).</p>
-                  {AddExecutiveControl()}
-                </div>
-                <div className="rounded-xl border border-ink-100 p-4 space-y-3">
-                  <p className="font-semibold text-ink-900 flex items-center gap-2"><Users className="w-4 h-4 text-brand-500" /> Cliente final / Turista</p>
-                  <div><label className="label-text">Nombre completo</label><input className="input-field" value={form.contacts.traveler.name} onChange={(e) => setContact('traveler', 'name', e.target.value)} data-testid="contact-traveler-name" /></div>
-                  <div><label className="label-text">Teléfono directo</label><input className="input-field" value={form.contacts.traveler.phone} onChange={(e) => setContact('traveler', 'phone', e.target.value)} data-testid="contact-traveler-phone" /></div>
-                </div>
-              </div>
-            )}
+            {/* La selección de ejecutivo se movió a su propio paso (cur === 'executive'). */}
 
             {/* Agency + final traveler contacts for B2B (empresas sin ejecutivos / legacy) */}
-            {isB2B && !(client && (client.executives || []).length > 0) && (
+            {isB2B && !hasExecs && (
               <div className="grid md:grid-cols-2 gap-4 pt-4 border-t border-ink-100" data-testid="contacts-block">
                 <div className="rounded-xl border border-ink-100 p-4 space-y-3">
                   <p className="font-semibold text-ink-900 flex items-center gap-2"><Briefcase className="w-4 h-4 text-brand-500" /> Agencia / Vendedor</p>
@@ -625,6 +615,34 @@ export default function QuotationBuilder() {
                 </div>
               </div>
             )}
+          </div>
+        )}
+
+        {/* Step: Executive (empresas con ejecutivos) */}
+        {cur === 'executive' && hasExecs && (
+          <div className="space-y-4" data-testid="step-executive-panel">
+            <h2 className="font-display text-xl font-semibold text-ink-900">Ejecutivo y pasajero</h2>
+            <div className="grid md:grid-cols-2 gap-4">
+              <div className="rounded-xl border border-ink-100 p-4 space-y-3" data-testid="executive-block">
+                <p className="font-semibold text-ink-900 flex items-center gap-2"><Briefcase className="w-4 h-4 text-brand-500" /> Ejecutivo de {client.name}</p>
+                <div className="space-y-2" data-testid="executive-options">
+                  {client.executives.map((ex) => (
+                    <button key={ex.id} type="button" onClick={() => selectExecutive(ex)} data-testid={`executive-option-${ex.id}`}
+                      className={`w-full text-left rounded-xl border p-3 transition-all ${form.executive_id === ex.id ? 'border-brand-500 bg-brand-50' : 'border-ink-100 hover:border-brand-300'}`}>
+                      <p className="font-medium text-ink-900">{ex.name || 'Sin nombre'}</p>
+                      <p className="text-xs text-ink-500">{[ex.phone, ex.email].filter(Boolean).join(' · ') || '—'}</p>
+                    </button>
+                  ))}
+                </div>
+                <p className="text-xs text-ink-400">En el PDF y el enlace: <b>{client.name}</b> + el ejecutivo seleccionado (teléfono y correo).</p>
+                {AddExecutiveControl()}
+              </div>
+              <div className="rounded-xl border border-ink-100 p-4 space-y-3">
+                <p className="font-semibold text-ink-900 flex items-center gap-2"><Users className="w-4 h-4 text-brand-500" /> Cliente final / Turista</p>
+                <div><label className="label-text">Nombre completo</label><input className="input-field" value={form.contacts.traveler.name} onChange={(e) => setContact('traveler', 'name', e.target.value)} data-testid="contact-traveler-name" /></div>
+                <div><label className="label-text">Teléfono directo</label><input className="input-field" value={form.contacts.traveler.phone} onChange={(e) => setContact('traveler', 'phone', e.target.value)} data-testid="contact-traveler-phone" /></div>
+              </div>
+            </div>
           </div>
         )}
 

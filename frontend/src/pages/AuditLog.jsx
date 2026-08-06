@@ -5,7 +5,7 @@ import { formatDateEs } from '@/lib/dates';
 import { ShieldCheck, Trophy, Archive, Trash2, RotateCcw, Filter, TrendingUp, Wallet, Crown } from 'lucide-react';
 
 const ACTION_META = {
-  won: { label: 'Ganada', icon: Trophy, tone: 'bg-mint-100 text-emerald-700' },
+  won: { label: 'Aceptada', icon: Trophy, tone: 'bg-mint-100 text-emerald-700' },
   archived: { label: 'Archivada', icon: Archive, tone: 'bg-ink-100 text-ink-600' },
   restored: { label: 'Restaurada', icon: RotateCcw, tone: 'bg-brand-50 text-brand-500' },
   deleted: { label: 'Eliminada', icon: Trash2, tone: 'bg-red-100 text-red-700' },
@@ -45,7 +45,7 @@ export default function AuditLog() {
       {metrics && (
         <div className="grid sm:grid-cols-3 gap-4 mb-6" data-testid="audit-metrics">
           <div className="card-surface p-5" data-testid="metric-won-month">
-            <div className="flex items-center gap-2 text-ink-400 text-xs uppercase tracking-widest font-bold"><TrendingUp className="w-4 h-4" /> Ganadas del mes</div>
+            <div className="flex items-center gap-2 text-ink-400 text-xs uppercase tracking-widest font-bold"><TrendingUp className="w-4 h-4" /> Aceptadas del mes</div>
             <p className="font-display text-4xl font-bold text-ink-900 mt-2">{metrics.won_this_month}</p>
             <p className="text-xs text-ink-400 mt-1">{metrics.won_total} ganadas en total</p>
           </div>
@@ -70,7 +70,7 @@ export default function AuditLog() {
         <Filter className="w-4 h-4 text-ink-400" />
         <select value={action} onChange={(e) => setAction(e.target.value)} className="input-field sm:w-56" data-testid="audit-filter">
           <option value="">Todas las acciones</option>
-          <option value="won">Ganadas</option>
+          <option value="won">Aceptadas</option>
           <option value="archived">Archivadas</option>
           <option value="restored">Restauradas</option>
           <option value="deleted">Eliminadas</option>

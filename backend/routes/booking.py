@@ -184,6 +184,7 @@ async def get_booking_confirmation(quotation_id: str, user: dict = Depends(requi
         "general_observations": "",
         "price_per_person": round(total / total_pax, 2) if total_pax else 0,
         "total_amount": total or 0,
+        "payment_stamp": "auto",
     }
 
 

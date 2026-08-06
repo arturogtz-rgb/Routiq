@@ -89,6 +89,7 @@ def _integrations_view(company: dict) -> dict:
         "resend_from_name": resend.get("from_name", ""),
         "base_currency": company.get("base_currency", "MXN"),
         "deposit_percent": company.get("deposit_percent", 50),
+        "card_fee_percent": company.get("card_fee_percent", 4.5),
         "notify_email": company.get("notify_email", ""),
         # Bank transfer
         "bank_enabled": bool((company.get("bank") or {}).get("enabled", False)),
@@ -221,6 +222,46 @@ def _resolve_stripe_key(company: dict) -> str:
     return sk or os.environ.get("STRIPE_API_KEY", "")
 
 
+async def _reconcile_quotation_payments(db, quotation_id: str, company: dict):
+    """P0 anti-doble-cobro: consulta a Stripe SOLO las transacciones NO finalizadas de
+    esta cotización y aplica las que ya estén pagadas (idempotente). No depende del
+    webhook ni de que el cliente regrese al enlace. Solo transacciones pendientes → sin
+    latencia extra cuando no hay pagos en vuelo."""
+    api_key = _resolve_stripe_key(company)
+    if not api_key:
+        return
+    pend = []
+    async for t in db.payment_transactions.find(
+        {"quotation_id": quotation_id, "payment_status": {"$nin": ["paid", "expired", "failed"]}},
+        {"_id": 0, "session_id": 1},
+    ):
+        pend.append(t["session_id"])
+    if not pend:
+        return
+    try:
+        from emergentintegrations.payments.stripe.checkout import StripeCheckout
+    except Exception:
+        return
+    for session_id in pend:
+        try:
+            sc = StripeCheckout(api_key=api_key, webhook_url="")
+            st = await sc.get_checkout_status(session_id)
+            if st.payment_status == "paid" or st.status == "complete":
+                flipped = await db.payment_transactions.find_one_and_update(
+                    {"session_id": session_id, "payment_status": {"$ne": "paid"}},
+                    {"$set": {"payment_status": "paid", "status": "complete", "paid_at": now_iso()}},
+                )
+                if flipped is not None:
+                    await _apply_payment_to_quotation(flipped)
+            elif st.status == "expired":
+                await db.payment_transactions.update_one(
+                    {"session_id": session_id, "payment_status": {"$ne": "paid"}},
+                    {"$set": {"payment_status": "expired", "status": "expired"}},
+                )
+        except Exception as e:
+            log.info("reconcile: skip session %s (%s)", session_id, e)
+
+
 async def _apply_payment_to_quotation(txn: dict):
     """Idempotent: called only once per session_id (guarded by caller)."""
     from database import get_db
@@ -228,7 +269,9 @@ async def _apply_payment_to_quotation(txn: dict):
     q = await db.quotations.find_one({"id": txn["quotation_id"]}, {"_id": 0})
     if not q:
         return
-    amount_paid = round((q.get("amount_paid", 0) or 0) + float(txn["amount"]), 2)
+    # Acreditar SOLO la parte de la reserva (excluye la comisión bancaria/tarjeta si la hubo).
+    credit = txn.get("base_amount", txn["amount"])
+    amount_paid = round((q.get("amount_paid", 0) or 0) + float(credit), 2)
     final_total = q.get("final_total")
     if final_total is None:
         final_total = q.get("total", 0)

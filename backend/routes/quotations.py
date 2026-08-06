@@ -110,6 +110,14 @@ async def get_quotation(quotation_id: str, user: dict = Depends(require_tenant))
     q = await db.quotations.find_one({"id": quotation_id, "tenant_id": user["tenant_id"]}, {"_id": 0})
     if not q:
         raise HTTPException(status_code=404, detail="Cotización no encontrada")
+    # P0 anti-doble-cobro: reconciliar pagos en vuelo con Stripe (solo txns no finalizadas).
+    try:
+        from deps import _reconcile_quotation_payments
+        company = await db.companies.find_one({"id": user["tenant_id"]}, {"_id": 0})
+        await _reconcile_quotation_payments(db, quotation_id, company or {})
+        q = await db.quotations.find_one({"id": quotation_id, "tenant_id": user["tenant_id"]}, {"_id": 0}) or q
+    except Exception:
+        pass
     # Resolve elaborating executive (created_by) -> name/email for display.
     if q.get("created_by"):
         u = await db.users.find_one({"id": q["created_by"]}, {"_id": 0, "name": 1, "email": 1})
@@ -253,7 +261,7 @@ async def update_quotation_state(quotation_id: str, payload: QuotationStateUpdat
     )
     STATE_LABELS = {
         "nueva_consulta": "Nueva consulta", "cotizando": "Cotizando", "enviada": "Enviada",
-        "negociacion": "En negociación", "ganada": "Ganada", "perdida": "Perdida",
+        "negociacion": "En negociación", "ganada": "Aceptada", "perdida": "Perdida",
     }
     detail = f"Estado: {STATE_LABELS.get(prev, prev)} → {STATE_LABELS.get(payload.state, payload.state)}"
     if set_fields.get("lost_reason"):

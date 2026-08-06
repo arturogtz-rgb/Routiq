@@ -10,7 +10,7 @@ const STATE_LABELS = {
   cotizando: 'Cotizando',
   enviada: 'Enviada',
   negociacion: 'En negociación',
-  ganada: 'Ganada',
+  ganada: 'Aceptada',
   perdida: 'Perdida',
 };
 const STATE_TONES = {

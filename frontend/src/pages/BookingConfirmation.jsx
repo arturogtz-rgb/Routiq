@@ -92,7 +92,7 @@ export default function BookingConfirmation() {
     agent_name: '', agent_phone: '', agent_company: '', agent_email: '', reservation_date: '',
     passenger_name: '', passenger_phone: '', num_persons: '',
     services: [newSvc()], lodging: [{ ...EMPTY_LODGING }], itinerary: [],
-    general_observations: '', price_per_person: 0, total_amount: 0,
+    general_observations: '', price_per_person: 0, total_amount: 0, payment_stamp: 'auto',
   });
 
   const sensors = useSensors(
@@ -127,6 +127,7 @@ export default function BookingConfirmation() {
           itinerary: existing.itinerary || [],
           general_observations: existing.general_observations || '',
           price_per_person: existing.price_per_person || 0, total_amount: existing.total_amount || 0,
+          payment_stamp: existing.payment_stamp || 'auto',
         });
       } else if (cr.data && cr.data._prefill) {
         const p = cr.data;
@@ -140,6 +141,7 @@ export default function BookingConfirmation() {
           itinerary: p.itinerary || [],
           general_observations: p.general_observations || '',
           price_per_person: p.price_per_person || 0, total_amount: p.total_amount || 0,
+          payment_stamp: p.payment_stamp || 'auto',
         });
       }
     } catch (e) { setError(formatApiError(e)); }
@@ -430,6 +432,15 @@ export default function BookingConfirmation() {
             </div>
           </div>
           <p className="text-xs text-ink-400 mt-3">Los datos bancarios y las condiciones generales/cancelación se toman automáticamente de Ajustes y se incluyen en el PDF.</p>
+          <div className="mt-4 pt-4 border-t border-ink-100">
+            <label className="label-text">Sello de pago en el PDF</label>
+            <select className="input-field md:w-72" value={form.payment_stamp} onChange={(e) => setField('payment_stamp', e.target.value)} data-testid="payment-stamp-select">
+              <option value="auto">Automático (según estado de pago)</option>
+              <option value="paid">PAGADO</option>
+              <option value="pending">PENDIENTE DE PAGO</option>
+            </select>
+            <p className="text-xs text-ink-400 mt-1">"Automático" refleja el pago registrado (tarjeta/transferencia). Puedes forzar el sello manualmente si lo necesitas.</p>
+          </div>
         </div>
       </div>
     </AppShell>

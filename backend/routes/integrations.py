@@ -96,6 +96,8 @@ async def update_my_integrations(payload: CompanyIntegrationsUpdate, user: dict 
         updates["pricing_config.currency"] = data["base_currency"]
     if "deposit_percent" in data and data["deposit_percent"]:
         updates["deposit_percent"] = float(data["deposit_percent"])
+    if "card_fee_percent" in data and data["card_fee_percent"] is not None:
+        updates["card_fee_percent"] = float(data["card_fee_percent"])
     if "notify_email" in data:
         val = (data["notify_email"] or "").strip()
         if val and not EMAIL_RE.match(val):

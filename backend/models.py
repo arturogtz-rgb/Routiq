@@ -140,6 +140,7 @@ class CompanyIntegrationsUpdate(BaseModel):
     resend_from_name: Optional[str] = None
     base_currency: Optional[Literal["MXN", "USD"]] = None
     deposit_percent: Optional[float] = Field(default=None, ge=1, le=100)
+    card_fee_percent: Optional[float] = Field(default=None, ge=0, le=20)  # comisión bancaria (tarjeta/Stripe), default 4.5
     notify_email: Optional[str] = None
     # Bank transfer (Opción B de pago) — datos mostrados al cliente
     bank_enabled: Optional[bool] = None
@@ -213,6 +214,14 @@ class QuotationPricingAdjust(BaseModel):
 class PublicCheckoutRequest(BaseModel):
     origin_url: str
     pay_type: Literal["total", "deposit"] = "total"
+
+
+class QuotationPaymentConfig(BaseModel):
+    """Gating de pago por etapas controlado por el ejecutivo (Iter 4)."""
+    payment_enabled: Optional[bool] = None
+    allowed_pay_type: Optional[Literal["deposit", "full"]] = None
+    card_fee_enabled: Optional[bool] = None
+    card_fee_percent: Optional[float] = Field(default=None, ge=0, le=20)
 
 
 # ---------- Users ----------
@@ -521,6 +530,7 @@ class BookingConfirmationSave(BaseModel):
     general_observations: str = ""
     price_per_person: float = 0.0
     total_amount: float = 0.0
+    payment_stamp: Literal["auto", "paid", "pending"] = "auto"  # sello de pago en el PDF (auto = deriva de payment_status)
 
 
 class BookingSendRequest(BaseModel):
