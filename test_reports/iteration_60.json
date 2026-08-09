@@ -1,0 +1,16 @@
+{
+  "summary": "Retest of iter5 point 3 (is_private persistence via PATCH /api/packages/{id}). Fix confirmed: PackageUpdate now accepts is_private, PATCH persists it, package hidden from public catalog (/api/public/company/{slug}) and public detail returns 404, still visible in internal /api/packages listing. Toggling back to false restores visibility. State restored on cleanup.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {"ui_bugs": [], "integration_issues": [], "design_issues": []},
+  "test_report_links": ["/app/backend/tests/test_iteration59_iter5.py"],
+  "action_items": [],
+  "critical_code_review_comments": [],
+  "updated_files": [],
+  "success_rate": {"backend": "100%", "frontend": "N/A"},
+  "test_credentials": "admin@aventurate.mx / Demo2026!",
+  "seed_data_creation": "None. Catalog restored (is_private=false) after test.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Iter5 point 3 fully green. Round-trip verified via curl: PATCH is_private=true → GET /api/packages/{id} returns is_private=true and public catalog hides it; PATCH false restores. pytest test_iteration59_iter5.py::test_package_is_private_hides_from_public_catalog PASSED in 1.22s.",
+  "rca of the issue": "Previous bug: models.PackageUpdate did not declare is_private, so payload was dropped by pydantic. Fix: added `is_private: Optional[bool] = None` in PackageUpdate; server.py update_package uses model_dump(exclude_unset=True) filtering None which correctly persists true/false. Verified end-to-end."
+}

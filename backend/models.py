@@ -303,6 +303,7 @@ class PackageUpdate(BaseModel):
     season_end: Optional[str] = None
     allowed_start_days: Optional[List[int]] = None
     special_departure_dates: Optional[List[str]] = None
+    is_private: Optional[bool] = None
     status: Optional[str] = None
 
 
