@@ -33,7 +33,7 @@ export default function QuotationDetail() {
   const [pkgModalOpen, setPkgModalOpen] = useState(false);
   const [pkgCode, setPkgCode] = useState('');
   const [saveAsMsg, setSaveAsMsg] = useState('');
-  const [aiLoading, setAiLoading] = useState({ prepay: false, postsale: false, message: false });
+  const [aiLoading, setAiLoading] = useState({ prepay: false, postsale: false, message: false, payment: false });
   const [aiError, setAiError] = useState('');
   const [aiDraft, setAiDraft] = useState(null); // { kind, context, text }
   const [aiSendMsg, setAiSending] = useState('');
@@ -50,6 +50,9 @@ export default function QuotationDetail() {
   const [payMsg, setPayMsg] = useState('');
   const [payCfg, setPayCfg] = useState({ payment_enabled: false, allowed_pay_type: 'full', card_fee_enabled: false, card_fee_percent: 4.5 });
   const [payCfgMsg, setPayCfgMsg] = useState('');
+  const [notesDraft, setNotesDraft] = useState('');
+  const [notesSaving, setNotesSaving] = useState(false);
+  const [notesMsg, setNotesMsg] = useState('');
   const [sendingEmail, setSendingEmail] = useState(false);
   // WhatsApp link
   const [waLink, setWaLink] = useState(null);
@@ -65,6 +68,7 @@ export default function QuotationDetail() {
   const load = async () => {
     const { data } = await api.get(`/quotations/${id}`);
     setQ(data);
+    setNotesDraft(data.notes || '');
     setPublicToken(data?.public_link?.token || '');
     setPayCfg({
       payment_enabled: !!data.payment_enabled,
@@ -295,6 +299,17 @@ export default function QuotationDetail() {
     } catch (e) { setPayCfgMsg(formatApiError(e)); }
   };
 
+  const saveNotes = async () => {
+    setNotesSaving(true); setNotesMsg('');
+    try {
+      await api.patch(`/quotations/${id}/notes`, { notes: notesDraft });
+      setQ((prev) => (prev ? { ...prev, notes: notesDraft.trim() } : prev));
+      setNotesMsg('✓ Notas guardadas');
+      setTimeout(() => setNotesMsg(''), 2500);
+    } catch (e) { setNotesMsg(formatApiError(e)); }
+    finally { setNotesSaving(false); }
+  };
+
   if (!q) return <AppShell><div className="p-8 text-ink-400">Cargando…</div></AppShell>;
 
   const saveAsTemplate = async () => {
@@ -441,7 +456,18 @@ export default function QuotationDetail() {
                 )}
               </div>
             )}
-            {q.notes && <><p className="text-xs uppercase tracking-widest text-ink-400 font-bold mt-6">Notas</p><p className="text-ink-700 mt-1 text-sm">{q.notes}</p></>}
+            <div className="mt-6" data-testid="internal-notes-section">
+              <div className="flex items-center justify-between">
+                <p className="text-xs uppercase tracking-widest text-ink-400 font-bold">Notas internas</p>
+                {notesMsg && <span className="text-xs text-emerald-700" data-testid="notes-msg">{notesMsg}</span>}
+              </div>
+              <textarea rows="3" className="input-field mt-1 text-sm" placeholder="Notas internas (solo visibles para tu equipo)…"
+                value={notesDraft} onChange={(e) => setNotesDraft(e.target.value)} data-testid="internal-notes-input" />
+              <button className="btn-secondary text-xs mt-2" onClick={saveNotes}
+                disabled={notesSaving || notesDraft === (q.notes || '')} data-testid="save-notes-btn">
+                {notesSaving ? 'Guardando…' : 'Guardar notas'}
+              </button>
+            </div>
           </div>
 
           {(pack?.itinerary?.length > 0 || q.custom_itinerary?.length > 0) && (
@@ -491,6 +517,12 @@ export default function QuotationDetail() {
                 onClick={() => runAIDraft('prepay', 'follow-up-prepay')} data-testid="ai-followup-prepay-btn">
                 {aiLoading.prepay ? 'Redactando…' : 'Seguimiento pre-pago'}
               </button>
+              {q.state === 'ganada' && q.payment_status !== 'paid' && (
+                <button className="btn-secondary w-full text-xs justify-center" disabled={aiLoading.payment}
+                  onClick={() => runAIDraft('payment', 'follow-up-payment')} data-testid="ai-followup-payment-btn">
+                  {aiLoading.payment ? 'Redactando…' : 'Recordatorio de pago'}
+                </button>
+              )}
               {(q.state === 'ganada' || q.payment_status === 'paid') && (
                 <button className="btn-secondary w-full text-xs justify-center" disabled={aiLoading.postsale}
                   onClick={() => runAIDraft('postsale', 'follow-up-postsale')} data-testid="ai-followup-postsale-btn">

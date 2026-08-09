@@ -288,6 +288,16 @@ async def follow_up_message(q: dict, kind: str, context_note: str = "", chat_exc
             "de Reserva. NO es cobranza ni venta nueva. Sin emojis excesivos (máx 2), sin firma ni corchetes."
         )
         feature = "follow_up_postsale"
+    elif kind == "payment":
+        system = (
+            "Eres ejecutivo de un tour operador (mayorista) en México escribiendo por WhatsApp a un COLEGA "
+            "ejecutivo de una agencia de viajes que YA ACEPTÓ la cotización pero aún no completa el pago. "
+            "Redacta un RECORDATORIO DE PAGO amable y colega-a-colega (~60 palabras, español de México): "
+            "confirma que la reserva está apartada, recuerda el saldo pendiente e invita a completar el pago "
+            "desde el enlace para asegurar los espacios. Tono cordial y de apoyo, NUNCA presión agresiva. "
+            "NO inventes el enlace ni el monto (se agregan aparte). Sin emojis excesivos (máx 2), sin firma ni corchetes."
+        )
+        feature = "follow_up_payment"
     else:
         system = (
             "Eres ejecutivo de un tour operador (mayorista) en México escribiendo por WhatsApp a un COLEGA "

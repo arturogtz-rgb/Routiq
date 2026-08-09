@@ -65,7 +65,7 @@ async def _startup():
     await seed_super_admin()
     await seed_demo_tenant()
     log.info("Startup complete — super admin + demo tenant seeded")
-    asyncio.create_task(_reminder_loop())
+    asyncio.create_task(_internal_digest_loop())
     asyncio.create_task(_backup_check_loop())
     asyncio.create_task(_sales_report_loop())
 
@@ -108,25 +108,28 @@ async def _backup_check_loop():
             log.exception("backup check loop error")
 
 
-async def _reminder_loop():
-    """Background loop: check for unpaid accepted quotations every 30 min."""
+async def _internal_digest_loop():
+    """Iter 5 / P0: NO client-facing auto-reminders. This loop only sends an
+    INTERNAL, opt-in daily digest to executives (never to clients). Runs daily
+    and is idempotent per company per day (atomic guard in reminders.py)."""
     import reminders
     while True:
         try:
-            await asyncio.sleep(1800)
-            res = await reminders.run_payment_reminders()
-            if res.get("sent"):
-                log.info("payment reminders sent: %s", res)
+            await asyncio.sleep(24 * 3600)
+            res = await reminders.run_internal_payment_digest()
+            if res.get("digests_sent"):
+                log.info("internal payment digests sent: %s", res)
         except asyncio.CancelledError:
             break
         except Exception:
-            log.exception("reminder loop error")
+            log.exception("internal digest loop error")
 
 
 @api.post("/internal/run-reminders")
 async def run_reminders_now(user: dict = Depends(require_roles("super_admin"))):
+    """Manual trigger of the INTERNAL executive digest (never emails clients)."""
     import reminders
-    return await reminders.run_payment_reminders()
+    return await reminders.run_internal_payment_digest(force=True)
 
 
 # ---------------------------------------------------------------------------

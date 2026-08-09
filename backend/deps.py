@@ -90,6 +90,7 @@ def _integrations_view(company: dict) -> dict:
         "base_currency": company.get("base_currency", "MXN"),
         "deposit_percent": company.get("deposit_percent", 50),
         "card_fee_percent": company.get("card_fee_percent", 4.5),
+        "internal_payment_digest": company.get("internal_payment_digest", False),
         "notify_email": company.get("notify_email", ""),
         # Bank transfer
         "bank_enabled": bool((company.get("bank") or {}).get("enabled", False)),

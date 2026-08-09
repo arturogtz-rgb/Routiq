@@ -40,7 +40,7 @@ export default function QuotationBuilder() {
   const [company, setCompany] = useState(null);
 
   const [form, setForm] = useState({
-    type: 'paquete',
+    type: search.get('type') === 'servicios' ? 'servicios' : 'paquete',
     client_id: '',
     executive_id: '',
     package_id: search.get('package') || '',

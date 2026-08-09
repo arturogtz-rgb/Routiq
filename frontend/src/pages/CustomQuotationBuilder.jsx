@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import AppShell from '@/components/AppShell';
 import api, { formatApiError } from '@/lib/api';
-import { ArrowLeft, ArrowRight, Check, User, Wand2, ListChecks, CalendarRange, Calculator, Plus, Trash2, Briefcase, Users, FileText, Sparkles, Save, BookmarkPlus, Star } from 'lucide-react';
+import { ArrowLeft, ArrowRight, Check, User, Wand2, ListChecks, CalendarRange, Calculator, Plus, Trash2, Briefcase, Users, FileText, Sparkles, Save, BookmarkPlus, Star, Search, Package } from 'lucide-react';
 import { sortByFavorite } from '@/lib/clients';
 import { formatDateEs, nightsBetween } from '@/lib/dates';
 import { UNIT_ES, CATEGORIES, EMPTY_CONTACTS, money, StringList } from './custom-builder/constants';
@@ -14,6 +14,7 @@ export default function CustomQuotationBuilder() {
   const editing = !!id;
   const [search] = useSearchParams();
   const [step, setStep] = useState(0);
+  const [clientSearch, setClientSearch] = useState('');
   const [clients, setClients] = useState([]);
   const [company, setCompany] = useState(null);
   const [templates, setTemplates] = useState([]);
@@ -119,6 +120,7 @@ export default function CustomQuotationBuilder() {
 
   const client = clients.find((c) => c.id === form.client_id);
   const isB2B = !!client && client.channel !== 'directo';
+  const hasExecs = !!client && (client.executives || []).length > 0;
   const margin = Number(company?.pricing_config?.margin_divisor) || 0.76;
   const currency = company?.pricing_config?.currency || 'MXN';
   const commissionRate = (() => {
@@ -167,6 +169,7 @@ export default function CustomQuotationBuilder() {
 
   const STEPS = [
     { key: 'client', label: 'Cliente', icon: User },
+    ...(hasExecs ? [{ key: 'executive', label: 'Ejecutivo', icon: Briefcase }] : []),
     { key: 'program', label: 'Programa', icon: CalendarRange },
     { key: 'items', label: 'Conceptos', icon: Wand2 },
     { key: 'itinerary', label: 'Itinerario', icon: ListChecks },
@@ -257,11 +260,8 @@ export default function CustomQuotationBuilder() {
   };
 
   const canNext = () => {
-    if (cur === 'client') {
-      if (!form.client_id) return false;
-      if (client && (client.executives || []).length > 0 && !form.executive_id) return false;
-      return true;
-    }
+    if (cur === 'client') return !!form.client_id;
+    if (cur === 'executive') return !!form.executive_id;
     if (cur === 'program') return !!form.custom_title.trim() && totalPax > 0;
     if (cur === 'items') return form.custom_items.length > 0 && form.custom_items.every((it) => (it.name || '').trim() && Number(it.net_price) > 0);
     return true;
@@ -317,6 +317,29 @@ export default function CustomQuotationBuilder() {
       <h1 className="font-display text-3xl font-semibold text-ink-900 tracking-tight mb-2">{editing ? 'Editar cotización a medida' : 'Cotización a medida'}</h1>
       <p className="text-ink-500 mb-6">Arma una cotización desde cero: define hospedajes, traslados, tours y extras con su unidad de cobro. El precio público y la comisión se calculan automáticamente.</p>
 
+      {/* Type selector (paridad con los otros flujos) */}
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-6 max-w-3xl">
+        <button type="button" onClick={() => !editing && navigate('/app/quotations/new')} disabled={editing}
+          className={`rounded-xl border p-4 text-left transition-all border-ink-100 hover:border-brand-300 ${editing ? 'opacity-60 cursor-not-allowed' : ''}`}
+          data-testid="type-paquete">
+          <Package className="w-5 h-5 text-brand-500 mb-1" />
+          <p className="font-semibold text-ink-900">Paquete armado</p>
+          <p className="text-xs text-ink-500">Hospedaje + itinerario con motor de precios.</p>
+        </button>
+        <button type="button" onClick={() => !editing && navigate('/app/quotations/new?type=servicios')} disabled={editing}
+          className={`rounded-xl border p-4 text-left transition-all border-ink-100 hover:border-brand-300 ${editing ? 'opacity-60 cursor-not-allowed' : ''}`}
+          data-testid="type-servicios">
+          <Sparkles className="w-5 h-5 text-brand-500 mb-1" />
+          <p className="font-semibold text-ink-900">Servicios a la carta</p>
+          <p className="text-xs text-ink-500">Tours, traslados y extras sin paquete base.</p>
+        </button>
+        <button type="button" disabled className="rounded-xl border p-4 text-left border-brand-500 bg-brand-50" data-testid="type-personalizado">
+          <Wand2 className="w-5 h-5 text-amber-600 mb-1" />
+          <p className="font-semibold text-ink-900">Programa personalizado</p>
+          <p className="text-xs text-ink-500">Cotización a medida desde cero, sin catálogo.</p>
+        </button>
+      </div>
+
       {/* Stepper */}
       <div className="grid gap-2 mb-8" style={{ gridTemplateColumns: `repeat(${STEPS.length}, minmax(0, 1fr))` }}>
         {STEPS.map((s, i) => (
@@ -355,8 +378,19 @@ export default function CustomQuotationBuilder() {
                 <button className="btn-primary" onClick={handleCreateClient} disabled={!newClient.name} data-testid="custom-save-new-client">Guardar cliente</button>
               </div>
             )}
+            {!editing && clients.length > 0 && (
+              <div className="relative" data-testid="custom-client-search-wrap">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-ink-400" />
+                <input className="input-field pl-10" placeholder="Buscar cliente por nombre, empresa o correo…"
+                  value={clientSearch} onChange={(e) => setClientSearch(e.target.value)} data-testid="custom-client-search-input" />
+              </div>
+            )}
             <div className="grid md:grid-cols-2 gap-3">
-              {sortByFavorite(clients).map((c) => (
+              {sortByFavorite(clients.filter((c) => {
+                const s = clientSearch.trim().toLowerCase();
+                if (!s) return true;
+                return [c.name, c.email, c.phone, c.channel].some((v) => (v || '').toLowerCase().includes(s));
+              })).map((c) => (
                 <div key={c.id} className={`relative text-left rounded-xl border p-4 transition-all ${form.client_id === c.id ? 'border-brand-500 bg-brand-50' : 'border-ink-100 hover:border-brand-300'} ${editing && form.client_id !== c.id ? 'hidden' : ''}`}>
                   <button type="button" onClick={() => toggleFavorite(c)} title={c.is_favorite ? 'Quitar de favoritos' : 'Marcar como favorito'} className={`absolute top-3 right-3 ${c.is_favorite ? 'text-amber-500' : 'text-ink-300 hover:text-amber-500'}`} data-testid={`custom-fav-client-${c.id}`}>
                     <Star className="w-4 h-4" fill={c.is_favorite ? 'currentColor' : 'none'} />
@@ -370,32 +404,10 @@ export default function CustomQuotationBuilder() {
               ))}
               {clients.length === 0 && <p className="text-ink-400 text-sm">No hay clientes. Crea uno.</p>}
             </div>
-            {/* Empresa con ejecutivos (nivel 2): elegir ejecutivo + turista */}
-            {client && (client.executives || []).length > 0 && (
-              <div className="grid md:grid-cols-2 gap-4 pt-4 border-t border-ink-100" data-testid="custom-executive-block">
-                <div className="rounded-xl border border-ink-100 p-4 space-y-3">
-                  <p className="font-semibold text-ink-900 flex items-center gap-2"><Briefcase className="w-4 h-4 text-brand-500" /> Ejecutivo de {client.name}</p>
-                  <div className="space-y-2" data-testid="custom-executive-options">
-                    {client.executives.map((ex) => (
-                      <button key={ex.id} type="button" onClick={() => selectExecutive(ex)} data-testid={`custom-executive-option-${ex.id}`}
-                        className={`w-full text-left rounded-xl border p-3 transition-all ${form.executive_id === ex.id ? 'border-brand-500 bg-brand-50' : 'border-ink-100 hover:border-brand-300'}`}>
-                        <p className="font-medium text-ink-900">{ex.name || 'Sin nombre'}</p>
-                        <p className="text-xs text-ink-500">{[ex.phone, ex.email].filter(Boolean).join(' · ') || '—'}</p>
-                      </button>
-                    ))}
-                  </div>
-                  <p className="text-xs text-ink-400">En el PDF y el enlace: <b>{client.name}</b> + el ejecutivo seleccionado (teléfono y correo).</p>
-                </div>
-                <div className="rounded-xl border border-ink-100 p-4 space-y-3">
-                  <p className="font-semibold text-ink-900 flex items-center gap-2"><Users className="w-4 h-4 text-brand-500" /> Cliente final / Turista</p>
-                  <div><label className="label-text">Nombre completo</label><input className="input-field" value={form.contacts.traveler.name} onChange={(e) => setContact('traveler', 'name', e.target.value)} data-testid="custom-contact-traveler-name" /></div>
-                  <div><label className="label-text">Teléfono directo</label><input className="input-field" value={form.contacts.traveler.phone} onChange={(e) => setContact('traveler', 'phone', e.target.value)} data-testid="custom-contact-traveler-phone" /></div>
-                </div>
-              </div>
-            )}
+            {/* La selección de ejecutivo se movió a su propio paso (cur === 'executive'). */}
 
             {/* Agencia + turista para B2B (empresas sin ejecutivos / legacy) */}
-            {isB2B && !(client && (client.executives || []).length > 0) && (
+            {isB2B && !hasExecs && (
               <div className="grid md:grid-cols-2 gap-4 pt-4 border-t border-ink-100" data-testid="custom-contacts-block">
                 <div className="rounded-xl border border-ink-100 p-4 space-y-3">
                   <p className="font-semibold text-ink-900 flex items-center gap-2"><Briefcase className="w-4 h-4 text-brand-500" /> Agencia / Vendedor</p>
@@ -414,6 +426,33 @@ export default function CustomQuotationBuilder() {
                 </div>
               </div>
             )}
+          </div>
+        )}
+
+        {/* Step: Executive (empresas con ejecutivos) */}
+        {cur === 'executive' && hasExecs && (
+          <div className="space-y-4" data-testid="custom-step-executive-panel">
+            <h2 className="font-display text-xl font-semibold text-ink-900">Ejecutivo y pasajero</h2>
+            <div className="grid md:grid-cols-2 gap-4">
+              <div className="rounded-xl border border-ink-100 p-4 space-y-3" data-testid="custom-executive-block">
+                <p className="font-semibold text-ink-900 flex items-center gap-2"><Briefcase className="w-4 h-4 text-brand-500" /> Ejecutivo de {client.name}</p>
+                <div className="space-y-2" data-testid="custom-executive-options">
+                  {client.executives.map((ex) => (
+                    <button key={ex.id} type="button" onClick={() => selectExecutive(ex)} data-testid={`custom-executive-option-${ex.id}`}
+                      className={`w-full text-left rounded-xl border p-3 transition-all ${form.executive_id === ex.id ? 'border-brand-500 bg-brand-50' : 'border-ink-100 hover:border-brand-300'}`}>
+                      <p className="font-medium text-ink-900">{ex.name || 'Sin nombre'}</p>
+                      <p className="text-xs text-ink-500">{[ex.phone, ex.email].filter(Boolean).join(' · ') || '—'}</p>
+                    </button>
+                  ))}
+                </div>
+                <p className="text-xs text-ink-400">En el PDF y el enlace: <b>{client.name}</b> + el ejecutivo seleccionado (teléfono y correo).</p>
+              </div>
+              <div className="rounded-xl border border-ink-100 p-4 space-y-3">
+                <p className="font-semibold text-ink-900 flex items-center gap-2"><Users className="w-4 h-4 text-brand-500" /> Cliente final / Turista</p>
+                <div><label className="label-text">Nombre completo</label><input className="input-field" value={form.contacts.traveler.name} onChange={(e) => setContact('traveler', 'name', e.target.value)} data-testid="custom-contact-traveler-name" /></div>
+                <div><label className="label-text">Teléfono directo</label><input className="input-field" value={form.contacts.traveler.phone} onChange={(e) => setContact('traveler', 'phone', e.target.value)} data-testid="custom-contact-traveler-phone" /></div>
+              </div>
+            </div>
           </div>
         )}
 

@@ -14,7 +14,7 @@ const DAYS = ['Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb', 'Dom'];
 const uid = () => (crypto?.randomUUID ? crypto.randomUUID() : `id-${Date.now()}-${Math.random()}`);
 
 const EMPTY_PKG = {
-  code: '', name: '', nights: 3, description: '', image_url: '', status: 'active',
+  code: '', name: '', nights: 3, description: '', image_url: '', status: 'active', is_private: false,
   allowed_start_days: [], includes: [], excludes: [], itinerary: [], seasons: [], hotels: [],
   inclusions: { arrival_transfer: false, departure_transfer: false, lodging: false, tours: false, venue_access: false, extras: '' },
 };
@@ -163,6 +163,13 @@ export default function PackageEditor() {
               <select className="input-field" value={pkg.status} onChange={(e) => set('status', e.target.value)}><option value="active">Activo</option><option value="inactive">Inactivo</option></select>
             </div>
           </div>
+          <label className="flex items-center gap-3 rounded-xl border border-ink-100 p-3 cursor-pointer" data-testid="pkg-private-toggle">
+            <input type="checkbox" className="w-4 h-4 accent-brand-500" checked={!!pkg.is_private} onChange={(e) => set('is_private', e.target.checked)} data-testid="pkg-private-checkbox" />
+            <span>
+              <span className="block text-sm font-medium text-ink-900">Paquete privado</span>
+              <span className="block text-[11px] text-ink-400">No aparece en el catálogo público; sí está disponible al cotizar internamente.</span>
+            </span>
+          </label>
           <div><label className="label-text">Descripción</label><textarea rows="3" className="input-field" value={pkg.description} onChange={(e) => set('description', e.target.value)} data-testid="pkg-desc" /></div>
           <div>
             <label className="label-text">Imagen del paquete (enlace público)</label>

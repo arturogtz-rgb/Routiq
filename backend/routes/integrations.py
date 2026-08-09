@@ -98,6 +98,8 @@ async def update_my_integrations(payload: CompanyIntegrationsUpdate, user: dict 
         updates["deposit_percent"] = float(data["deposit_percent"])
     if "card_fee_percent" in data and data["card_fee_percent"] is not None:
         updates["card_fee_percent"] = float(data["card_fee_percent"])
+    if "internal_payment_digest" in data and data["internal_payment_digest"] is not None:
+        updates["internal_payment_digest"] = bool(data["internal_payment_digest"])
     if "notify_email" in data:
         val = (data["notify_email"] or "").strip()
         if val and not EMAIL_RE.match(val):

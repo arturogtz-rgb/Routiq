@@ -46,5 +46,13 @@ export const PaymentSettings = ({ integ, setInteg, clearStripeSecret }) => (
         onChange={(e) => setInteg((s) => ({ ...s, card_fee_percent: +e.target.value }))} data-testid="card-fee-percent-input" />
       <p className="text-xs text-ink-400 mt-1">Recargo por comisión de Stripe (default 4.5%). Se activa por reserva y solo aplica a pagos con tarjeta, nunca en transferencia. El ejecutivo puede ajustar el % en cada reserva.</p>
     </div>
+    <label className="flex items-center gap-3 rounded-xl border border-ink-100 p-3 cursor-pointer" data-testid="internal-digest-toggle">
+      <input type="checkbox" className="w-4 h-4 accent-brand-500" checked={!!integ.internal_payment_digest}
+        onChange={(e) => setInteg((s) => ({ ...s, internal_payment_digest: e.target.checked }))} data-testid="internal-digest-checkbox" />
+      <span>
+        <span className="block text-sm font-medium text-ink-900">Resumen interno diario de reservas por cobrar</span>
+        <span className="block text-[11px] text-ink-400">Envía a cada ejecutivo un correo INTERNO (nunca al cliente) con sus reservas aceptadas sin pago, una vez al día. Desactivado por defecto.</span>
+      </span>
+    </label>
   </div>
 );

@@ -175,7 +175,9 @@ export default function Packages() {
                 <span className="pill bg-mint-100 text-emerald-700">{p.nights} noches</span>
               </div>
             </div>
-            <h3 className="font-display font-semibold text-lg text-ink-900 leading-tight">{p.name}</h3>
+            <h3 className="font-display font-semibold text-lg text-ink-900 leading-tight">{p.name}
+              {p.is_private && <span className="ml-2 pill bg-ink-100 text-ink-600 text-[10px] align-middle" data-testid={`package-private-badge-${p.code}`}>Privado</span>}
+            </h3>
             <p className="text-sm text-ink-500 mt-2 line-clamp-3 flex-1">{p.description}</p>
             <div className="mt-4 space-y-1.5 text-sm text-ink-700">
               <div className="flex items-center gap-2"><MapPin className="w-4 h-4 text-brand-500" /> {p.hotels?.length || 0} hoteles disponibles</div>

@@ -2,6 +2,7 @@
 public-link management and AI assistant endpoints."""
 import io
 import logging
+import os
 from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, Request
@@ -239,6 +240,26 @@ async def create_quotation(payload: QuotationCreate, user: dict = Depends(requir
     }
     await db.quotations.insert_one(dict(doc))
     return doc
+
+
+class NotesUpdate(BaseModel):
+    notes: str = ""
+
+
+@router.patch("/quotations/{quotation_id}/notes")
+async def update_quotation_notes(quotation_id: str, payload: NotesUpdate, user: dict = Depends(require_tenant)):
+    """Edición rápida en línea de las Notas internas (Iter 5 punto 2), sin abrir el modo Editar."""
+    db = get_db()
+    q = await db.quotations.find_one({"id": quotation_id, "tenant_id": user["tenant_id"]}, {"_id": 0})
+    if not q:
+        raise HTTPException(status_code=404, detail="Cotización no encontrada")
+    notes = (payload.notes or "").strip()
+    await db.quotations.update_one(
+        {"id": quotation_id, "tenant_id": user["tenant_id"]},
+        {"$set": {"notes": notes, "last_activity_at": now_iso()}},
+    )
+    await _append_history(db, quotation_id, user, "notes", "Actualizó las notas internas")
+    return {"ok": True, "notes": notes}
 
 
 @router.patch("/quotations/{quotation_id}/state")
@@ -615,10 +636,29 @@ async def _run_follow_up(quotation_id: str, tenant_id: str, kind: str):
     try:
         msg = await ai_service.follow_up_message(q, kind, context_note, chat_excerpt,
                                                  pack, client, tenant_id=tenant_id)
+        if kind == "payment":
+            final_total = q.get("final_total")
+            if final_total is None:
+                final_total = q.get("total", 0)
+            amount_due = round(max(0.0, final_total - (q.get("amount_paid", 0) or 0)), 2)
+            token = (q.get("public_link") or {}).get("token")
+            base = (q.get("public_link") or {}).get("base_url") or os.environ.get("PUBLIC_BASE_URL", "")
+            link = f"{base.rstrip('/')}/q/{token}" if (base and token) else ""
+            extra = f"\n\nSaldo pendiente: ${amount_due:,.2f} {q.get('currency', 'MXN')}"
+            if link:
+                extra += f"\nPagar ahora: {link}"
+            msg = (msg or "").rstrip() + extra
         return {"message": msg, "context": context_note}
     except Exception as e:
         log.exception("AI follow-up (%s) failed", kind)
         raise HTTPException(status_code=503, detail=f"IA no disponible: {e}")
+
+
+@router.post("/ai/quotations/{quotation_id}/follow-up-payment")
+async def ai_follow_up_payment(quotation_id: str, user: dict = Depends(require_tenant)):
+    """Recordatorio de pago MANUAL (Iter 5): el ejecutivo lo redacta/edita y envía.
+    Nunca se envía automáticamente al cliente."""
+    return await _run_follow_up(quotation_id, user["tenant_id"], "payment")
 
 
 @router.post("/ai/quotations/{quotation_id}/follow-up-prepay")

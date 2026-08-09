@@ -141,6 +141,7 @@ class CompanyIntegrationsUpdate(BaseModel):
     base_currency: Optional[Literal["MXN", "USD"]] = None
     deposit_percent: Optional[float] = Field(default=None, ge=1, le=100)
     card_fee_percent: Optional[float] = Field(default=None, ge=0, le=20)  # comisión bancaria (tarjeta/Stripe), default 4.5
+    internal_payment_digest: Optional[bool] = None  # resumen interno diario al ejecutivo (Iter 5); NUNCA al cliente
     notify_email: Optional[str] = None
     # Bank transfer (Opción B de pago) — datos mostrados al cliente
     bank_enabled: Optional[bool] = None
@@ -283,6 +284,7 @@ class PackageCreate(BaseModel):
     season_end: Optional[str] = None
     allowed_start_days: List[int] = []  # 0=Mon .. 6=Sun; empty => any day
     special_departure_dates: List[str] = []  # ISO dates with fixed departures
+    is_private: bool = False  # oculto del catálogo público; visible solo al cotizar internamente
     status: str = "active"
 
 

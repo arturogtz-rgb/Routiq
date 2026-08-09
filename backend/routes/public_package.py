@@ -39,7 +39,7 @@ async def public_package(slug: str, code: str):
     if not company:
         raise HTTPException(status_code=404, detail="Empresa no encontrada")
     pack = await db.packages.find_one({"tenant_id": company["id"], "code": code}, {"_id": 0})
-    if not pack or pack.get("status") == "inactive":
+    if not pack or pack.get("status") == "inactive" or pack.get("is_private"):
         raise HTTPException(status_code=404, detail="Paquete no disponible")
     # Record a public view event for catalog analytics (best-effort, never blocks).
     try:
@@ -92,7 +92,7 @@ async def request_package(slug: str, code: str, payload: PackageRequestInput):
     if not company:
         raise HTTPException(status_code=404, detail="Empresa no encontrada")
     pack = await db.packages.find_one({"tenant_id": company["id"], "code": code}, {"_id": 0})
-    if not pack:
+    if not pack or pack.get("is_private"):
         raise HTTPException(status_code=404, detail="Paquete no disponible")
     lead = {
         "id": new_id(), "tenant_id": company["id"],
@@ -133,7 +133,7 @@ async def public_company_catalog(slug: str):
     if not company or company.get("status") == "suspended":
         raise HTTPException(status_code=404, detail="Empresa no encontrada")
     packs = await db.packages.find(
-        {"tenant_id": company["id"], "status": {"$ne": "inactive"}}, {"_id": 0}
+        {"tenant_id": company["id"], "status": {"$ne": "inactive"}, "is_private": {"$ne": True}}, {"_id": 0}
     ).sort("created_at", -1).to_list(500)
     services_count = await db.services.count_documents(
         {"tenant_id": company["id"], "status": {"$ne": "inactive"}})
