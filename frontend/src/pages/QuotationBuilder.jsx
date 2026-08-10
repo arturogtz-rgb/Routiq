@@ -323,7 +323,15 @@ export default function QuotationBuilder() {
     ...f, custom_items: [...(f.custom_items || []), { category: 'extra', name: '', description: '', net_price: 0, price_type: 'neto', unit: 'per_person', qty: 0, service_date: '', start_time: '', end_time: '' }],
   }));
   const updateConcept = (idx, patch) => setForm((f) => ({
-    ...f, custom_items: f.custom_items.map((it, i) => i === idx ? { ...it, ...patch } : it),
+    ...f, custom_items: f.custom_items.map((it, i) => {
+      if (i !== idx) return it;
+      const next = { ...it, ...patch };
+      if (patch.category && patch.category !== it.category) {
+        if (patch.category === 'hospedaje') { next.unit = 'per_night'; if (!next.ocupacion) next.ocupacion = 'doble'; }
+        else { next.ocupacion = null; if (it.unit === 'per_night') next.unit = 'per_person'; }
+      }
+      return next;
+    }),
   }));
   const removeConcept = (idx) => setForm((f) => ({ ...f, custom_items: f.custom_items.filter((_, i) => i !== idx) }));
 
@@ -376,6 +384,8 @@ export default function QuotationBuilder() {
       net_price: Number(it.net_price) || 0, price_type: it.price_type || 'neto',
       unit: it.unit || 'per_group', qty: Number(it.qty) || 0,
       service_date: it.service_date || '', start_time: it.start_time || '', end_time: it.end_time || '',
+      checkin: it.checkin || '', checkout: it.checkout || '', nights: Number(it.nights) || 0,
+      ocupacion: it.category === 'hospedaje' ? (it.ocupacion || 'doble') : null,
     }));
     try {
       const contacts = (isB2B || ((client?.executives || []).length > 0)) ? form.contacts : null;
@@ -881,6 +891,23 @@ export default function QuotationBuilder() {
                         className={`flex-1 rounded-lg border px-3 py-2 text-xs font-medium ${it.price_type === 'publico' ? 'border-emerald-500 bg-mint-100 text-emerald-700' : 'border-ink-100 text-ink-500'}`} data-testid={`concept-type-publico-${idx}`}>Precio público</button>
                     </div>
                     <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+                      <div><label className="label-text text-xs">Categoría</label>
+                        <select className="input-field" value={it.category || 'extra'} onChange={(e) => updateConcept(idx, { category: e.target.value })} data-testid={`concept-category-${idx}`}>
+                          <option value="extra">Extra</option>
+                          <option value="hospedaje">Hospedaje</option>
+                          <option value="tour">Tour</option>
+                          <option value="traslado">Traslado</option>
+                          <option value="acceso">Acceso</option>
+                        </select></div>
+                      {it.category === 'hospedaje' && (
+                        <div><label className="label-text text-xs">Ocupación</label>
+                          <select className="input-field" value={it.ocupacion || 'doble'} onChange={(e) => updateConcept(idx, { ocupacion: e.target.value })} data-testid={`concept-ocupacion-${idx}`}>
+                            <option value="sencilla">Sencilla</option>
+                            <option value="doble">Doble</option>
+                            <option value="triple">Triple</option>
+                            <option value="cuadruple">Cuádruple</option>
+                          </select></div>
+                      )}
                       <div><label className="label-text text-xs">{(it.price_type || 'neto') === 'publico' ? 'Precio público' : 'Tarifa neta'}</label>
                         <input type="number" min="0" step="0.01" className="input-field" value={it.net_price} onChange={(e) => updateConcept(idx, { net_price: +e.target.value || 0 })} data-testid={`concept-price-${idx}`} /></div>
                       <div><label className="label-text text-xs">Unidad</label>
@@ -968,6 +995,23 @@ export default function QuotationBuilder() {
                         className={`flex-1 rounded-lg border px-3 py-2 text-xs font-medium ${it.price_type === 'publico' ? 'border-emerald-500 bg-mint-100 text-emerald-700' : 'border-ink-100 text-ink-500'}`} data-testid={`concept-type-publico-${idx}`}>Precio público</button>
                     </div>
                     <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+                      <div><label className="label-text text-xs">Categoría</label>
+                        <select className="input-field" value={it.category || 'extra'} onChange={(e) => updateConcept(idx, { category: e.target.value })} data-testid={`concept-category-${idx}`}>
+                          <option value="extra">Extra</option>
+                          <option value="hospedaje">Hospedaje</option>
+                          <option value="tour">Tour</option>
+                          <option value="traslado">Traslado</option>
+                          <option value="acceso">Acceso</option>
+                        </select></div>
+                      {it.category === 'hospedaje' && (
+                        <div><label className="label-text text-xs">Ocupación</label>
+                          <select className="input-field" value={it.ocupacion || 'doble'} onChange={(e) => updateConcept(idx, { ocupacion: e.target.value })} data-testid={`concept-ocupacion-${idx}`}>
+                            <option value="sencilla">Sencilla</option>
+                            <option value="doble">Doble</option>
+                            <option value="triple">Triple</option>
+                            <option value="cuadruple">Cuádruple</option>
+                          </select></div>
+                      )}
                       <div><label className="label-text text-xs">{(it.price_type || 'neto') === 'publico' ? 'Precio público' : 'Tarifa neta'}</label>
                         <input type="number" min="0" step="0.01" className="input-field" value={it.net_price} onChange={(e) => updateConcept(idx, { net_price: +e.target.value || 0 })} data-testid={`concept-price-${idx}`} /></div>
                       <div><label className="label-text text-xs">Unidad</label>

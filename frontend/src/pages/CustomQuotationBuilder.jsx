@@ -103,7 +103,7 @@ export default function CustomQuotationBuilder() {
       await api.post('/templates', {
         name: tplName.trim(),
         custom_title: form.custom_title.trim(),
-        custom_items: form.custom_items.map((it) => ({ category: it.category, name: it.name, description: it.description || '', net_price: Number(it.net_price) || 0, price_type: it.price_type || 'neto', unit: it.unit, qty: Number(it.qty) || 0 })),
+        custom_items: form.custom_items.map((it) => ({ category: it.category, name: it.name, description: it.description || '', net_price: Number(it.net_price) || 0, price_type: it.price_type || 'neto', unit: it.unit, qty: Number(it.qty) || 0, ocupacion: it.category === 'hospedaje' ? (it.ocupacion || 'doble') : null })),
         custom_itinerary: form.custom_itinerary.map((d, i) => ({ day: i + 1, title: d.title || '', description: d.description || '' })),
         custom_includes: form.custom_includes.filter((x) => (x || '').trim()),
         custom_excludes: form.custom_excludes.filter((x) => (x || '').trim()),
@@ -217,6 +217,7 @@ export default function CustomQuotationBuilder() {
       category, name: '', description: '', net_price: 0, price_type: 'neto',
       unit: category === 'hospedaje' ? 'per_night' : 'per_person',
       qty: category === 'hospedaje' ? 1 : defaultQty('per_person'),
+      ocupacion: category === 'hospedaje' ? 'doble' : null,
       service_date: '', start_time: '', end_time: '', checkin: '', checkout: '', nights: 0,
     }],
   }));
@@ -226,8 +227,8 @@ export default function CustomQuotationBuilder() {
       let next = { ...it, ...patch };
       // Cambio de categoría: ajustar unidad por defecto y limpiar campos no aplicables.
       if (patch.category && patch.category !== it.category) {
-        if (patch.category === 'hospedaje') { next.unit = 'per_night'; next.start_time = ''; next.end_time = ''; }
-        else { next.checkin = ''; next.checkout = ''; next.nights = 0; if (it.unit === 'per_night') next.unit = 'per_person'; }
+        if (patch.category === 'hospedaje') { next.unit = 'per_night'; next.start_time = ''; next.end_time = ''; if (!next.ocupacion) next.ocupacion = 'doble'; }
+        else { next.checkin = ''; next.checkout = ''; next.nights = 0; next.ocupacion = null; if (it.unit === 'per_night') next.unit = 'per_person'; }
         if (patch.category === 'tour' || patch.category === 'acceso') next.end_time = '';
         if (patch.category === 'acceso') next.start_time = '';
       }
@@ -284,6 +285,7 @@ export default function CustomQuotationBuilder() {
           net_price: Number(it.net_price) || 0, price_type: it.price_type || 'neto', unit: it.unit, qty: Number(it.qty) || 0,
           service_date: it.service_date || '', start_time: it.start_time || '', end_time: it.end_time || '',
           checkin: it.checkin || '', checkout: it.checkout || '', nights: Number(it.nights) || 0,
+          ocupacion: it.category === 'hospedaje' ? (it.ocupacion || 'doble') : null,
         })),
         custom_itinerary: form.custom_itinerary.map((d, i) => ({ day: i + 1, title: d.title || '', description: d.description || '' })),
         custom_includes: form.custom_includes.filter((x) => (x || '').trim()),

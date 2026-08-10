@@ -43,11 +43,34 @@ def build_per_person_breakdown(q: dict) -> dict | None:
     pax = q.get("pax") or {}
     menores_pax = int(pax.get("menores", 0) or 0)
 
+    # Ocupación de conceptos custom de hospedaje (Programa personalizado / Servicios a la
+    # carta): pricing.py no la incluye en el item, así que la tomamos del input crudo
+    # `custom_items` (mismo orden que los items kind='custom'). Datos viejos sin ocupación
+    # caen al fallback uniforme actual, sin romper cotizaciones existentes.
+    custom_inputs = [ci for ci in (q.get("custom_items") or [])]
+    _custom_idx = 0
+
     occ_groups: dict = {}  # occ -> {"pax": int, "lodging": float}
     menores_lodging = 0.0
     lodging_total = 0.0
     for it in items:
-        if it.get("kind") != "hospedaje":
+        kind = it.get("kind")
+        if kind == "custom":
+            ci = custom_inputs[_custom_idx] if _custom_idx < len(custom_inputs) else {}
+            _custom_idx += 1
+            if it.get("category") == "hospedaje":
+                occ = ci.get("ocupacion")
+                sub = float(it.get("subtotal", 0) or 0)
+                if occ in OCC_COUNT:
+                    rooms = int(it.get("qty", 1) or 1) if it.get("unit") == "per_room" else 1
+                    rooms = max(1, rooms)
+                    g = occ_groups.setdefault(occ, {"pax": 0, "lodging": 0.0})
+                    g["pax"] += OCC_COUNT[occ] * rooms
+                    g["lodging"] += sub
+                    lodging_total += sub
+                # sin ocupación: se queda en el pool compartido (fallback)
+            continue
+        if kind != "hospedaje":
             continue
         sub = float(it.get("subtotal", 0) or 0)
         if it.get("ocupacion"):

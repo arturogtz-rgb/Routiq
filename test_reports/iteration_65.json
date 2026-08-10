@@ -1,0 +1,25 @@
+{
+  "summary": "Iteration 65 — CustomItem.ocupacion + pricing_breakdown differentiation for Programa personalizado / Servicios a la carta. Backend: 9/9 new tests passed (4 unit + 4 E2E + 1 PATCH persistence). Regression on iteration_64 (paquete armado breakdown): 11/11 passed. Frontend UI: verified via Playwright that CustomQuotationBuilder edit shows data-testid='custom-item-ocupacion-{idx}' only for hospedaje conceptos (present for idx=0,1 hospedaje; ABSENT for idx=2 traslado), and the public quotation page renders the 'Precio por persona según ocupación' section with Doble and Triple rows differentiated.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {"ui_bugs": [], "integration_issues": [], "design_issues": []},
+  "test_report_links": [
+    "/app/backend/tests/test_iteration65_custom_occupancy_breakdown.py",
+    "/app/backend/tests/test_iteration64_per_person_breakdown.py",
+    "/app/test_reports/pytest/iter65.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "pricing_breakdown.py correctly reads ocupacion from raw q['custom_items'] by index alignment with items kind='custom' (pricing.py NOT touched, per spec).",
+    "Fallback for old data (custom hospedaje without ocupacion) safely falls into shared_pool → single 'Por persona' row; verified in unit test.",
+    "Rounding residual is always absorbed into the row with the most pax → sum(rows.subtotal) == final_total EXACTO al centavo in every scenario tested (doble/triple, doble/triple+menores, 7-pax rounding, personalizado with discount)."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_iteration65_custom_occupancy_breakdown.py (new)"
+  ],
+  "success_rate": {"backend": "100% (9/9 new + 11/11 regression)", "frontend": "100% (selectors present and correctly conditional; public page renders section)"},
+  "test_credentials": "admin@aventurate.mx / Demo2026!",
+  "seed_data_creation": "All TEST_ quotations created were deleted in cleanup fixtures.",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "Iteration 65 verified: CustomItem.ocupacion field persists, per_person_breakdown differentiates doble/triple in personalizado quotations, sum==total al centavo, fallback for old data still works, PDF + public link OK. Frontend selectors: custom-item-ocupacion-{idx} (CustomQuotationBuilder) and concept-ocupacion-{idx} (QuotationBuilder Conceptos adicionales) both present and correctly conditional on category=hospedaje. No regressions found in iteration_64 paquete armado flow."
+}

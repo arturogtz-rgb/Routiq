@@ -453,6 +453,7 @@ class CustomItem(BaseModel):
     checkin: str = ""        # hospedaje: fecha de check-in (ISO)
     checkout: str = ""       # hospedaje: fecha de check-out (ISO)
     nights: int = Field(default=0, ge=0)  # hospedaje: noches (auto = checkout - checkin)
+    ocupacion: Optional[Literal["sencilla", "doble", "triple", "cuadruple"]] = None  # solo hospedaje: tipo de habitación para el desglose por persona
 
 
 class CustomDay(BaseModel):

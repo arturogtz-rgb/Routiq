@@ -44,7 +44,15 @@ export function CustomItemCard({ it, idx, currency, updateItem, removeItem, unit
         </div>
       </div>
       {it.category === 'hospedaje' ? (
-        <div className="grid md:grid-cols-3 gap-3 mt-3" data-testid={`custom-item-lodging-${idx}`}>
+        <div className="grid md:grid-cols-4 gap-3 mt-3" data-testid={`custom-item-lodging-${idx}`}>
+          <div><label className="label-text">Ocupación</label>
+            <select className="input-field" value={it.ocupacion || 'doble'} onChange={(e) => updateItem(idx, { ocupacion: e.target.value })} data-testid={`custom-item-ocupacion-${idx}`}>
+              <option value="sencilla">Sencilla</option>
+              <option value="doble">Doble</option>
+              <option value="triple">Triple</option>
+              <option value="cuadruple">Cuádruple</option>
+            </select>
+          </div>
           <div><label className="label-text">Check-in</label><input type="date" className="input-field" value={it.checkin || ''} onChange={(e) => updateItem(idx, { checkin: e.target.value })} data-testid={`custom-item-checkin-${idx}`} /></div>
           <div><label className="label-text">Check-out</label><input type="date" className="input-field" value={it.checkout || ''} onChange={(e) => updateItem(idx, { checkout: e.target.value })} data-testid={`custom-item-checkout-${idx}`} /></div>
           <div><label className="label-text">Noches (auto)</label><input className="input-field bg-ink-50" value={it.nights || 0} readOnly disabled data-testid={`custom-item-nights-${idx}`} /></div>

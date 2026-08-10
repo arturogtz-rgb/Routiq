@@ -7,6 +7,13 @@ Plataforma SaaS PWA multi-tenant para **cotización y seguimiento turístico** p
 - **Producción: https://routiq.com.mx** ✅ (VPS Hostinger 177.7.36.75, Docker + Nginx + Let's Encrypt)
 - Iteración actual: **v2.4** (iter_24: registro de uso/costo de IA en Master + generar respaldo on-demand + revisión de seguridad pre-lanzamiento)
 
+## Bugfix/Feature iter_65 (jun-2026) — Ocupación en conceptos custom de hospedaje (COMPLETADO ✅)
+Testing: `/app/test_reports/iteration_65.json` — backend 9/9 + regresión 11/11, frontend 100%. NO se tocó `pricing.py`.
+- **Problema:** el desglose por persona (iter64) no diferenciaba ocupación en Programa personalizado / Servicios a la carta porque el hospedaje es un `CustomItem` sin campo de ocupación → caía al fallback uniforme.
+- **Fix:** (1) `CustomItem.ocupacion` (Optional Literal sencilla/doble/triple/cuadruple, solo hospedaje). (2) UI: selector de ocupación en `CustomItemCard` (Programa personalizado) y selector de Categoría+Ocupación en el bloque "Conceptos adicionales" de `QuotationBuilder` (Servicios a la carta y Paquete). (3) `pricing_breakdown.py` lee la ocupación del input crudo `q['custom_items']` (emparejado por índice con los items `kind='custom'`, ya que pricing.py no la copia al item), agrupa por ocupación y calcula pax = OCC_COUNT[occ] × rooms (rooms=qty si unit='per_room', si no 1). Datos viejos sin ocupación → fallback intacto.
+- **Validado:** en custom, Doble/persona > Triple/persona y la suma cuadra al centavo con el total (igual que en Paquete armado).
+
+
 ## Feature iter_64 (jun-2026) — Desglose "precio por persona según ocupación" (COMPLETADO ✅)
 Testing: `/app/test_reports/iteration_64.json` — backend 100% + frontend 100% (11 tests). Capa de PRESENTACIÓN, NO se tocó `pricing.py`.
 - **Qué:** checkbox "Mostrar precio por persona según ocupación" (los 3 tipos, junto al de desglose detallado). Muestra el precio/persona diferenciado por tipo de habitación (doble paga más que triple) + gran total, en ficha, PDF y enlace público (idénticos).
