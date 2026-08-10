@@ -13,6 +13,12 @@ Testing: `/app/test_reports/iteration_62.json` — 13/13 PASS (5 unit + 8 E2E). 
 - **Fix:** nuevo helper centralizado `deps._resolve_client_email(client, q) -> (email, error)`: `directo`→`client.email`; `agencia/mayorista/operador`→email del ejecutivo asignado (`quotation.executive_id`), **NUNCA** el correo general; si el ejecutivo no tiene correo o no hay `executive_id` → error específico (400), sin caer al general. Aplicado a: `send_quotation_message` (seguimiento), `send-payment` (enlace de cobro), solicitud de transferencia y `booking.py` (Confirmación de Reserva). `_client_email(db,q)` refactorizado para usarlo. Solo cambia el DESTINATARIO; el remitente (SMTP/Resend) intacto.
 - **Reportado (fuera de alcance, NO modificado):** las notificaciones INTERNAS `notify_acceptance`/`notify_payment` usan `notifications._recipient`, que prioriza `company.notify_email` (buzón general, posible CEO) antes que el ejecutivo asignado. Es interno (aviso de pago/aceptación al equipo), distinto del follow-up al cliente. Si se desea, en una próxima iteración se puede cambiar para que priorice al ejecutivo.
 
+## Bugfix iter_63 (jun-2026) — Notificación interna al ejecutivo de Routiq (COMPLETADO ✅)
+Testing: `/app/test_reports/iteration_63.json` — 16/16 PASS. NO se tocó `pricing.py`.
+- **Contexto:** segunda mitad del bug del CEO saturado (iter_62 arregló el correo EXTERNO al cliente). `notifications._recipient` enviaba las notificaciones internas de aceptación/pago a `company.notify_email` (buzón general) por defecto.
+- **Fix:** `_recipient` ahora prioriza al **ejecutivo de Routiq dueño** de la cotización — usuario del sistema `created_by` (o `assigned_to` como respaldo) → su correo. `company.notify_email` queda SOLO como fallback si no hay ejecutivo con correo, y `contact_email` como último respaldo.
+- **Distinción clave (confirmada):** notificación INTERNA → ejecutivo de Routiq (`created_by`, usuario/vendedor); follow-up EXTERNO → ejecutivo de la agencia cliente (`executive_id`, iter_62). Son funciones independientes (`_recipient` vs `_resolve_client_email`).
+
 
 ## Bugfix iter_61 (jun-2026) — Seguimientos IA fallaban en cotizaciones sin paquete (COMPLETADO ✅)
 Testing: `/app/test_reports/iteration_61.json` — 10/10 PASS. NO se tocó `pricing.py`.

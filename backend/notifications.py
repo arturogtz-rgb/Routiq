@@ -279,15 +279,18 @@ def _money(v: float, ccy: str = "MXN") -> str:
 
 
 async def _recipient(db, company: dict, q: dict) -> str:
-    # priority: company.notify_email -> assigned executive email -> contact_email
-    if company.get("notify_email"):
-        return company["notify_email"]
-    assigned = q.get("assigned_to")
-    if assigned:
-        u = await db.users.find_one({"id": assigned}, {"_id": 0, "email": 1})
-        if u and u.get("email"):
-            return u["email"]
-    return company.get("contact_email", "")
+    """Destinatario INTERNO de avisos (aceptación/pago). Va al EJECUTIVO DE ROUTIQ
+    dueño de la cotización — usuario del sistema `created_by` (o `assigned_to` como
+    respaldo) → su correo. NO va al ejecutivo de la agencia cliente (executive_id),
+    ni al buzón general por defecto. `company.notify_email` queda SOLO como fallback
+    cuando la cotización no tiene un ejecutivo con correo. Objetivo: que el CEO/gerente
+    deje de recibir la notificación de cada cotización de cada ejecutivo."""
+    for uid in (q.get("created_by"), q.get("assigned_to")):
+        if uid:
+            u = await db.users.find_one({"id": uid}, {"_id": 0, "email": 1})
+            if u and u.get("email"):
+                return u["email"]
+    return company.get("notify_email") or company.get("contact_email", "")
 
 
 async def _store_inapp(db, q: dict, kind: str, title: str, body: str):

@@ -1,0 +1,25 @@
+{
+  "summary": "Iter 63 — Validado el fix del destinatario INTERNO en notifications._recipient. Se creó test suite completa (16 tests, 100% pass) cubriendo: (1) unit tests directos sobre _recipient con FakeDB para los 4 casos del spec (created_by con email > notify_email; created_by sin email → assigned_to; sin ejecutivos → notify_email; sin notify_email → contact_email); (2) test crítico confirmando que company.notify_email es IGNORADO cuando el created_by tiene email (el bug del CEO saturado); (3) tests E2E-en-proceso con Mongo real + monkeypatch de send_email capturando el 'to' resuelto para notify_acceptance y notify_payment; (4) regresión iter62 verificando que _recipient (interno) y _resolve_client_email (externo/executive_id de agencia) son funciones distintas e independientes, y que _recipient no lee executive_id.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {"ui_bugs": [], "integration_issues": [], "design_issues": []},
+  "test_report_links": [
+    "/app/backend/tests/test_iteration63_internal_recipient.py",
+    "/app/test_reports/pytest/iter63.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "notifications._recipient (L281-293) implementación correcta y concisa: itera (created_by, assigned_to), valida user con email, y sólo cae a company.notify_email → contact_email como fallback. Cumple exactamente con el spec.",
+    "Buena separación de responsabilidades: _recipient (interno, users) vs deps._resolve_client_email (externo, client.executives[executive_id]). Confirmado que no hay cross-contamination.",
+    "notify_acceptance (L320) y notify_payment (L334) invocan _recipient correctamente antes de send_email; pricing.py NO fue tocado."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_iteration63_internal_recipient.py (nuevo)"
+  ],
+  "success_rate": {"backend": "100% (16/16)", "frontend": "N/A (backend only)"},
+  "test_credentials": "admin@aventurate.mx / Demo2026! (no usado — tests corren in-process sobre Mongo directamente)",
+  "seed_data_creation": "Test fixture crea TEST_tenant_*, TEST_creator_*, TEST_assignee_*, TEST_q_* en Mongo con cleanup automático (companies, users, quotations, notifications, push_subscriptions con prefijo TEST_).",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "test_iteration63_internal_recipient.py usa un event loop compartido (_LOOP) para evitar que motor se rompa con múltiples asyncio.run(). Si agregas tests E2E con Mongo real, reutiliza el patrón _run(coro) del archivo. Los tests están agrupados en 3 clases: TestRecipientUnit (FakeDB), TestNotifyEndToEnd (Mongo + monkeypatch send_email), TestRegressionIter62Independent.",
+  "rca of the issue": "Bug original: CEO recibía todas las notificaciones internas porque _recipient devolvía company.notify_email por default. Fix (ya aplicado por E1): _recipient ahora prioriza el usuario dueño de la cotización (created_by → assigned_to) resolviendo su email en la colección users; company.notify_email queda sólo como fallback si ningún ejecutivo tiene correo. Validado que el fix funciona en todos los caminos (unit + integración con Mongo)."
+}
