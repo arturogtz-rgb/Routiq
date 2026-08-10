@@ -1,0 +1,33 @@
+{
+  "summary": "Regresión bug follow-up IA en cotizaciones sin paquete. Verificado el fix en _quotation_brief (usa 'x or {}' para package_snapshot/dates/pax) y en _run_follow_up (AINotConfigured/AIError → 503, Exception genérica → 500). 10/10 tests pasan: unit test de _quotation_brief con package_snapshot/dates/pax=None (paquete/servicios/personalizado) + E2E de los 3 endpoints follow-up-{prepay,payment,postsale} sobre 3 quotations reales creadas (paquete, servicios, personalizado). En todos los casos 503 con detail 'IA no disponible' y NINGUNO menciona 'NoneType'. Confirmé por GET /quotations que servicios sí tiene package_snapshot=None en DB (caso exacto del bug).",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_iteration61_ai_followup_none_bug.py",
+    "/app/test_reports/pytest/iter61.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "El fix en _quotation_brief es correcto: 'q.get(k) or {}' cubre tanto ausencia como valor None. Aplicado consistentemente a package_snapshot, dates y pax.",
+    "El manejo diferenciado en _run_follow_up (routes/quotations.py L652-661) mapea correctamente AINotConfigured/AIError → 503 'IA no disponible', HTTPException se re-lanza sin modificar, y Exception genérica → 500 con log.exception. Esto evita el falso positivo de 'IA no disponible' cuando en realidad hay un bug de código.",
+    "El bloque kind=='payment' que añade saldo + link de pago (L639-650) permanece intacto y sólo se ejecuta si follow_up_message() completa exitosamente — comportamiento correcto (no testeable en preview por 503).",
+    "Sugerencia: aplicar el mismo patrón defensivo ('or {}') en otros helpers que consuman quotation dicts (ai_service.follow_up_message y siblings) para consistencia — no bloqueante."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_iteration61_ai_followup_none_bug.py (nuevo)"
+  ],
+  "success_rate": {"backend": "100%", "frontend": "N/A (backend only)"},
+  "test_credentials": "admin@aventurate.mx / Demo2026!",
+  "seed_data_creation": "Cliente TEST_ITER61_* + 3 quotations (paquete/servicios/personalizado). Cleanup automático vía fixture teardown.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "El fix del bug 'NoneType object has no attribute get' en follow-up de IA está confirmado. Test file: /app/backend/tests/test_iteration61_ai_followup_none_bug.py cubre unit + E2E de los 3 endpoints para los 3 tipos de cotización. Como la IA BYOK NO está configurada en preview, todos los follow-up responden 503 legítimo con detail 'IA no disponible: ...' — verificar SIEMPRE que el detail NO contenga 'NoneType'. Si en el futuro se configura BYOK, los tests seguirán pasando (aceptan 200 también sería trivial de añadir).",
+  "rca of the issue": "RCA: _quotation_brief usaba 'q.get(\"package_snapshot\", {}).get(...)'. Python's dict.get(k, default) sólo devuelve default cuando k NO existe. Si k existe con valor None (caso normal en cotizaciones type='servicios' donde package_snapshot es explícitamente None en DB), retorna None y el .get() encadenado explota con AttributeError 'NoneType object has no attribute get'. Mitigación: usar 'q.get(k) or {}' que cubre ambos casos (ausencia y None). Adicional: el except Exception genérico en _run_follow_up mapeaba cualquier bug de código a 503 'IA no disponible', ocultando el error real; ahora se distingue explícitamente AINotConfigured/AIError → 503 vs Exception → 500."
+}

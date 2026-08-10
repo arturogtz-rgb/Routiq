@@ -7,6 +7,12 @@ Plataforma SaaS PWA multi-tenant para **cotización y seguimiento turístico** p
 - **Producción: https://routiq.com.mx** ✅ (VPS Hostinger 177.7.36.75, Docker + Nginx + Let's Encrypt)
 - Iteración actual: **v2.4** (iter_24: registro de uso/costo de IA en Master + generar respaldo on-demand + revisión de seguridad pre-lanzamiento)
 
+## Bugfix iter_61 (jun-2026) — Seguimientos IA fallaban en cotizaciones sin paquete (COMPLETADO ✅)
+Testing: `/app/test_reports/iteration_61.json` — 10/10 PASS. NO se tocó `pricing.py`.
+- **Causa raíz:** `ai_service._quotation_brief` usaba `q.get('package_snapshot',{}).get(...)`; el default `{}` no aplica cuando la clave existe con valor `None` (normal en servicios/personalizado sin paquete) → `'NoneType' object has no attribute 'get'`. El error se disfrazaba de "IA no disponible" (503) por un `except Exception` genérico en `_run_follow_up`.
+- **Fix:** (1) blindado `_quotation_brief` con `snap = q.get('package_snapshot') or {}`, `dates = ... or {}`, `pax = ... or {}`. (2) En `_run_follow_up` (routes/quotations.py): `except (AINotConfigured, AIError)` → 503 "IA no disponible"; `except HTTPException` → re-raise; `except Exception` → `log.exception` + 500 "Error interno al generar el seguimiento" (ya no se atribuye a la IA). Afecta a los 3 seguimientos (prepay/payment/postsale) en los 3 tipos de cotización.
+
+
 ## Iteración 5 / iter_59-60 (jun-2026) — Control de seguimiento, builder y paridad de privado (COMPLETADO ✅)
 Testing: `/app/test_reports/iteration_59.json` (5/6) + `iteration_60.json` (retest 100%). NO se tocó `pricing.py` ni Paquete armado.
 - **P0 — Detener recordatorios de pago automáticos a clientes:** causa raíz del doble envío = el flag `reminder_48h_sent` se marcaba DESPUÉS de enviar (condición de carrera). Fix: **eliminado por completo el envío automático a clientes.** `reminders.run_payment_reminders` (cliente) removido; `_reminder_loop` (30min) reemplazado por `_internal_digest_loop` (24h). `POST /api/internal/run-reminders` (super_admin) ahora dispara el digest interno.

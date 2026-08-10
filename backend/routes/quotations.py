@@ -649,9 +649,16 @@ async def _run_follow_up(quotation_id: str, tenant_id: str, kind: str):
                 extra += f"\nPagar ahora: {link}"
             msg = (msg or "").rstrip() + extra
         return {"message": msg, "context": context_note}
-    except Exception as e:
-        log.exception("AI follow-up (%s) failed", kind)
+    except (ai_service.AINotConfigured, ai_service.AIError) as e:
+        # Error real de configuración/conexión con el proveedor de IA.
+        log.warning("AI follow-up (%s) unavailable: %s", kind, e)
         raise HTTPException(status_code=503, detail=f"IA no disponible: {e}")
+    except HTTPException:
+        raise
+    except Exception as e:
+        # Bug de código / error interno: NO atribuirlo a la IA.
+        log.exception("AI follow-up (%s) internal error", kind)
+        raise HTTPException(status_code=500, detail=f"Error interno al generar el seguimiento: {e}")
 
 
 @router.post("/ai/quotations/{quotation_id}/follow-up-payment")

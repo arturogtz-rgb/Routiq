@@ -173,10 +173,12 @@ def _quotation_brief(q: dict, pack: dict | None = None, client: dict | None = No
     parts = []
     if client:
         parts.append(f"Cliente: {client.get('name','?')} ({client.get('channel','directo')})")
-    parts.append(f"Paquete: {q.get('package_snapshot',{}).get('name','?')}")
+    snap = q.get('package_snapshot') or {}
+    parts.append(f"Paquete: {snap.get('name','?')}")
     parts.append(f"Hotel: {q.get('hotel_selected','?')}")
-    parts.append(f"Fechas: {q.get('dates',{}).get('start','?')} → {q.get('dates',{}).get('end','?')}")
-    pax = q.get("pax", {})
+    dates = q.get('dates') or {}
+    parts.append(f"Fechas: {dates.get('start','?')} → {dates.get('end','?')}")
+    pax = q.get("pax") or {}
     if pax.get("rooms"):
         rooms_desc = ", ".join(f"{r['count']} {r['ocupacion']}" for r in pax["rooms"])
         parts.append(f"Habitaciones: {rooms_desc}")
