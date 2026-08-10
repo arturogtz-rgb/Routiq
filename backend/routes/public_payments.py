@@ -16,6 +16,7 @@ import notifications
 from deps import (
     _append_history, _record_audit, _client_email, _bank_html,
     _resolve_stripe_key, _apply_payment_to_quotation, _reconcile_quotation_payments,
+    _resolve_client_email,
 )
 from models import PublicCheckoutRequest, ManualPaymentInput, SendPaymentInput, QuotationPaymentConfig
 from emergentintegrations.payments.stripe.checkout import StripeCheckout, CheckoutSessionRequest
@@ -397,9 +398,12 @@ async def send_payment_link(quotation_id: str, payload: SendPaymentInput, user: 
     if base:
         await db.quotations.update_one({"id": quotation_id}, {"$set": {"public_link.base_url": base}})
     company = await db.companies.find_one({"id": user["tenant_id"]}, {"_id": 0})
-    to = payload.to_email or await _client_email(db, q)
+    to = (payload.to_email or "").strip()
     if not to:
-        raise HTTPException(status_code=400, detail="No hay correo del cliente. Agrega uno en el cliente o en los contactos.")
+        cl = await db.clients.find_one({"id": q.get("client_id")}, {"_id": 0}) or {}
+        to, err = _resolve_client_email(cl, q)
+        if not to:
+            raise HTTPException(status_code=400, detail=err or "No se pudo resolver el correo del destinatario.")
     final_total = q.get("final_total")
     if final_total is None:
         final_total = q.get("total", 0)

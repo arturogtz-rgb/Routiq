@@ -12,7 +12,7 @@ from auth import require_tenant
 from models import BookingConfirmationSave, BookingSendRequest
 from pdf_generator import generate_booking_confirmation_pdf
 from notifications import send_email
-from deps import _append_history
+from deps import _append_history, _resolve_client_email
 
 router = APIRouter()
 
@@ -413,9 +413,11 @@ async def send_booking_confirmation(conf_id: str, payload: BookingSendRequest, r
         wa = f"https://wa.me/{phone}?text={quote(msg)}" if phone else f"https://wa.me/?text={quote(msg)}"
         return {"ok": True, "channel": "whatsapp", "wa_link": wa, "web_url": web_url, "pdf_url": pdf_url}
 
-    to = (payload.to or client.get("email", "") or "").strip()
+    to = (payload.to or "").strip()
     if not to:
-        raise HTTPException(status_code=400, detail="Falta el correo del destinatario.")
+        to, err = _resolve_client_email(client, q)
+        if not to:
+            raise HTTPException(status_code=400, detail=err or "Falta el correo del destinatario.")
     pdf = generate_booking_confirmation_pdf(company, q, conf, client, base_url=_base_url(request))
     html = (f"<h2>Confirmación de Reserva {conf['code']}</h2>"
             f"<p>Hola, adjuntamos tu Confirmación de Reserva con {company.get('name','')}.</p>"

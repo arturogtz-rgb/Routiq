@@ -7,6 +7,13 @@ Plataforma SaaS PWA multi-tenant para **cotización y seguimiento turístico** p
 - **Producción: https://routiq.com.mx** ✅ (VPS Hostinger 177.7.36.75, Docker + Nginx + Let's Encrypt)
 - Iteración actual: **v2.4** (iter_24: registro de uso/costo de IA en Master + generar respaldo on-demand + revisión de seguridad pre-lanzamiento)
 
+## Bugfix iter_62 (jun-2026) — Destinatario de correo al cliente según tipo (COMPLETADO ✅)
+Testing: `/app/test_reports/iteration_62.json` — 13/13 PASS (5 unit + 8 E2E). NO se tocó `pricing.py`.
+- **Causa raíz:** todos los envíos al cliente resolvían `to = client.email` (correo general/CEO). En agencias saturaba el buzón del CEO y fallaba si no había correo general (aunque los ejecutivos sí tuvieran).
+- **Fix:** nuevo helper centralizado `deps._resolve_client_email(client, q) -> (email, error)`: `directo`→`client.email`; `agencia/mayorista/operador`→email del ejecutivo asignado (`quotation.executive_id`), **NUNCA** el correo general; si el ejecutivo no tiene correo o no hay `executive_id` → error específico (400), sin caer al general. Aplicado a: `send_quotation_message` (seguimiento), `send-payment` (enlace de cobro), solicitud de transferencia y `booking.py` (Confirmación de Reserva). `_client_email(db,q)` refactorizado para usarlo. Solo cambia el DESTINATARIO; el remitente (SMTP/Resend) intacto.
+- **Reportado (fuera de alcance, NO modificado):** las notificaciones INTERNAS `notify_acceptance`/`notify_payment` usan `notifications._recipient`, que prioriza `company.notify_email` (buzón general, posible CEO) antes que el ejecutivo asignado. Es interno (aviso de pago/aceptación al equipo), distinto del follow-up al cliente. Si se desea, en una próxima iteración se puede cambiar para que priorice al ejecutivo.
+
+
 ## Bugfix iter_61 (jun-2026) — Seguimientos IA fallaban en cotizaciones sin paquete (COMPLETADO ✅)
 Testing: `/app/test_reports/iteration_61.json` — 10/10 PASS. NO se tocó `pricing.py`.
 - **Causa raíz:** `ai_service._quotation_brief` usaba `q.get('package_snapshot',{}).get(...)`; el default `{}` no aplica cuando la clave existe con valor `None` (normal en servicios/personalizado sin paquete) → `'NoneType' object has no attribute 'get'`. El error se disfrazaba de "IA no disponible" (503) por un `except Exception` genérico en `_run_follow_up`.

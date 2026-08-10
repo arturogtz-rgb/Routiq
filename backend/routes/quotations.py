@@ -21,6 +21,7 @@ from notifications import send_email
 import ai_service
 from deps import (
     _load_services_catalog, _next_quotation_code, _append_history, _record_audit, _apply_discount,
+    _resolve_client_email,
 )
 
 log = logging.getLogger("routiq")
@@ -709,9 +710,9 @@ async def send_quotation_message(quotation_id: str, payload: SendMessageInput,
         raise HTTPException(status_code=400, detail="El mensaje está vacío.")
     company = await db.companies.find_one({"id": user["tenant_id"]}, {"_id": 0}) or {}
     client = await db.clients.find_one({"id": q["client_id"], "tenant_id": user["tenant_id"]}, {"_id": 0}) or {}
-    to = (client.get("email") or "").strip()
+    to, err = _resolve_client_email(client, q)
     if not to:
-        raise HTTPException(status_code=400, detail="El cliente no tiene correo registrado.")
+        raise HTTPException(status_code=400, detail=err or "No se pudo resolver el correo del destinatario.")
     html = "".join(f"<p>{_esc_html(line)}</p>" for line in text.split("\n") if line.strip())
     sent = await send_email(company, to, f"Seguimiento · Cotización {q.get('code', '')}", html)
     if sent:

@@ -197,11 +197,36 @@ def _apply_discount(total: float, discount: dict) -> tuple[float, float]:
 # ---------------------------------------------------------------------------
 # Payment helpers
 # ---------------------------------------------------------------------------
+def _resolve_client_email(client: dict, q: dict) -> tuple[str, str]:
+    """Resuelve el destinatario del correo AL CLIENTE según el tipo de cliente (Iter 6).
+    - directo: client.email
+    - agencia/mayorista/operador: el correo del EJECUTIVO asignado a la cotización
+      (quotation.executive_id). NUNCA el client.email general (CEO/gerente).
+    Devuelve (email, error). `error` trae un mensaje humano cuando no se puede resolver.
+    Solo afecta al DESTINATARIO; el remitente (SMTP/Resend de la empresa) no se toca."""
+    client = client or {}
+    q = q or {}
+    channel = client.get("channel") or "directo"
+    if channel == "directo":
+        email = (client.get("email") or "").strip()
+        return (email, "" if email else "El cliente no tiene correo registrado.")
+    # B2B (agencia/mayorista/operador): correo del ejecutivo asignado, nunca el general.
+    exec_id = q.get("executive_id")
+    if not exec_id:
+        return ("", "No hay un ejecutivo asignado a esta cotización.")
+    ex = next((e for e in (client.get("executives") or []) if e.get("id") == exec_id), None)
+    if not ex:
+        return ("", "El ejecutivo asignado a la cotización ya no existe en el cliente.")
+    email = (ex.get("email") or "").strip()
+    return (email, "" if email else "El ejecutivo asignado no tiene correo registrado.")
+
+
 async def _client_email(db, q: dict) -> str:
-    """Best-effort recipient email for the end client of a quotation."""
-    contacts = q.get("contacts") or {}
-    cl = await db.clients.find_one({"id": q.get("client_id")}, {"_id": 0, "email": 1})
-    return (cl or {}).get("email") or contacts.get("agency", {}).get("email") or ""
+    """Best-effort recipient email para el cliente final de una cotización (Iter 6:
+    respeta el tipo de cliente vía _resolve_client_email; sin fallback al correo general)."""
+    cl = await db.clients.find_one({"id": q.get("client_id")}, {"_id": 0})
+    email, _err = _resolve_client_email(cl or {}, q)
+    return email
 
 
 def _bank_html(bank: dict, ccy: str, amount: float) -> str:

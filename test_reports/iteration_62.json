@@ -1,0 +1,34 @@
+{
+  "summary": "Iter 62 — Verified recipient email resolution centralization via _resolve_client_email(client, quotation). All 13 tests passed (5 unit + 8 E2E). Bug fix confirmed: agency/wholesale/operator clients now send to the assigned executive's email, NEVER to the general/CEO email. Errors are surfaced as HTTP 400 with specific messages when the executive has no email or no executive is assigned.",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_iteration62_recipient_resolution.py",
+    "/app/test_reports/pytest/iter62.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "deps._resolve_client_email is a clean pure helper — returns (email, error) tuple; used consistently in quotations.send_quotation_message (L713), public_payments.send_payment_link (L404), and booking.py (L418). Import wiring correct.",
+    "public_payments.request_bank_transfer (L305) uses _client_email(db,q) wrapper which delegates to _resolve_client_email — same resolution rules but does NOT raise 400 (best-effort, matches original semantics). Confirmed no fallback to general email.",
+    "Sender/company argument to send_email(...) is unchanged in all touched routes — only the recipient (to) was refactored. Sender not touched, as required.",
+    "Out-of-scope confirmed: notifications._recipient (internal notify_acceptance/notify_payment) still prioritizes company.notify_email — this was NOT modified in this iteration, as intended.",
+    "Note (informational, not a blocker): quotations create endpoint requires executive_id when client has executives, so 'agency with executives but no executive_id' scenario cannot arise at creation time — only via clients whose executives list becomes empty later, or agencies with executives=[]. E2E test covers the latter."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_iteration62_recipient_resolution.py (new)"
+  ],
+  "success_rate": {"backend": "100% (13/13)", "frontend": "N/A (backend-only)"},
+  "test_credentials": "admin@aventurate.mx / Demo2026! (from /app/memory/test_credentials.md). Note: auth uses HttpOnly cookie session, not Bearer token — /api/auth/login returns user JSON and sets cookie.",
+  "seed_data_creation": "3 TEST_ clients (TEST_ClienteDirecto, TEST_AgenciaXYZ w/ 2 executives, TEST_AgenciaSinEjec) + 4 quotations created and cleaned up in fixture teardown.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "test_iteration62_recipient_resolution.py has module-scoped fixture that logs in with cookie session and creates/tears down TEST_ prefixed clients+quotations. Reusable pattern for future recipient-related tests. Backend requires BASE=REACT_APP_BACKEND_URL env when running pytest from CLI.",
+  "rca of the issue": "Original code fell back to client.email (general/CEO mailbox) for agency/wholesale/operator clients when no explicit to_email was provided, flooding the manager/CEO inbox and failing when the general email was absent. Fix centralizes resolution in deps._resolve_client_email: directo→client.email; b2b→executive email by quotation.executive_id, NEVER the general email; explicit typed errors returned when unresolvable (no silent fallback). All customer-facing send paths (send-message, send-payment, request-transfer, booking confirmation) now use this helper."
+}
