@@ -55,6 +55,7 @@ export default function QuotationBuilder() {
     important_info: '',
     show_all_occupancies: false,
     show_price_breakdown: true,
+    show_per_person: false,
     custom_items: [],
   });
 
@@ -81,6 +82,7 @@ export default function QuotationBuilder() {
             important_info: q.important_info || '',
             show_all_occupancies: !!q.show_all_occupancies,
             show_price_breakdown: q.show_price_breakdown !== false,
+            show_per_person: !!q.show_per_person,
             custom_items: (q.custom_items || []).map((it) => ({ ...it })),
           });
         } catch (e) { setError(formatApiError(e)); }
@@ -390,6 +392,7 @@ export default function QuotationBuilder() {
           important_info: form.important_info || '',
           show_all_occupancies: !!form.show_all_occupancies,
           show_price_breakdown: !!form.show_price_breakdown,
+          show_per_person: !!form.show_per_person,
         };
         if (!isServices) {
           patch.hotel_name = form.hotel_name;
@@ -410,6 +413,7 @@ export default function QuotationBuilder() {
         important_info: form.important_info || '',
         show_all_occupancies: !!form.show_all_occupancies,
         show_price_breakdown: !!form.show_price_breakdown,
+        show_per_person: !!form.show_per_person,
         from_request: search.get('lead') || undefined,
       };
       if (isServices) {
@@ -1035,6 +1039,14 @@ export default function QuotationBuilder() {
               <span>
                 <span className="font-medium text-ink-900">Mostrar desglose detallado de precios</span>
                 <span className="block text-xs text-ink-400 mt-0.5">Activado: tabla con Fecha · Servicio · Detalle · Cant. · $ unitario · Subtotal. Desactivado: el cliente ve solo los conceptos incluidos y el Total final.</span>
+              </span>
+            </label>
+            <label className="card-surface p-4 flex items-start gap-3 cursor-pointer" data-testid="show-per-person-label">
+              <input type="checkbox" className="mt-1 h-4 w-4 accent-brand-500" checked={!!form.show_per_person}
+                onChange={(e) => setForm((f) => ({ ...f, show_per_person: e.target.checked }))} data-testid="show-per-person-checkbox" />
+              <span>
+                <span className="font-medium text-ink-900">Mostrar precio por persona según ocupación</span>
+                <span className="block text-xs text-ink-400 mt-0.5">Muestra el precio por persona diferenciado por tipo de habitación (ej. doble vs triple) más el gran total. El total siempre cuadra con el de la cotización.</span>
               </span>
             </label>
             <div className="grid md:grid-cols-2 gap-4 text-sm">

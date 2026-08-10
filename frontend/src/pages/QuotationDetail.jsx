@@ -645,6 +645,24 @@ export default function QuotationDetail() {
               <div className="flex justify-between pt-2 border-t border-ink-100 mt-2"><span className="font-display text-lg font-semibold text-ink-900">Total final</span><span className="font-display text-lg font-bold text-brand-500">{money(q.final_total != null ? q.final_total : q.total, q.currency)}</span></div>
             </div>
 
+            {q.show_per_person && q.per_person_breakdown?.rows?.length > 0 && (
+              <div className="mt-4 pt-4 border-t border-ink-100" data-testid="per-person-breakdown">
+                <p className="text-xs uppercase tracking-widest text-ink-400 font-bold mb-2">Precio por persona según ocupación</p>
+                <div className="space-y-1.5 text-sm">
+                  {q.per_person_breakdown.rows.map((r) => (
+                    <div key={r.key} className="flex justify-between" data-testid={`pp-row-${r.key}`}>
+                      <span className="text-ink-500">{r.label} · {r.pax} pax</span>
+                      <span className="text-ink-900 font-medium">{money(r.price_per_person, q.currency)} /persona</span>
+                    </div>
+                  ))}
+                  <div className="flex justify-between pt-2 border-t border-ink-100 mt-1">
+                    <span className="text-ink-700 font-semibold">Gran total ({q.per_person_breakdown.total_pax} pax)</span>
+                    <span className="text-brand-500 font-bold">{money(q.per_person_breakdown.total, q.currency)}</span>
+                  </div>
+                </div>
+              </div>
+            )}
+
             {/* Discount control */}
             <div className="mt-4 pt-4 border-t border-ink-100" data-testid="discount-control">
               <p className="text-xs uppercase tracking-widest text-ink-400 font-bold mb-2 flex items-center gap-1.5"><Tag className="w-3.5 h-3.5" /> Descuento</p>

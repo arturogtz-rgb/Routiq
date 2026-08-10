@@ -126,6 +126,9 @@ async def get_quotation(quotation_id: str, user: dict = Depends(require_tenant))
         if u:
             q["agent_name"] = u.get("name") or u.get("email") or ""
             q["agent_email"] = u.get("email") or ""
+    if q.get("show_per_person"):
+        from pricing_breakdown import build_per_person_breakdown
+        q["per_person_breakdown"] = build_per_person_breakdown(q)
     return q
 
 
@@ -231,6 +234,7 @@ async def create_quotation(payload: QuotationCreate, user: dict = Depends(requir
         "important_info": payload.important_info or "",
         "show_all_occupancies": bool(payload.show_all_occupancies),
         "show_price_breakdown": bool(payload.show_price_breakdown),
+        "show_per_person": bool(payload.show_per_person),
         "from_request": payload.from_request or None,
         "history": [{
             "at": now_iso(), "user_id": user["id"], "user_name": user.get("name", ""),

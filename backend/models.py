@@ -478,6 +478,7 @@ class QuotationCreate(BaseModel):
     important_info: str = ""  # "Información importante" — texto libre por cotización (cliente lo ve)
     show_all_occupancies: bool = False  # PDF/enlace: mostrar todas las ocupaciones disponibles (cotización abierta)
     show_price_breakdown: bool = True  # PDF/enlace: mostrar desglose detallado (columnas) vs solo conceptos + total
+    show_per_person: bool = False  # PDF/enlace: mostrar precio por persona según ocupación (presentación)
     from_request: Optional[str] = None  # lead id when created from a public catalog request
     # Custom / programa personalizado
     custom_title: str = ""
@@ -559,6 +560,7 @@ class QuotationUpdate(BaseModel):
     important_info: Optional[str] = None
     show_all_occupancies: Optional[bool] = None
     show_price_breakdown: Optional[bool] = None
+    show_per_person: Optional[bool] = None
     # Custom / programa personalizado
     custom_title: Optional[str] = None
     custom_items: Optional[List[CustomItem]] = None

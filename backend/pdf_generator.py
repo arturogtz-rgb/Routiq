@@ -483,6 +483,33 @@ def generate_quotation_pdf(company: dict, quotation: dict, package: dict, client
     ]))
     story.append(tot)
 
+    # Precio por persona según ocupación (presentación; Iter 6). Suma exacta al total.
+    if quotation.get("show_per_person"):
+        try:
+            from pricing_breakdown import build_per_person_breakdown
+            bd = build_per_person_breakdown(quotation)
+        except Exception:
+            bd = None
+        if bd and bd.get("rows"):
+            story.append(Spacer(1, 12))
+            story.append(Paragraph("Precio por persona según ocupación", s["h2"]))
+            pp_rows = [["Ocupación", "Personas", "Precio por persona", "Subtotal"]]
+            for r in bd["rows"]:
+                pp_rows.append([r["label"], str(r["pax"]), _money(r["price_per_person"], currency), _money(r["subtotal"], currency)])
+            pp_rows.append(["Gran total", str(bd["total_pax"]), "", _money(bd["total"], currency)])
+            ppt = Table(pp_rows, colWidths=[(CONTENT_W - 9.5) * cm, 2.5 * cm, 3.5 * cm, 3.5 * cm])
+            ppt.setStyle(TableStyle([
+                ("FONTSIZE", (0, 0), (-1, -1), 9),
+                ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#EAF1FA")),
+                ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
+                ("FONTNAME", (0, -1), (-1, -1), "Helvetica-Bold"),
+                ("TEXTCOLOR", (0, -1), (-1, -1), PRIMARY),
+                ("LINEABOVE", (0, -1), (-1, -1), 1, PRIMARY),
+                ("ALIGN", (1, 0), (-1, -1), "RIGHT"),
+                ("TOPPADDING", (0, 0), (-1, -1), 3), ("BOTTOMPADDING", (0, 0), (-1, -1), 3),
+            ]))
+            story.append(ppt)
+
     price_note = (quotation.get("price_note") or "").strip()
     if price_note:
         story.append(Spacer(1, 4))

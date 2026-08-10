@@ -7,6 +7,14 @@ Plataforma SaaS PWA multi-tenant para **cotización y seguimiento turístico** p
 - **Producción: https://routiq.com.mx** ✅ (VPS Hostinger 177.7.36.75, Docker + Nginx + Let's Encrypt)
 - Iteración actual: **v2.4** (iter_24: registro de uso/costo de IA en Master + generar respaldo on-demand + revisión de seguridad pre-lanzamiento)
 
+## Feature iter_64 (jun-2026) — Desglose "precio por persona según ocupación" (COMPLETADO ✅)
+Testing: `/app/test_reports/iteration_64.json` — backend 100% + frontend 100% (11 tests). Capa de PRESENTACIÓN, NO se tocó `pricing.py`.
+- **Qué:** checkbox "Mostrar precio por persona según ocupación" (los 3 tipos, junto al de desglose detallado). Muestra el precio/persona diferenciado por tipo de habitación (doble paga más que triple) + gran total, en ficha, PDF y enlace público (idénticos).
+- **Cómo (nuevo módulo `pricing_breakdown.build_per_person_breakdown(q)`):** consume los `items` ya calculados. Hospedaje por ocupación (items `kind='hospedaje'` con `ocupacion`) da el diferencial por persona; el resto (servicios de grupo/vehículo/room/night, custom, noche extra, comisión y descuento) se reparte UNIFORME por persona (÷ total pax). Sin hospedaje por ocupación (servicios/personalizado) → una sola fila "Por persona".
+- **Cuadre garantizado al centavo:** el residual de redondeo se absorbe en la fila con más pax → `sum(rows.subtotal) == final_total` exacto. Validado con el ejemplo 8 pax (2 triples + 1 doble), con menores, con redondeo sobre 7 pax, y con descuento (cuadra contra final_total).
+- **Modelo:** `show_per_person` en QuotationCreate/Update; `get_quotation` y `get_public_quotation` adjuntan `per_person_breakdown` cuando el flag está activo; PDF agrega la sección. Frontend: checkboxes `show-per-person-checkbox`/`custom-show-per-person-checkbox`, bloques `per-person-breakdown` (detalle) y `public-per-person-breakdown` (enlace).
+
+
 ## Bugfix iter_62 (jun-2026) — Destinatario de correo al cliente según tipo (COMPLETADO ✅)
 Testing: `/app/test_reports/iteration_62.json` — 13/13 PASS (5 unit + 8 E2E). NO se tocó `pricing.py`.
 - **Causa raíz:** todos los envíos al cliente resolvían `to = client.email` (correo general/CEO). En agencias saturaba el buzón del CEO y fallaba si no había correo general (aunque los ejecutivos sí tuvieran).

@@ -22,6 +22,8 @@ from models import PublicCheckoutRequest, ManualPaymentInput, SendPaymentInput, 
 from emergentintegrations.payments.stripe.checkout import StripeCheckout, CheckoutSessionRequest
 
 log = logging.getLogger("routiq")
+from pricing_breakdown import build_per_person_breakdown
+
 router = APIRouter()
 
 
@@ -92,6 +94,7 @@ async def get_public_quotation(token: str):
     other_ccy = "USD" if base_currency == "MXN" else "MXN"
     equivalent_amount = currency.convert(final_total, base_currency, other_ccy, rates) if base_currency != other_ccy else None
     total_usd = equivalent_amount if other_ccy == "USD" else None
+    q["final_total"] = round(final_total, 2)
     return {
         "quotation": {
             "code": q["code"], "type": q.get("type", "paquete"),
@@ -114,6 +117,8 @@ async def get_public_quotation(token: str):
             "exec_name": exec_name,
             "occupancy_prices": occupancy_prices,
             "show_price_breakdown": q.get("show_price_breakdown", True),
+            "show_per_person": bool(q.get("show_per_person")),
+            "per_person_breakdown": build_per_person_breakdown(q) if q.get("show_per_person") else None,
             "contacts": q.get("contacts") or None,
         },
         "company": {

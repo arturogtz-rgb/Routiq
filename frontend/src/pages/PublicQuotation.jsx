@@ -348,6 +348,23 @@ export default function PublicQuotation() {
             {q.price_note && (
               <p className="text-xs text-ink-500 italic mt-3" data-testid="public-breakdown-note">{q.price_note}</p>
             )}
+            {q.show_per_person && q.per_person_breakdown?.rows?.length > 0 && (
+              <div className="mt-5 pt-4 border-t border-ink-100" data-testid="public-per-person-breakdown">
+                <h3 className="font-display text-base font-semibold text-ink-900 mb-2">Precio por persona según ocupación</h3>
+                <div className="space-y-1.5">
+                  {q.per_person_breakdown.rows.map((r) => (
+                    <div key={r.key} className="flex items-center justify-between text-sm" data-testid={`public-pp-row-${r.key}`}>
+                      <span className="text-ink-600">{r.label} <span className="text-ink-400">· {r.pax} pax</span></span>
+                      <span className="font-medium text-ink-900">{money(r.price_per_person, q.currency)} <span className="text-ink-400 font-normal">/persona</span></span>
+                    </div>
+                  ))}
+                  <div className="flex items-center justify-between pt-1.5 border-t border-ink-100">
+                    <span className="font-semibold text-ink-900">Gran total ({q.per_person_breakdown.total_pax} pax)</span>
+                    <span className="font-display font-bold" style={{ color: primary }}>{money(q.per_person_breakdown.total, q.currency)}</span>
+                  </div>
+                </div>
+              </div>
+            )}
           </div>
         )}
 

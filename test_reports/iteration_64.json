@@ -1,0 +1,24 @@
+{
+  "summary": "Iteration 64 - Feature 'Precio por persona segun ocupacion' (presentation-only helper). Ran 11 pytest cases (6 unit + 5 e2e) all PASSING; validated exact-to-the-cent sum in multiple scenarios (8pax 2triples+1doble, rounding residual on 7 pax, custom single-row, final_total con descuento, menores). E2E: created a real package quotation with pax.rooms=[{triple:2},{doble:1}], verified GET /api/quotations/{id} returns per_person_breakdown, PATCH persists show_per_person, public GET /api/public/quotations/{token} exposes breakdown, PDF returns 200 application/pdf. Frontend UI verified: /app/quotations/{id} renders data-testid=per-person-breakdown with pp-row-triple/pp-row-doble (Triple 6pax $10,263.16 /persona; Doble 2pax $11,710.53 /persona) and public /q/{token} renders data-testid=public-per-person-breakdown with matching rows and Total final $85,000.02 MXN. Sum 6*10263.16 + 2*11710.53 = 85,000.02 = total exacto al centavo.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {"ui_bugs": [], "integration_issues": [], "design_issues": []},
+  "test_report_links": [
+    "/app/backend/tests/test_iteration64_per_person_breakdown.py",
+    "/app/test_reports/pytest/iter64.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "pricing_breakdown.py is well isolated: consumes items+total, never touches pricing.py. Contract 'sum(rows.subtotal) == total exactly' is enforced by residual absorption on the largest row - verified for rounding case (3200/7).",
+    "PATCH /api/quotations/{id} filters {k:v for ...items() if v is not None} - explicit False for show_per_person still gets persisted (since False is not None). Good.",
+    "public_payments.py builds per_person_breakdown inline every request - fine (helper is cheap). Uses final_total via helper's own final_total>total fallback. Consistent with detail endpoint."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_iteration64_per_person_breakdown.py"
+  ],
+  "success_rate": {"backend": "100%", "frontend": "100%"},
+  "test_credentials": "admin@aventurate.mx / Demo2026! (from /app/memory/test_credentials.md)",
+  "seed_data_creation": "Created 1 test quotation during pytest run (auto-deleted via session-scoped cleanup fixture). Created 1 additional quotation via CLI to smoke-test UI (deleted after test).",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Feature 'precio por persona segun ocupacion' (iter 64) fully verified end-to-end. Unit tests, backend API, public API, PDF endpoint and UI (detail + public) all working. The builder checkboxes (show-per-person-checkbox / custom-show-per-person-checkbox) exist in code but live inside the Revision step of the multi-step wizard; direct UI verification via playwright would require walking through steps - not necessary since backend confirms flag is persisted and detail/public render the breakdown correctly."
+}
