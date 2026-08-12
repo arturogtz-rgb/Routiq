@@ -22,17 +22,46 @@ def _base_url(request: Request) -> str:
 
 
 async def _executive_fields(db, q: dict, company: dict) -> dict:
-    """H1/10.4: el 'ejecutivo' real es el usuario Routiq que elaboró la cotización
-    (created_by), no el contacto de la agencia. Empresa = tenant."""
+    """Datos generales de la Confirmación: el AGENTE DE LA AGENCIA que reserva
+    (executive_id dentro del cliente), NO el vendedor de Routiq (created_by).
+    Cliente directo (sin ejecutivos): datos del cliente."""
+    client = await db.clients.find_one({"id": (q or {}).get("client_id")}, {"_id": 0}) if (q or {}).get("client_id") else None
+    client = client or {}
+    channel = client.get("channel") or "directo"
     name = email = phone = ""
-    uid = (q or {}).get("created_by")
-    if uid:
-        u = await db.users.find_one({"id": uid}, {"_id": 0, "name": 1, "email": 1, "phone": 1})
-        if u:
-            name = u.get("name") or u.get("email") or ""
-            email = u.get("email") or ""
-            phone = u.get("phone") or ""
-    return {"agent_name": name, "agent_email": email, "agent_company": (company or {}).get("name", ""), "agent_phone": phone}
+    if channel != "directo":
+        exec_id = (q or {}).get("executive_id")
+        ex = next((e for e in (client.get("executives") or []) if e.get("id") == exec_id), None)
+        if ex:
+            name, email, phone = ex.get("name", ""), ex.get("email", ""), ex.get("phone", "")
+    if not (name or email or phone):
+        name, email, phone = client.get("name", ""), client.get("email", ""), client.get("phone", "")
+    agent_company = client.get("name", "") if channel != "directo" else (company or {}).get("name", "")
+    return {"agent_name": name, "agent_email": email, "agent_company": agent_company, "agent_phone": phone}
+
+
+def _lodging_from_quotation(q: dict) -> list:
+    """Lista de hoteles esperados. Paquete: un hotel (hotel_selected + fechas globales).
+    Personalizado/Servicios: los conceptos de hospedaje de custom_items (pueden ser varios)."""
+    dates = q.get("dates") or {}
+    if q.get("hotel_selected"):
+        pax = q.get("pax") or {}
+        rooms = pax.get("rooms") or []
+        occ = rooms[0].get("ocupacion", "doble") if rooms else pax.get("ocupacion", "doble")
+        return [{
+            "hotel": q.get("hotel_selected", ""),
+            "checkin": dates.get("start", ""), "checkout": dates.get("end", ""),
+            "nights": str(q.get("nights_total", "") or ""), "room_type": OCC_LABEL.get(occ, ""),
+        }]
+    out = []
+    for ci in (q.get("custom_items") or []):
+        if ci.get("category") == "hospedaje":
+            out.append({
+                "hotel": (ci.get("name") or "").strip(),
+                "checkin": ci.get("checkin", "") or "", "checkout": ci.get("checkout", "") or "",
+                "nights": str(ci.get("nights", "") or ""), "room_type": OCC_LABEL.get(ci.get("ocupacion", ""), ""),
+            })
+    return out
 
 
 async def _ctx_for_confirmation(db, conf: dict):
@@ -99,16 +128,18 @@ async def _recompute_from_quotation(db, q: dict) -> dict:
         total_pax = int(pax.get("adultos", 0) or 0) + int(pax.get("menores", 0) or 0)
         occ = pax.get("ocupacion", "doble")
     total = q.get("final_total") if q.get("final_total") is not None else q.get("total", 0)
-    dates = q.get("dates") or {}
+    lodging = _lodging_from_quotation(q)
+    first = lodging[0] if lodging else {}
     return {
         "total_amount": total or 0,
         "price_per_person": round(total / total_pax, 2) if total_pax else 0,
         "num_persons": str(total_pax) if total_pax else "",
-        "hotel": q.get("hotel_selected", ""),
-        "checkin": dates.get("start", ""),
-        "checkout": dates.get("end", ""),
-        "nights": str(q.get("nights_total", "") or ""),
-        "room_type": OCC_LABEL.get(occ, ""),
+        "lodging": lodging,
+        "hotel": first.get("hotel", ""),
+        "checkin": first.get("checkin", ""),
+        "checkout": first.get("checkout", ""),
+        "nights": first.get("nights", ""),
+        "room_type": first.get("room_type", ""),
     }
 
 
@@ -159,11 +190,8 @@ async def get_booking_confirmation(quotation_id: str, user: dict = Depends(requi
                          "persons": str(total_pax) if total_pax else "", "observations": ""})
 
     lodging = [{
-        "hotel": q.get("hotel_selected", ""), "plan": "",
-        "checkin": dates.get("start", ""), "checkout": dates.get("end", ""),
-        "nights": str(q.get("nights_total", "") or ""), "room_type": OCC_LABEL.get(occ, ""),
-        "confirmation_number": "", "guest_name": traveler.get("name", ""),
-    }] if q.get("hotel_selected") else []
+        **h, "plan": "", "confirmation_number": "", "guest_name": traveler.get("name", ""),
+    } for h in _lodging_from_quotation(q)]
 
     company = await db.companies.find_one({"id": user["tenant_id"]}, {"_id": 0}) or {}
     ef = await _executive_fields(db, q, company)
@@ -235,15 +263,21 @@ async def refresh_booking_amounts(quotation_id: str, user: dict = Depends(requir
         "num_persons": exp["num_persons"],
         "updated_at": now_iso(),
     }
-    # Actualiza los datos de viaje del hospedaje conservando lo que el ejecutivo editó
-    # (n° de confirmación, nombre del huésped, plan).
-    lodging = [dict(r) for r in (conf.get("lodging") or [])]
-    if lodging:
-        lodging[0].update({
-            "hotel": exp["hotel"], "checkin": exp["checkin"], "checkout": exp["checkout"],
-            "nights": exp["nights"], "room_type": exp["room_type"],
+    # Sincroniza la lista de hoteles esperados conservando lo que el ejecutivo editó por
+    # fila (n° de confirmación, huésped, plan). Soporta múltiples hoteles (personalizado).
+    exp_lodging = exp.get("lodging") or []
+    old = [dict(r) for r in (conf.get("lodging") or [])]
+    new_lodging = []
+    for i, h in enumerate(exp_lodging):
+        prev = old[i] if i < len(old) else {}
+        new_lodging.append({
+            **h,
+            "plan": prev.get("plan", ""),
+            "confirmation_number": prev.get("confirmation_number", ""),
+            "guest_name": prev.get("guest_name", ""),
         })
-        updates["lodging"] = lodging
+    if new_lodging:
+        updates["lodging"] = new_lodging
     await db.booking_confirmations.update_one({"id": conf["id"]}, {"$set": updates})
     cur = f"${float(exp['total_amount'] or 0):,.2f}".rstrip("0").rstrip(".") if exp["total_amount"] else "$0"
     await _append_history(db, quotation_id, user, "confirmation_updated",

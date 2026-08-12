@@ -1,0 +1,31 @@
+{
+  "summary": "Verificación backend + inspección de fuentes frontend para 3 bugs y ajuste de formato de fecha de la Confirmación de Reserva (Iter 66). 7/7 tests backend PASAN: BUG1 (multi-hotel personalizado con 2 hoteles en prefill/_expected/refresh preservando confirmation_number/guest_name/plan), regresión paquete (sigue 1 hotel), BUG2 (agente de agencia via executive_id y cliente directo con datos del cliente; nunca created_by/Routiq), BUG3 (client_name completo en /api/public/quotations/{token}), AJUSTE4 (_fmt_date('2026-09-26')=='26/Sep/26' y PDF Confirmación contiene '01/Ene/26'/'08/Ene/26' y NO fechas crudas). PDF de cotización también genera 200.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_iteration66_multi_hotel_booking.py",
+    "/app/test_reports/pytest/iteration_66.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "backend/routes/booking.py `_lodging_from_quotation` es explícito y separa paquete (hotel_selected+dates globales) de personalizado/servicios (custom_items category='hospedaje'). Correcto.",
+    "`_executive_fields` resuelve executive_id -> client.executives; fallback a datos del cliente cuando channel='directo' o sin match. Cuando channel!=directo y el executive_id no coincide con ninguno de la lista, el fallback usa datos del CLIENTE (empresa) pero agent_company sigue siendo client.name — consistente con la intención.",
+    "refresh-amounts en booking.py preserva plan/confirmation_number/guest_name POR ÍNDICE. Si el número de hoteles en la cotización cambia (se agrega/quita) los índices se desalinean silenciosamente; considerar match por hotel name como safeguard.",
+    "Frontend BookingConfirmation.jsx línea 181-187 hace el fallback correcto: si `expected.lodging` no viene pero sí `expected.hotel` (retrocompat), construye lista de 1; y aplica prefijo 'Hotel N · ' sólo si n>1. Buena UX.",
+    "pdf_generator._fmt_date usa `_MESES_ABBR[m-1].title()` para producir 'Ene/Feb/Mar' (Title case). Consistente en cotización y confirmación."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_iteration66_multi_hotel_booking.py (nuevo)"
+  ],
+  "success_rate": {"backend": "100%", "frontend": "N/A (source inspection only)"},
+  "test_credentials": "admin@aventurate.mx / Demo2026!",
+  "seed_data_creation": "Se crean y limpian por test: clientes 'TEST_ITER66_*' (directo) o 'Mex Inca Viajes' (agencia con 1 ejecutivo) y sus cotizaciones personalizado/paquete. Cleanup en finally.",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "El endpoint para generar el enlace público es POST /api/quotations/{id}/public-link (no /publish). En /api/public/quotations/{token} el nombre completo del cliente viene en response.quotation.client_name. En PDFs (ReportLab) el contenido está comprimido; usar pdfplumber o pypdf para extraer texto — ambos están instalados. El unit válido para custom_items es 'per_person'/'per_night'/'per_room'/'per_group'/'per_day'/'per_vehicle' (NO 'per_night_per_person').",
+  "rca of the issue": "N/A — todos los fixes de la iteración 66 están correctamente implementados y validados por tests automatizados."
+}

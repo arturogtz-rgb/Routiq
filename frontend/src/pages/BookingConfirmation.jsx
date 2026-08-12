@@ -177,13 +177,19 @@ export default function BookingConfirmation() {
       out.push({ label: 'Precio por persona', from: fmtMoney(conf.price_per_person), to: fmtMoney(expected.price_per_person) });
     if (!strEq(conf.num_persons, expected.num_persons))
       out.push({ label: 'Número de personas', from: conf.num_persons || '—', to: expected.num_persons || '—' });
-    const lod = (conf.lodging || [])[0];
-    if (lod) {
-      if (!strEq(lod.hotel, expected.hotel)) out.push({ label: 'Hotel', from: lod.hotel || '—', to: expected.hotel || '—' });
-      if (!strEq(lod.checkin, expected.checkin)) out.push({ label: 'Check-in', from: lod.checkin ? formatDateEs(lod.checkin) : '—', to: expected.checkin ? formatDateEs(expected.checkin) : '—' });
-      if (!strEq(lod.checkout, expected.checkout)) out.push({ label: 'Check-out', from: lod.checkout ? formatDateEs(lod.checkout) : '—', to: expected.checkout ? formatDateEs(expected.checkout) : '—' });
-      if (!strEq(lod.nights, expected.nights)) out.push({ label: 'Noches', from: lod.nights || '—', to: expected.nights || '—' });
-      if (!strEq(lod.room_type, expected.room_type)) out.push({ label: 'Tipo de habitación', from: lod.room_type || '—', to: expected.room_type || '—' });
+    // Comparación de hospedaje soportando múltiples hoteles (personalizado/servicios).
+    const expLod = expected.lodging || (expected.hotel ? [{ hotel: expected.hotel, checkin: expected.checkin, checkout: expected.checkout, nights: expected.nights, room_type: expected.room_type }] : []);
+    const confLod = conf.lodging || [];
+    const n = Math.max(expLod.length, confLod.length);
+    for (let i = 0; i < n; i++) {
+      const lod = confLod[i] || {};
+      const exp = expLod[i] || {};
+      const pfx = n > 1 ? `Hotel ${i + 1} · ` : '';
+      if (!strEq(lod.hotel, exp.hotel)) out.push({ label: `${pfx}Hotel`, from: lod.hotel || '—', to: exp.hotel || '—' });
+      if (!strEq(lod.checkin, exp.checkin)) out.push({ label: `${pfx}Check-in`, from: lod.checkin ? formatDateEs(lod.checkin) : '—', to: exp.checkin ? formatDateEs(exp.checkin) : '—' });
+      if (!strEq(lod.checkout, exp.checkout)) out.push({ label: `${pfx}Check-out`, from: lod.checkout ? formatDateEs(lod.checkout) : '—', to: exp.checkout ? formatDateEs(exp.checkout) : '—' });
+      if (!strEq(lod.nights, exp.nights)) out.push({ label: `${pfx}Noches`, from: lod.nights || '—', to: exp.nights || '—' });
+      if (!strEq(lod.room_type, exp.room_type)) out.push({ label: `${pfx}Tipo de habitación`, from: lod.room_type || '—', to: exp.room_type || '—' });
     }
     return out;
   })();

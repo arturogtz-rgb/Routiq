@@ -134,10 +134,11 @@ _MESES_ABBR = ["ENE", "FEB", "MAR", "ABR", "MAY", "JUN", "JUL", "AGO", "SEP", "O
 
 
 def _fmt_date(iso: str) -> str:
+    """Formato compacto DD/Mmm/AA (ej. 26/Sep/26) — cabe en celdas estrechas."""
     from datetime import date as _date
     try:
         d = _date.fromisoformat((iso or "")[:10])
-        return f"{d.day:02d} {_MESES_ABBR[d.month - 1]} {d.year}"
+        return f"{d.day:02d}/{_MESES_ABBR[d.month - 1].title()}/{d.year % 100:02d}"
     except Exception:
         return iso or ""
 
@@ -699,7 +700,7 @@ def generate_booking_confirmation_pdf(company: dict, quotation: dict, confirmati
     lodging = confirmation.get("lodging") or []
     if lodging:
         story.append(Paragraph("Hospedaje", s["h2"]))
-        rows = [[x.get("hotel", ""), x.get("plan", ""), x.get("checkin", ""), x.get("checkout", ""),
+        rows = [[x.get("hotel", ""), x.get("plan", ""), _fmt_date(x.get("checkin", "")), _fmt_date(x.get("checkout", "")),
                  x.get("nights", ""), x.get("room_type", ""), x.get("confirmation_number", ""), x.get("guest_name", "")] for x in lodging]
         story.append(_grid_table(["Hotel", "Plan", "Check-in", "Check-out", "Noches", "Habitación", "N° Conf.", "Huésped"],
                                  rows, [2.6, 1.9, 1.8, 1.8, 1.1, 2.1, 2.2, 2.9]))

@@ -180,7 +180,7 @@ export default function PublicQuotation() {
           )}
           <p className="pill inline-block mb-3" style={{ background: `${primary}15`, color: primary }}>Cotización personalizada</p>
           <h1 className="font-display text-3xl md:text-5xl font-semibold text-ink-900 tracking-tight">
-            ¡Hola{q.client_name ? `, ${q.client_name.split(' ')[0]}` : ''}!<br />
+            ¡Hola{q.client_name ? `, ${q.client_name}` : ''}!<br />
             Tu viaje está casi listo. ✨
           </h1>
           <p className="text-ink-500 mt-3 text-lg">{q.package_snapshot?.name || (q.type === 'servicios' ? 'Servicios a la carta' : '')}</p>

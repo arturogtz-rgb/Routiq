@@ -7,6 +7,14 @@ Plataforma SaaS PWA multi-tenant para **cotización y seguimiento turístico** p
 - **Producción: https://routiq.com.mx** ✅ (VPS Hostinger 177.7.36.75, Docker + Nginx + Let's Encrypt)
 - Iteración actual: **v2.4** (iter_24: registro de uso/costo de IA en Master + generar respaldo on-demand + revisión de seguridad pre-lanzamiento)
 
+## Bugfix iter_66 (jun-2026) — Confirmación de Reserva multi-hotel + agente + público + fecha (COMPLETADO ✅)
+Testing: `/app/test_reports/iteration_66.json` — backend 7/7 + inspección frontend. NO se tocó `pricing.py`.
+- **BUG1 (multi-hotel):** `_recompute_from_quotation` usaba solo `hotel_selected` (vacío en personalizado/servicios) → falso desfase de hotel. Nuevo `_lodging_from_quotation(q)`: paquete → `hotel_selected` + fechas globales; personalizado/servicios → lista de hoteles desde `custom_items` category='hospedaje' (nombre, checkin, checkout, noches, room_type). `_expected.lodging` es ahora una LISTA; el prefill y `refresh-amounts` soportan varios hoteles (sincroniza por índice conservando confirmation_number/guest_name/plan). Frontend: banner compara por lista con etiquetas 'Hotel N ·'. Paquete (1 hotel) sin cambios.
+- **BUG2 (agente de agencia):** `_executive_fields` ahora resuelve el AGENTE DE LA AGENCIA (`executive_id` dentro de `client.executives`) para Datos generales de la Confirmación; cliente directo → datos del cliente. Ya NO usa `created_by`. El 'Elaboró' del PDF de COTIZACIÓN sigue con created_by (no se tocó).
+- **BUG3 (nombre público):** PublicQuotation ya no corta el nombre con `.split(' ')[0]` → muestra el nombre completo.
+- **AJUSTE4 (fecha PDF):** `_fmt_date` → formato compacto DD/Mmm/AA (26/Sep/26); la tabla de Hospedaje del PDF ahora pasa checkin/checkout por `_fmt_date` (antes crudas).
+
+
 ## Bugfix/Feature iter_65 (jun-2026) — Ocupación en conceptos custom de hospedaje (COMPLETADO ✅)
 Testing: `/app/test_reports/iteration_65.json` — backend 9/9 + regresión 11/11, frontend 100%. NO se tocó `pricing.py`.
 - **Problema:** el desglose por persona (iter64) no diferenciaba ocupación en Programa personalizado / Servicios a la carta porque el hospedaje es un `CustomItem` sin campo de ocupación → caía al fallback uniforme.
