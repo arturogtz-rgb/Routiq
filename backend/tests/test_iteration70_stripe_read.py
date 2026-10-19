@@ -195,7 +195,7 @@ async def test_d_manual_reconcile_no_amount_and_no_recredit(env):
     t = await env.db.payment_transactions.find_one({"session_id": sid})
     tp = await env.db.payment_transactions.find_one({"session_id": pending_sid})
     assert q["amount_paid"] == 1000.0 and q["payment_review"] is False
-    assert sid in q["credited_sessions"] and pending_sid in q["credited_sessions"]
+    assert sid in q["credited_sessions"] and pending_sid not in q["credited_sessions"]  # pendiente: no se absorbe un cobro futuro
     assert t["applied"] is True and t["reconciled_manually"]["by_name"] == "Admin T70"
     assert tp["payment_status"] == "reconciled" and tp["applied"] is True
     audit = await env.db.audit_log.find_one({"tenant_id": env.tid, "action": "payment_reconciled"})
@@ -215,3 +215,30 @@ async def test_e_two_paid_sessions_duplicate_warning(env):
     q = await _q(env)
     assert q["amount_paid"] == 1000.0  # solo una se acreditó; la otra quedó en revisión
     assert sorted([by[s1]["review_state"] or "", by[s2]["review_state"] or ""]) == ["", "needs_review"]
+
+
+@pytest.mark.asyncio
+async def test_reconciled_pending_later_paid_goes_to_review(env, monkeypatch):
+    """Una sesión pendiente conciliada a mano que luego se cobra NO se absorbe: queda en revisión."""
+    await env.db.quotations.update_one({"id": env.qid}, {"$set": {"amount_paid": 1000.0, "payment_status": "paid"}})
+    sid = await _txn(env)
+    env.status[sid] = ("open", "unpaid")
+    expired = []
+
+    async def expire(key, s):
+        expired.append(s)
+        raise Exception("no se pudo expirar")
+    monkeypatch.setattr(payments_core, "stripe_expire_session", expire)
+    async with _as(env.admin) as c:
+        assert (await c.post(f"/api/quotations/{env.qid}/transactions/{sid}/reconcile-manual", json={})).status_code == 200
+        assert (await c.get(f"/api/public/quotations/{env.token}/payment-status/{sid}")).json()["state"] == "closed"
+    assert expired == [sid]
+    q = await _q(env)
+    assert sid not in (q.get("credited_sessions") or [])
+    env.status[sid] = ("complete", "paid")
+    fake = {"id": "evt", "type": "checkout.session.completed", "data": {"object": {"id": sid}}}
+    async with _as(env.admin) as c:
+        assert (await c.post("/api/webhook/stripe", json=fake)).status_code == 200
+    t = await env.db.payment_transactions.find_one({"session_id": sid})
+    q = await _q(env)
+    assert q["amount_paid"] == 1000.0 and t["review_state"] == "needs_review" and q["payment_review"] is True

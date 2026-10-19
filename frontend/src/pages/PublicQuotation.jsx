@@ -17,6 +17,7 @@ function stateMessage(state, code) {
     needs_review: { type: 'processing', text: 'Recibimos tu pago; tu ejecutivo lo está revisando. No vuelvas a pagar.' },
     verification_error: { type: 'error', text: `No pudimos verificar tu pago en este momento. No vuelvas a pagar. Si ya se te hizo el cargo, avisa a tu ejecutivo con el folio ${code || ''}.`.replace(' .', '.') },
     expired: { type: 'warn', text: 'La sesión de pago expiró. Puedes intentarlo de nuevo.' },
+    closed: { type: 'warn', text: 'Este intento de pago ya fue cerrado por tu ejecutivo. Si tienes dudas, contáctalo.' },
     open: { type: 'warn', text: 'Aún no recibimos la confirmación de tu pago. Si no lo completaste, puedes intentarlo de nuevo.' },
   };
   return { ...(map[state] || map.verification_error), state };

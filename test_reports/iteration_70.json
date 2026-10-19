@@ -1,0 +1,34 @@
+{
+  "summary": "Iter 70 Stripe verification. Backend: the requested suite (iter70 read + iter69 + iter67 + iter68) passes: 63 passed, 1 skipped (real Stripe test-mode read, expected). Added a new HTTP edge-case file test_iteration70_e2e_edges.py with 7 tests, all passing; the combined total is 70 passed, 1 skipped. Frontend E2E as admin on COT-2026024 (needs_review, fully paid): the list badge row-payment-review, the payment-review-banner, stripe-txn-review and the Stripe read error text all show. Cancel in the reconcile confirm box works. Confirm with a reason shows stripe-txn-manual 'Conciliada manualmente por María González · fecha · motivo', and the reconcile button disappears. amount_paid stayed at 800. The banner and the list badge disappear. audit_log has payment_reconciled with user, date and reason. Public /q on COT-2026056 (500 of 1000 paid, partial, needs_review): data-state=needs_review with the exact message and payment-buttons hidden; checkout returns 409 with the same message; payment-status returns needs_review. Executive: sees stripe-txn-ask-admin and no reconcile button; is_admin=false; reconcile-manual returns 403 (anonymous returns 401). Duplicate warning: two paid transactions both show stripe-txn-duplicate 'Posible cobro doble: verifica un reembolso', using the local paid status because Stripe reads fail. Regression: a paid quotation's checkout returns 400 'ya está pagada'; verification_error shows the folio message on the public page and hides Pagar. All seeded data was removed and both quotations were restored from snapshot.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "POST /api/quotations/{id}/transactions/{sid}/reconcile-manual (pending/open txn)", "issue": "Reconciling a txn that is not paid sets payment_status='reconciled' and adds the sid to credited_sessions, but does not expire the Checkout Session in Stripe. If the client later pays that still-open session, verify_session marks it paid, and apply_payment_to_quotation finds the sid already in credited_sessions, returns False ('ya acreditada') and marks applied:true. The real charge is then silently absorbed: no credit, no needs_review, no duplicate warning."},
+      {"endpoint": "payments_core.reconcile_manually", "issue": "The update has no atomic guard (the filter does not include applied != true); the guard is only a read in the route beforehand. A concurrent test (4 parallel POSTs) gave 1x200 and 3x400 with one audit entry, so it is fine in practice. Adding {'applied': {'$ne': True}} to the update_one filter and checking modified_count would make it race-proof."},
+      {"endpoint": "GET /api/public/quotations/{token}/payment-status/{sid}", "issue": "A txn that was pending and then reconciled manually returns state 'paid' to the client, even though no card charge exists for that session. Low impact (only shown if the client comes back via the success_url)."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "Public quotation /q/{token}", "issues": ["Sticky total/payment card overlaps the room-option list below it (e.g. the 'Triple' row is partly hidden behind the card at 1920x1080). Pre-existing, minor."]}
+    ]
+  },
+  "test_report_links": ["/app/backend/tests/test_iteration70_e2e_edges.py", "/app/backend/tests/test_iteration70_stripe_read.py", "/app/backend/tests/test_iteration69_payments.py", "/app/test_reports/pytest/pytest_results_it70.xml"],
+  "action_items": [
+    "Optional hardening: on reconcile-manual of a non-paid txn, try stripe_expire_session first. Alternatively, if a txn with review_state 'manual' / payment_status 'reconciled' later becomes paid in Stripe, flag it needs_review or duplicate_warning instead of absorbing it silently through credited_sessions.",
+    "Optional: add an applied != true filter to the reconcile_manually update_one (atomic) and only write the audit entry when modified_count == 1."
+  ],
+  "critical_code_review_comments": [
+    "public_payments.py is 728 lines (over 700); consider splitting the executive endpoints (verify-stripe, reconcile-manual, mark-paid) into their own router.",
+    "A fully paid quotation that also has a needs_review txn returns 409 with the needs_review message (instead of 400 'ya está pagada'). This seems intentional and is acceptable.",
+    "The verify-stripe duplicate detection falls back to local payment_status when the Stripe read fails. Correct as designed, but a txn reconciled manually from pending (payment_status 'reconciled') is never counted, even if Stripe actually shows it paid while reads fail."
+  ],
+  "updated_files": ["/app/backend/tests/test_iteration70_e2e_edges.py"],
+  "success_rate": {"backend": "100%", "frontend": "100%"},
+  "seed_data_creation": "Temporary only: transactions cs_live_it70_review, cs_live_it70_pub and cs_live_it70_dup on COT-2026024 and COT-2026056, with snapshot/restore (public_link.expires_at was extended temporarily because the env date is 2026-10-19 and the links had expired). The edge test creates and deletes TEST_it70_* quotations, their transactions and their audit entries. Verified 0 leftovers.",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "The env clock is around 2026-10-19, so demo public links (expires 2026-06) are expired; extend public_link.expires_at when testing /q pages. Checkout pay_type must be 'total' or 'deposit' (allowed_pay_type 'full' maps to 'total'). The quotations list groups by month; use quotations-search to find old codes. Stripe reads with the demo key always return 'La sesión no existe en esta cuenta de Stripe' (expected). Seed/cleanup helper used: /tmp/it70_seed.py (not persisted)."
+}

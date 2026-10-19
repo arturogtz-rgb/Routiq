@@ -589,7 +589,7 @@ async def public_payment_status(token: str, session_id: str, request: Request):
         raise HTTPException(status_code=404, detail="Transacción no encontrada")
     company = await db.companies.find_one({"id": txn["tenant_id"]}, {"_id": 0}) or {}
     if txn.get("payment_status") == "reconciled":
-        state = "paid"
+        state = "closed"
     elif txn.get("payment_status") == "paid":
         res = await payments_core.apply_pending_credit(db, session_id) if txn.get("applied") is False else {"applied": True}
         state = "paid" if res.get("applied") else ("needs_review" if res.get("needs_review") else "registering")
@@ -635,6 +635,8 @@ async def stripe_webhook(request: Request):
             log.warning("stripe webhook: event without session_id (type=%s)", etype)
             return {"ok": True}
         txn = await db.payment_transactions.find_one({"session_id": sid}, {"_id": 0})
+        if txn and txn.get("payment_status") == "reconciled":
+            log.warning("stripe webhook: event for manually reconciled session_id=%s type=%s — verifying", sid, etype)
         if not txn:
             log.warning("stripe webhook: unknown session_id=%s type=%s tenant=%s — ignored", sid, etype, meta_tenant)
             return {"ok": True}
@@ -724,5 +726,8 @@ async def reconcile_manual(quotation_id: str, session_id: str, payload: ManualRe
         raise HTTPException(status_code=404, detail="Transacción no encontrada")
     if txn.get("applied") is True:
         raise HTTPException(status_code=400, detail="Esta transacción ya está aplicada o conciliada.")
-    info = await payments_core.reconcile_manually(db, txn, user, payload.reason)
+    company = await db.companies.find_one({"id": user["tenant_id"]}, {"_id": 0}) or {}
+    info = await payments_core.reconcile_manually(db, txn, user, payload.reason, payments_core.resolve_stripe_key(company))
+    if info is None:
+        raise HTTPException(status_code=400, detail="Esta transacción ya está aplicada o conciliada.")
     return {"ok": True, "reconciled_manually": info}

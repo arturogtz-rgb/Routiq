@@ -216,10 +216,11 @@ async def verify_session(db, txn: dict, api_key: str, source: str) -> dict:
     base_set = {"stripe_status": out["stripe_status"], "stripe_payment_status": out["stripe_payment_status"],
                 "last_checked_at": now_iso(), "verification_state": outcome}
     if outcome == "paid":
-        await db.payment_transactions.update_one(
-            {"session_id": sid, "payment_status": {"$ne": "paid"}},
-            {"$set": {**base_set, "payment_status": "paid", "status": out["stripe_status"] or "complete",
-                      "paid_at": now_iso(), "applied": False}})
+        upd = {"$set": {**base_set, "payment_status": "paid", "status": out["stripe_status"] or "complete",
+                        "paid_at": now_iso(), "applied": False}}
+        if txn.get("payment_status") == "reconciled":
+            upd["$unset"] = {"review_state": ""}
+        await db.payment_transactions.update_one({"session_id": sid, "payment_status": {"$ne": "paid"}}, upd)
         res = await apply_pending_credit(db, sid)
         out.update(res)
     elif txn.get("payment_status") != "paid":
@@ -305,15 +306,26 @@ async def migrate_applied_flag(db) -> int:
     return changed
 
 
-async def reconcile_manually(db, txn: dict, user: dict, reason: str = "") -> dict:
-    """Cierra una transacción sin sumar nada (el pago ya se registró a mano). Solo admins."""
+async def reconcile_manually(db, txn: dict, user: dict, reason: str = "", api_key: str = "") -> dict | None:
+    """Cierra una transacción sin sumar nada (el pago ya se registró a mano). Solo admins.
+    Pagada: entra a credited_sessions. No pagada: se expira en Stripe (si se puede) y NO entra a
+    credited_sessions, para que un cobro posterior de esa sesión vuelva a revisión y no se absorba."""
     sid, qid = txn["session_id"], txn["quotation_id"]
     info = {"by_id": user.get("id"), "by_name": user.get("name") or user.get("email", ""), "at": now_iso(), "reason": (reason or "").strip()[:300]}
     sets = {"applied": True, "review_state": "manual", "reconciled_manually": info}
-    if txn.get("payment_status") != "paid":
+    paid = txn.get("payment_status") == "paid"
+    if not paid:
         sets["payment_status"] = "reconciled"
-    await db.payment_transactions.update_one({"session_id": sid}, {"$set": sets})
-    await db.quotations.update_one({"id": qid}, {"$addToSet": {"credited_sessions": sid}})
+    res = await db.payment_transactions.update_one({"session_id": sid, "applied": {"$ne": True}}, {"$set": sets})
+    if res.modified_count == 0:
+        return None
+    if paid:
+        await db.quotations.update_one({"id": qid}, {"$addToSet": {"credited_sessions": sid}})
+    elif api_key:
+        try:
+            await stripe_expire_session(api_key, sid)
+        except Exception as e:
+            log.warning("manual reconcile: could not expire session_id=%s quotation_id=%s exc=%s: %s", sid, qid, type(e).__name__, e)
     still = await db.payment_transactions.count_documents({"quotation_id": qid, "review_state": "needs_review", "applied": False})
     await db.quotations.update_one({"id": qid}, {"$set": {"payment_review": still > 0}})
     q = await db.quotations.find_one({"id": qid}, {"_id": 0})

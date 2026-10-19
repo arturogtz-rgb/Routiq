@@ -15,6 +15,13 @@ Testing: `/app/test_reports/iteration_66.json` — backend 7/7 + inspección fro
 - **AJUSTE4 (fecha PDF):** `_fmt_date` → formato compacto DD/Mmm/AA (26/Sep/26); la tabla de Hospedaje del PDF ahora pasa checkin/checkout por `_fmt_date` (antes crudas).
 
 
+## Iteración 70 (jun-2026) — Lectura real de sesiones Stripe + anti doble acreditación (COMPLETADO ✅)
+- Causa raíz prod: `emergentintegrations.get_checkout_status` falla con stripe 15 (metadata StripeObject). Reemplazado por `payments_core.stripe_get_status` (StripeClient por llamada, `v1.checkout.sessions.retrieve`, `session_from_stripe` lee solo status/payment_status/amount_total/currency/payment_intent; metadata `to_dict()`). Expirar sesiones también vía StripeClient. `create_checkout_session` de la librería no tiene el problema.
+- Guardia atómica (`$expr`) en `apply_payment_to_quotation`: nunca amount_paid > final_total → `review_state: needs_review`, `quotations.payment_review: true`. Cliente: "Recibimos tu pago; tu ejecutivo lo está revisando. No vuelvas a pagar." (sin Pagar, checkout 409). Marca "Pago en revisión" en lista y banner en ficha.
+- `POST /api/quotations/{id}/transactions/{sid}/reconcile-manual` (solo company_admin, motivo opcional, auditoría `payment_reconciled`): pagada → credited_sessions sin sumar; pendiente → `payment_status: reconciled` + expira en Stripe (no entra a credited_sessions; si luego se cobra va a revisión). Ejecutivos ven "Pide a un administrador que concilie este pago".
+- Panel "Verificar pago con Stripe": fechas, estado de revisión, conciliación, aviso "Posible cobro doble: verifica un reembolso" si ≥2 sesiones pagadas.
+- Tests: `tests/test_iteration70_stripe_read.py` (StripeObject auténtico 4 estados, b–e) + `test_iteration70_e2e_edges.py`; `/app/test_reports/iteration_70.json` 100%. Prueba real modo test omitida: el proxy de Emergent no permite leer sesiones (usar `STRIPE_TEST_SECRET_KEY` propia).
+
 ## Iteración 69 (jun-2026) — Robustez de verificación de pagos Stripe (COMPLETADO ✅)
 - `backend/payments_core.py`: regla única pagado = `payment_status=="paid"` (complete+unpaid = processing, no acredita); fallos de Stripe → WARNING (session_id, quotation_id, exc, key_type sk_/rk_) y estado `verification_error`; acreditación atómica e idempotente (`credited_sessions` en cotización + `applied` en transacción, reintento automático de paid/applied=false); migración al arrancar (`migrate_applied_flag`).
 - Endpoint estado público devuelve `state` (paid|processing|open|expired|registering|verification_error) y valida que la sesión sea del token. GET público expone `payment.unresolved` y `payment.last_session_id`.
