@@ -14,11 +14,12 @@ import currency
 import notifications
 from deps import (
     _append_history, _record_audit, _client_email, _bank_html,
-    _resolve_stripe_key, _apply_payment_to_quotation, _reconcile_quotation_payments,
+    _resolve_stripe_key, _reconcile_quotation_payments,
     _resolve_client_email,
 )
 from models import PublicCheckoutRequest, ManualPaymentInput, SendPaymentInput, QuotationPaymentConfig
 from emergentintegrations.payments.stripe.checkout import StripeCheckout, CheckoutSessionRequest
+import payments_core
 
 log = logging.getLogger("routiq")
 from pricing_breakdown import build_per_person_breakdown
@@ -47,10 +48,14 @@ async def get_public_quotation(token: str):
     company = await db.companies.find_one({"id": q["tenant_id"]}, {"_id": 0})
     # P0 anti-doble-cobro: reconciliar pagos en vuelo con Stripe antes de mostrar montos.
     try:
-        await _reconcile_quotation_payments(db, q["id"], company or {})
+        await _reconcile_quotation_payments(db, q["id"], company or {}, source="public-link")
         q = await db.quotations.find_one({"public_link.token": token}, {"_id": 0}) or q
-    except Exception:
-        pass
+    except Exception as e:
+        log.warning("public-link reconcile failed quotation_id=%s exc=%s: %s", q.get("id"), type(e).__name__, e)
+    unresolved = await payments_core.unresolved_state(db, q["id"])
+    last_txn = await db.payment_transactions.find_one(
+        {"quotation_id": q["id"], "payment_status": {"$nin": ["expired", "failed"]}},
+        {"_id": 0, "session_id": 1}, sort=[("created_at", -1)])
     pack = None
     if q.get("package_id"):
         pack = await db.packages.find_one({"id": q["package_id"]}, {"_id": 0})
@@ -148,6 +153,9 @@ async def get_public_quotation(token: str):
             "total_usd_equivalent": total_usd,
             "equivalent_amount": equivalent_amount,
             "equivalent_currency": other_ccy,
+            # Iter 69: transacción sin resolver (en proceso / sin verificar / registrando) -> no mostrar "Pagar".
+            "unresolved": unresolved,
+            "last_session_id": (last_txn or {}).get("session_id"),
             "rate_mxn_per_usd": rates.get("mxn_per_usd"),
             "bank": {
                 "name": bank.get("name", ""), "holder": bank.get("holder", ""),
@@ -456,8 +464,12 @@ async def public_checkout(token: str, payload: PublicCheckoutRequest, request: R
 
     # P0-B defensa en profundidad: reconciliar contra Stripe ANTES de crear un nuevo checkout,
     # para que regenerar el enlace no permita un segundo cobro de algo ya pagado.
-    await _reconcile_quotation_payments(db, q["id"], company or {})
+    await _reconcile_quotation_payments(db, q["id"], company or {}, source="checkout")
     q = await db.quotations.find_one({"public_link.token": token}, {"_id": 0}) or q
+    # Iter 69: no cobrar de nuevo si hay un pago en proceso, sin verificar o registrándose.
+    unresolved = await payments_core.unresolved_state(db, q["id"])
+    if unresolved:
+        raise HTTPException(status_code=409, detail=_UNRESOLVED_MSG.get(unresolved["state"], "Hay un pago en curso.").format(code=q.get("code", "")))
 
     final_total = q.get("final_total")
     if final_total is None:
@@ -484,6 +496,48 @@ async def public_checkout(token: str, payload: PublicCheckoutRequest, request: R
         card_fee_amount = round(base_amount * pct / 100.0, 2)
         amount = round(base_amount + card_fee_amount, 2)
 
+    # Iter 69: candado por cotización -> dos clics seguidos no crean dos sesiones.
+    lock_cutoff = (datetime.now(timezone.utc) - timedelta(seconds=30)).isoformat()
+    locked = await db.quotations.find_one_and_update(
+        {"id": q["id"], "$or": [{"checkout_lock_at": {"$exists": False}}, {"checkout_lock_at": None}, {"checkout_lock_at": {"$lt": lock_cutoff}}]},
+        {"$set": {"checkout_lock_at": now_iso()}})
+    if locked is None:
+        raise HTTPException(status_code=409, detail="Estamos preparando tu pago. Espera unos segundos e inténtalo de nuevo.")
+    try:
+        return await _create_or_reuse_checkout(db, q, company, api_key, token, payload, amount, base_amount, card_fee_amount)
+    finally:
+        await db.quotations.update_one({"id": q["id"]}, {"$set": {"checkout_lock_at": None}})
+
+
+_UNRESOLVED_MSG = {
+    "processing": "Tu banco está procesando el pago; se confirmará en cuanto se acredite. No vuelvas a pagar.",
+    "registering": "Recibimos tu pago y lo estamos registrando. No vuelvas a pagar.",
+    "verification_error": "No pudimos verificar tu pago en este momento. No vuelvas a pagar. Si ya se te hizo el cargo, avisa a tu ejecutivo con el folio {code}.",
+}
+
+
+async def _create_or_reuse_checkout(db, q, company, api_key, token, payload, amount, base_amount, card_fee_amount):
+    # Sesiones previas abiertas: expirarlas en Stripe; si no se puede, reutilizar su URL.
+    async for old in db.payment_transactions.find(
+            {"quotation_id": q["id"], "payment_status": {"$nin": ["paid", "expired", "failed", "processing"]}}, {"_id": 0}):
+        try:
+            await payments_core.stripe_expire_session(api_key, old["session_id"])
+            await db.payment_transactions.update_one(
+                {"session_id": old["session_id"], "payment_status": {"$ne": "paid"}},
+                {"$set": {"payment_status": "expired", "status": "expired", "expired_by": "new-checkout", "expired_at": now_iso()}})
+        except Exception as e:
+            log.warning("checkout: could not expire session_id=%s quotation_id=%s exc=%s: %s",
+                        old["session_id"], q["id"], type(e).__name__, e)
+            url = old.get("url") or ""
+            if not url:
+                try:
+                    url = await payments_core.stripe_session_url(api_key, old["session_id"])
+                except Exception as e2:
+                    log.warning("checkout: could not retrieve url session_id=%s exc=%s: %s", old["session_id"], type(e2).__name__, e2)
+            if url:
+                return {"url": url, "session_id": old["session_id"], "reused": True}
+            raise HTTPException(status_code=409, detail="Hay un pago anterior abierto que no pudimos cerrar. Intenta de nuevo en unos minutos o contacta a tu ejecutivo.")
+
     base_currency = (company.get("base_currency") or q.get("currency", "MXN")).lower()
     origin = payload.origin_url.rstrip("/")
     await db.quotations.update_one({"id": q["id"]}, {"$set": {"public_link.base_url": origin}})
@@ -507,7 +561,8 @@ async def public_checkout(token: str, payload: PublicCheckoutRequest, request: R
         "card_fee_amount": float(card_fee_amount),
         "currency": base_currency.upper(),
         "pay_type": payload.pay_type, "metadata": metadata,
-        "status": "initiated", "payment_status": "pending",
+        "status": "initiated", "payment_status": "pending", "applied": False,
+        "url": session.url or "",
         "created_at": now_iso(),
     })
     return {"url": session.url, "session_id": session.session_id}
@@ -515,60 +570,109 @@ async def public_checkout(token: str, payload: PublicCheckoutRequest, request: R
 
 @router.get("/public/quotations/{token}/payment-status/{session_id}")
 async def public_payment_status(token: str, session_id: str, request: Request):
+    """Iter 69: estado explícito — paid | processing | open | expired | registering | verification_error."""
     db = get_db()
+    q = await db.quotations.find_one({"public_link.token": token}, {"_id": 0, "id": 1, "code": 1, "tenant_id": 1})
     txn = await db.payment_transactions.find_one({"session_id": session_id}, {"_id": 0})
-    if not txn:
+    if not q or not txn or txn.get("quotation_id") != q["id"]:
         raise HTTPException(status_code=404, detail="Transacción no encontrada")
-    company = await db.companies.find_one({"id": txn["tenant_id"]}, {"_id": 0})
-    api_key = _resolve_stripe_key(company)
-    stripe_status = None
-    try:
-        stripe_checkout = StripeCheckout(api_key=api_key, webhook_url="")
-        st = await stripe_checkout.get_checkout_status(session_id)
-        stripe_status = st
-        if st.payment_status == "paid":
-            flipped = await db.payment_transactions.find_one_and_update(
-                {"session_id": session_id, "payment_status": {"$ne": "paid"}},
-                {"$set": {"payment_status": "paid", "status": st.status, "paid_at": now_iso()}},
-            )
-            if flipped is not None:
-                await _apply_payment_to_quotation(flipped)
-    except Exception as e:
-        log.info("payment-status: get_checkout_status fallback to local txn (%s): %s", session_id, e)
-
+    company = await db.companies.find_one({"id": txn["tenant_id"]}, {"_id": 0}) or {}
+    if txn.get("payment_status") == "paid":
+        res = await payments_core.apply_pending_credit(db, session_id) if txn.get("applied") is False else {"applied": True}
+        state = "paid" if res.get("applied") else "registering"
+        r = {"outcome": state}
+    else:
+        r = await payments_core.verify_session(db, txn, payments_core.resolve_stripe_key(company), "payment-status")
+        state = r["outcome"]
+        if state == "paid" and not r.get("applied"):
+            state = "registering"
     txn = await db.payment_transactions.find_one({"session_id": session_id}, {"_id": 0})
-    if stripe_status is not None:
-        return {
-            "payment_status": stripe_status.payment_status,
-            "status": stripe_status.status,
-            "amount_total": stripe_status.amount_total,
-            "currency": stripe_status.currency,
-        }
-    is_paid = txn.get("payment_status") == "paid"
     return {
-        "payment_status": "paid" if is_paid else "pending",
-        "status": txn.get("status", "open"),
+        "state": state,
+        "payment_status": "paid" if state == "paid" else ("processing" if state == "processing" else "pending"),
+        "status": txn.get("stripe_status") or txn.get("status", "open"),
         "amount_total": int(round(float(txn["amount"]) * 100)),
         "currency": txn.get("currency", "MXN").lower(),
-        "source": "local",
+        "code": q.get("code", ""),
     }
+
+
+def _webhook_session_id(body: bytes):
+    """Lee SOLO session_id / tenant_id del aviso (sin confiar en su contenido)."""
+    import json
+    try:
+        ev = json.loads(body.decode("utf-8"))
+    except Exception:
+        return None, None, None
+    obj = ((ev.get("data") or {}).get("object") or {})
+    etype = ev.get("type", "")
+    sid = obj.get("id") if etype.startswith("checkout.session.") else (obj.get("metadata") or {}).get("checkout_session_id")
+    return sid, (obj.get("metadata") or {}).get("tenant_id"), etype
 
 
 @router.post("/webhook/stripe")
 async def stripe_webhook(request: Request):
+    """Iter 69: el aviso nunca se usa como prueba de pago. Se verifica la sesión con la llave de
+    la empresa dueña de NUESTRA transacción y se acredita el monto de nuestra transacción.
+    Siempre responde 200 (los fallos quedan para el reconciliador)."""
     db = get_db()
     body = await request.body()
-    sig = request.headers.get("Stripe-Signature")
     try:
-        stripe_checkout = StripeCheckout(api_key=os.environ.get("STRIPE_API_KEY", ""), webhook_url="")
-        event = await stripe_checkout.handle_webhook(body, sig)
-        if event.payment_status == "paid":
-            flipped = await db.payment_transactions.find_one_and_update(
-                {"session_id": event.session_id, "payment_status": {"$ne": "paid"}},
-                {"$set": {"payment_status": "paid", "status": "complete", "paid_at": now_iso()}},
-            )
-            if flipped is not None:
-                await _apply_payment_to_quotation(flipped)
+        sid, meta_tenant, etype = _webhook_session_id(body)
+        if not sid:
+            log.warning("stripe webhook: event without session_id (type=%s)", etype)
+            return {"ok": True}
+        txn = await db.payment_transactions.find_one({"session_id": sid}, {"_id": 0})
+        if not txn:
+            log.warning("stripe webhook: unknown session_id=%s type=%s tenant=%s — ignored", sid, etype, meta_tenant)
+            return {"ok": True}
+        if meta_tenant and meta_tenant != txn.get("tenant_id"):
+            log.warning("stripe webhook: tenant mismatch session_id=%s meta=%s txn=%s", sid, meta_tenant, txn.get("tenant_id"))
+        if txn.get("payment_status") == "paid":
+            if txn.get("applied") is False:
+                await payments_core.apply_pending_credit(db, sid)
+            return {"ok": True}
+        company = await db.companies.find_one({"id": txn["tenant_id"]}, {"_id": 0}) or {}
+        await payments_core.verify_session(db, txn, payments_core.resolve_stripe_key(company), "webhook")
     except Exception as e:
-        log.warning("stripe webhook error: %s", e)
+        log.warning("stripe webhook error exc=%s: %s", type(e).__name__, e)
     return {"ok": True}
+
+
+@router.post("/quotations/{quotation_id}/verify-stripe")
+async def verify_stripe_payments(quotation_id: str, user: dict = Depends(require_tenant)):
+    """Iter 69: botón del ejecutivo. Reconciliación + detalle por transacción (sin correos ni loops)."""
+    db = get_db()
+    q = await db.quotations.find_one({"id": quotation_id, "tenant_id": user["tenant_id"]}, {"_id": 0, "id": 1})
+    if not q:
+        raise HTTPException(status_code=404, detail="Cotización no encontrada")
+    company = await db.companies.find_one({"id": user["tenant_id"]}, {"_id": 0}) or {}
+    api_key = payments_core.resolve_stripe_key(company)
+    results = {r["session_id"]: r for r in await _reconcile_quotation_payments(db, quotation_id, company, source="executive")}
+    txns = await db.payment_transactions.find({"quotation_id": quotation_id}, {"_id": 0}).sort("created_at", -1).to_list(20)
+    rows = []
+    for t in txns:
+        r = results.get(t["session_id"])
+        stripe_status, error = None, None
+        if r:
+            stripe_status = r.get("stripe_payment_status") and f"{r.get('stripe_status')} / {r.get('stripe_payment_status')}"
+            error = r.get("error")
+        elif api_key:
+            try:
+                st = await payments_core.stripe_get_status(api_key, t["session_id"])
+                stripe_status = f"{st.status} / {st.payment_status}"
+            except Exception as e:
+                log.warning("verify-stripe read failed session_id=%s quotation_id=%s key_type=%s exc=%s: %s",
+                            t["session_id"], quotation_id, payments_core.key_type(api_key), type(e).__name__, e)
+                error = payments_core.readable_error(e)
+        rows.append({
+            "session_id": t["session_id"], "local_status": t.get("payment_status"),
+            "stripe_status": stripe_status, "amount": t.get("amount"),
+            "base_amount": t.get("base_amount", t.get("amount")), "card_fee_amount": t.get("card_fee_amount", 0),
+            "applied": bool(t.get("applied")) if t.get("payment_status") == "paid" else None,
+            "created_at": t.get("created_at"), "error": error or t.get("apply_error"),
+        })
+    fresh = await db.quotations.find_one({"id": quotation_id}, {"_id": 0, "amount_paid": 1, "payment_status": 1, "final_total": 1, "total": 1})
+    return {"key_type": payments_core.key_type(api_key) if api_key else None, "transactions": rows,
+            "amount_paid": round(fresh.get("amount_paid", 0) or 0, 2), "payment_status": fresh.get("payment_status", "unpaid"),
+            "credited_now": sum(1 for r in results.values() if r.get("credited"))}

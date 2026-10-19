@@ -64,6 +64,11 @@ async def _startup():
     await ensure_site_settings()
     await seed_super_admin()
     await seed_demo_tenant()
+    try:
+        import payments_core
+        await payments_core.migrate_applied_flag(get_db())
+    except Exception as e:
+        log.warning("payments migration failed: %s", e)
     log.info("Startup complete — super admin + demo tenant seeded")
     asyncio.create_task(_internal_digest_loop())
     asyncio.create_task(_backup_check_loop())

@@ -1,8 +1,25 @@
 import { useEffect, useState } from 'react';
 import { useParams, useSearchParams } from 'react-router-dom';
 import api, { formatApiError } from '@/lib/api';
-import { CheckCircle2, Calendar, MapPin, Users, FileText, Sparkles, CreditCard, Loader2, Moon, Landmark, Copy, Download, Briefcase } from 'lucide-react';
+import { CheckCircle2, Calendar, MapPin, Users, FileText, Sparkles, CreditCard, Loader2, Moon, Landmark, Copy, Download, Briefcase, AlertTriangle } from 'lucide-react';
 import { formatDateEs } from '@/lib/dates';
+
+// Iter 69 — último session_id por enlace (sobrevive a recargas).
+const SESSION_KEY = (token) => `routiq:last-session:${token}`;
+const saveSession = (token, sid) => { try { if (sid) localStorage.setItem(SESSION_KEY(token), sid); } catch (_e) { /* storage off */ } };
+const readSession = (token) => { try { return localStorage.getItem(SESSION_KEY(token)); } catch (_e) { return null; } };
+const BLOCKING_STATES = ['processing', 'verification_error', 'registering'];
+function stateMessage(state, code) {
+  const map = {
+    paid: { type: 'success', text: '¡Pago confirmado! Gracias por tu reserva.' },
+    processing: { type: 'processing', text: 'Tu banco está procesando el pago; se confirmará en cuanto se acredite.' },
+    registering: { type: 'processing', text: 'Recibimos tu pago y lo estamos registrando. No vuelvas a pagar.' },
+    verification_error: { type: 'error', text: `No pudimos verificar tu pago en este momento. No vuelvas a pagar. Si ya se te hizo el cargo, avisa a tu ejecutivo con el folio ${code || ''}.`.replace(' .', '.') },
+    expired: { type: 'warn', text: 'La sesión de pago expiró. Puedes intentarlo de nuevo.' },
+    open: { type: 'warn', text: 'Aún no recibimos la confirmación de tu pago. Si no lo completaste, puedes intentarlo de nuevo.' },
+  };
+  return { ...(map[state] || map.verification_error), state };
+}
 
 function money(v, c = 'MXN') { const n = Number(v || 0); return `$${n.toLocaleString('es-MX', { minimumFractionDigits: Number.isInteger(n) ? 0 : 2, maximumFractionDigits: 2 })} ${c}`; }
 function conceptWhen(it) {
@@ -46,35 +63,42 @@ export default function PublicQuotation() {
     const { data: st } = await api.get(`/public/quotations/${token}/payment-status/${sessionId}`);
     return st;
   };
+  const rememberSession = (sid) => { setLastSession(sid); saveSession(token, sid); };
+
+  // Iter 69: mensaje según el estado explícito del servidor.
+  const showState = (state) => setPayMsg(stateMessage(state, data?.quotation?.code));
+
+  // Al cargar: sesión recordada (localStorage) o la última del servidor + estado sin resolver.
+  useEffect(() => {
+    if (!data) return;
+    if (!lastSession) {
+      const sid = readSession(token) || data.payment?.last_session_id;
+      if (sid) setLastSession(sid);
+    }
+    const un = data.payment?.unresolved;
+    if (un && !payMsg) setPayMsg(stateMessage(un.state, data.quotation?.code));
+  }, [data]); // eslint-disable-line
 
   // Detect return from Stripe and poll status
   useEffect(() => {
     const sessionId = searchParams.get('session_id');
     if (!sessionId) return;
-    setLastSession(sessionId);
+    rememberSession(sessionId);
     let attempts = 0;
     setPayMsg({ type: 'pending', text: 'Verificando tu pago…' });
     const poll = async () => {
       try {
         const st = await pollOnce(sessionId);
-        if (st.payment_status === 'paid') {
-          setPayMsg({ type: 'success', text: '¡Pago confirmado! Gracias por tu reserva.' });
-          await load();
-          return;
-        }
-        if (st.status === 'expired') {
-          setPayMsg({ type: 'error', text: 'La sesión de pago expiró. Intenta de nuevo.' });
-          return;
-        }
-        if (attempts++ < 15) { setTimeout(poll, 2000); }
-        else setPayMsg({ type: 'pending', text: 'Aún no confirmamos tu pago. Si ya pagaste, pulsa "Verificar pago".' });
+        if (st.state === 'open' && attempts++ < 15) { setTimeout(poll, 2000); return; }
+        setPayMsg(stateMessage(st.state, st.code));
+        if (st.state !== 'open') await load();
       } catch (_e) {
         if (attempts++ < 15) setTimeout(poll, 2000);
-        else setPayMsg({ type: 'error', text: 'Error verificando el pago.' });
+        else setPayMsg(stateMessage('verification_error'));
       }
     };
     poll();
-    // clear the session_id from URL so refresh doesn't re-poll endlessly
+    // clear the session_id from URL; the session stays remembered for "Ya pagué, verificar pago".
     const sp = new URLSearchParams(searchParams); sp.delete('session_id'); setSearchParams(sp, { replace: true });
   }, [token]); // eslint-disable-line
 
@@ -83,14 +107,10 @@ export default function PublicQuotation() {
     setVerifying(true);
     try {
       const st = await pollOnce(lastSession);
-      if (st.payment_status === 'paid') {
-        setPayMsg({ type: 'success', text: '¡Pago confirmado! Gracias por tu reserva.' });
-        await load();
-      } else {
-        setPayMsg({ type: 'pending', text: 'Tu pago sigue pendiente de confirmación. Intenta de nuevo en unos minutos.' });
-      }
+      setPayMsg(stateMessage(st.state, st.code));
+      await load();
     } catch (_e) {
-      setPayMsg({ type: 'error', text: 'No pudimos verificar el pago.' });
+      setPayMsg(stateMessage('verification_error', data?.quotation?.code));
     } finally { setVerifying(false); }
   };
 
@@ -110,8 +130,13 @@ export default function PublicQuotation() {
       const { data: res } = await api.post(`/public/quotations/${token}/checkout`, {
         origin_url: window.location.origin, pay_type: payType,
       });
+      rememberSession(res.session_id);
       window.location.href = res.url;
-    } catch (e) { setPayMsg({ type: 'error', text: formatApiError(e) }); setPaying(false); }
+    } catch (e) {
+      setPayMsg({ type: e?.response?.status === 409 ? 'warn' : 'error', text: formatApiError(e) });
+      setPaying(false);
+      load();
+    }
   };
 
   const requestTransfer = async () => {
@@ -141,6 +166,7 @@ export default function PublicQuotation() {
   const finalTotal = q.final_total != null ? q.final_total : q.total;
   const amountDue = q.amount_due != null ? q.amount_due : finalTotal;
   const isPaid = q.payment_status === 'paid';
+  const payBlocked = !!payment?.unresolved || BLOCKING_STATES.includes(payMsg?.state);
 
   const paxDesc = (() => {
     const p = q.pax || {};
@@ -397,13 +423,14 @@ export default function PublicQuotation() {
           )}
 
           {payMsg && (
-            <div className={`rounded-xl px-4 py-3 mb-4 text-sm flex items-center gap-2 ${payMsg.type === 'success' ? 'bg-mint-100 text-emerald-800' : payMsg.type === 'error' ? 'bg-red-50 text-red-700' : 'bg-peach-100 text-amber-800'}`} data-testid="payment-message">
-              {payMsg.type === 'pending' && <Loader2 className="w-4 h-4 animate-spin" />}
+            <div className={`rounded-xl px-4 py-3 mb-4 text-sm flex items-center gap-2 ${payMsg.type === 'success' ? 'bg-mint-100 text-emerald-800' : payMsg.type === 'error' ? 'bg-red-50 text-red-700' : 'bg-peach-100 text-amber-800'}`} data-testid="payment-message" data-state={payMsg.state || payMsg.type}>
+              {payMsg.type === 'pending' && <Loader2 className="w-4 h-4 animate-spin shrink-0" />}
+              {(payMsg.type === 'warn' || payMsg.type === 'processing') && <AlertTriangle className="w-4 h-4 shrink-0" />}
               {payMsg.type === 'success' && <CheckCircle2 className="w-4 h-4" />}
               {payMsg.text}
             </div>
           )}
-          {lastSession && payMsg && payMsg.type !== 'success' && !isPaid && (
+          {lastSession && !isPaid && (
             <button onClick={verifyPayment} disabled={verifying}
               className="w-full mb-3 text-sm font-semibold py-2.5 rounded-xl border border-ink-200 text-ink-700 hover:bg-cream disabled:opacity-60 flex items-center justify-center gap-2"
               data-testid="verify-payment-btn">
@@ -421,7 +448,7 @@ export default function PublicQuotation() {
             </div>
           ) : (
             <>
-              {payment?.enabled && (
+              {payment?.enabled && !payBlocked && (
                 <div className="space-y-2 mb-3" data-testid="payment-buttons">
                   {payment?.card_fee_enabled && payment?.card_fee_amount > 0 && (
                     <div className="rounded-xl bg-cream border border-ink-100 p-3 text-sm mb-1" data-testid="card-fee-breakdown">

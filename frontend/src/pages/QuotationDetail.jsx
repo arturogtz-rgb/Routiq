@@ -6,6 +6,7 @@ import { useConfirm } from '@/components/ConfirmDialog';
 import { ArrowLeft, Download, MessageCircle, Mail, FileText, Sparkles, Link2, Copy, CheckCircle2, X, Tag, CreditCard, Pencil, Archive, Trash2, History, Briefcase, Users, Smartphone, BookmarkPlus, Search, Package as PackageIcon } from 'lucide-react';
 import { formatDateEs } from '@/lib/dates';
 import { useAuth } from '@/context/AuthContext';
+import { StripeVerifyPanel } from '@/components/StripeVerifyPanel';
 
 const STATES = [
   { id: 'nueva_consulta', label: 'Nueva' },
@@ -701,6 +702,7 @@ export default function QuotationDetail() {
                 </span>
                 <span className="text-ink-700">Pagado: <b>{money(q.amount_paid || 0, q.currency)}</b></span>
               </div>
+              <StripeVerifyPanel quotationId={q.id} currency={q.currency} onDone={load} />
 
               {/* Gating de pago por etapas (Iter 4 punto 1 y 2) */}
               <div className="mt-3 rounded-xl border border-ink-100 bg-cream p-3" data-testid="payment-gating">
