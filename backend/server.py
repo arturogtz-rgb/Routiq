@@ -255,9 +255,15 @@ async def update_my_company(payload: CompanyUpdate, user: dict = Depends(require
 @api.patch("/companies/me/pricing", response_model=CompanyPublic)
 async def update_pricing(payload: PricingConfig, user: dict = Depends(require_roles("company_admin"))):
     db = get_db()
+    cur = (await db.companies.find_one({"id": user["tenant_id"]}, {"_id": 0, "pricing_config": 1}) or {}).get("pricing_config") or {}
+    data = payload.model_dump()
+    if data.get("fx_mayorista_mxn_per_usd") != cur.get("fx_mayorista_mxn_per_usd"):
+        data["fx_mayorista_updated_at"] = now_iso() if data.get("fx_mayorista_mxn_per_usd") else None
+    else:
+        data["fx_mayorista_updated_at"] = cur.get("fx_mayorista_updated_at")
     await db.companies.update_one(
         {"id": user["tenant_id"]},
-        {"$set": {"pricing_config": payload.model_dump()}},
+        {"$set": {"pricing_config": data}},
     )
     company = await db.companies.find_one({"id": user["tenant_id"]}, {"_id": 0})
     return company

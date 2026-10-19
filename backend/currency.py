@@ -1,7 +1,7 @@
 """Lightweight exchange-rate helper (USD/MXN) with in-memory caching.
 
-Uses the free, no-key open.er-api.com endpoint. Falls back to a sane default
-if the network call fails so the UI never breaks.
+Uses the free, no-key open.er-api.com endpoint. Iter 71: if the call fails and there is no
+cache, NO rate is invented — callers must hide the equivalent (mxn_per_usd = None).
 """
 from __future__ import annotations
 import time
@@ -9,7 +9,6 @@ import httpx
 
 _cache: dict = {"data": None, "ts": 0.0}
 _TTL = 6 * 3600  # 6 hours
-_FALLBACK_MXN_PER_USD = 17.0
 
 
 async def get_rates() -> dict:
@@ -33,16 +32,13 @@ async def get_rates() -> dict:
     except Exception:
         if _cache["data"]:
             return _cache["data"]
-        return {
-            "mxn_per_usd": _FALLBACK_MXN_PER_USD,
-            "usd_per_mxn": round(1.0 / _FALLBACK_MXN_PER_USD, 6),
-            "updated_at": "",
-            "source": "fallback",
-        }
+        return {"mxn_per_usd": None, "usd_per_mxn": None, "updated_at": "", "source": "unavailable"}
 
 
-def convert(amount: float, from_ccy: str, to_ccy: str, rates: dict) -> float:
+def convert(amount: float, from_ccy: str, to_ccy: str, rates: dict) -> float | None:
     """Convert between MXN and USD using fetched rates."""
+    if not rates or not rates.get("mxn_per_usd"):
+        return None
     from_ccy = (from_ccy or "MXN").upper()
     to_ccy = (to_ccy or "MXN").upper()
     if from_ccy == to_ccy:

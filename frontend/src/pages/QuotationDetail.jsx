@@ -7,6 +7,8 @@ import { ArrowLeft, Download, MessageCircle, Mail, FileText, Sparkles, Link2, Co
 import { formatDateEs } from '@/lib/dates';
 import { useAuth } from '@/context/AuthContext';
 import { StripeVerifyPanel } from '@/components/StripeVerifyPanel';
+import { UsdPresentationPanel } from '@/components/UsdPresentationPanel';
+import { channelLabel } from '@/lib/channels';
 
 const STATES = [
   { id: 'nueva_consulta', label: 'Nueva' },
@@ -358,7 +360,7 @@ export default function QuotationDetail() {
           </p>
           <h1 className="font-display text-3xl font-semibold text-ink-900 mt-1">{q.package_snapshot?.name || 'Servicios a la carta'}</h1>
           <p className="text-ink-500 mt-1">Cliente: <span className="text-ink-900 font-medium">{q.client_snapshot?.name}</span></p>
-          <p className="text-ink-500 mt-0.5 text-sm" data-testid="quotation-agent-date">Elaboró: <span className="text-ink-900 font-medium">{q.agent_name || '—'}</span> · Elaborada el {formatDateEs(q.created_at)}</p>
+          <p className="text-ink-500 mt-0.5 text-sm" data-testid="quotation-agent-date">{q.client_snapshot?.channel && <span className="pill bg-brand-50 text-brand-600 text-xs mr-2" data-testid="quotation-channel-badge">{channelLabel(q.client_snapshot.channel)}</span>}Elaboró: <span className="text-ink-900 font-medium">{q.agent_name || '—'}</span> · Elaborada el {formatDateEs(q.created_at)}</p>
         </div>
         <div className="flex flex-wrap gap-2">
           <button onClick={() => navigate(q.type === 'personalizado' ? `/app/quotations/custom/${id}/edit` : `/app/quotations/${id}/edit`)} className="btn-secondary text-sm" data-testid="edit-quotation-btn">
@@ -646,6 +648,7 @@ export default function QuotationDetail() {
               <div className="flex justify-between pt-2 border-t border-ink-100 mt-2"><span className="font-display text-lg font-semibold text-ink-900">Total final</span><span className="font-display text-lg font-bold text-brand-500">{money(q.final_total != null ? q.final_total : q.total, q.currency)}</span></div>
             </div>
 
+            <UsdPresentationPanel q={q} onRefreshed={load} />
             {q.show_per_person && q.per_person_breakdown?.rows?.length > 0 && (
               <div className="mt-4 pt-4 border-t border-ink-100" data-testid="per-person-breakdown">
                 <p className="text-xs uppercase tracking-widest text-ink-400 font-bold mb-2">Precio por persona según ocupación</p>

@@ -426,8 +426,20 @@ def generate_quotation_pdf(company: dict, quotation: dict, package: dict, client
     currency = quotation.get("currency", "MXN")
     concept_style = ParagraphStyle("concept", parent=s["soft"], textColor=TEXT, fontSize=8.5, leading=11)
     items = quotation.get("items", [])
+    # Iter 71: Mayorista internacional -> USD primero (presentación; el cobro sigue en MXN).
+    import fx_presentation
+    bd_pp = None
+    if quotation.get("show_per_person"):
+        try:
+            from pricing_breakdown import build_per_person_breakdown
+            bd_pp = build_per_person_breakdown(quotation)
+        except Exception:
+            bd_pp = None
+    usd = fx_presentation.build(quotation, bd_pp)
+    usd = usd if usd and usd.get("available") else None
+    small = "<font size='7' color='#64748B'>"
     if show_breakdown:
-        story.append(Paragraph("Desglose de precios", s["h2"]))
+        story.append(Paragraph("Desglose de precios" + (" <font size='9' color='#64748B'>(detalle en MXN)</font>" if usd else ""), s["h2"]))
         if not is_services and package.get("name"):
             story.append(Paragraph(f"<b>Paquete:</b> {_xml_escape(package.get('name',''))}", s["soft"]))
         rows = [["Fecha", "Servicio", "Detalle", "Cant.", "$ unitario", "Subtotal"]]
@@ -470,8 +482,11 @@ def generate_quotation_pdf(company: dict, quotation: dict, package: dict, client
         tot_rows.append(["Subtotal", _money(quotation.get("subtotal", 0), currency)])
         if quotation.get("commission", 0) > 0:
             tot_rows.append(["Comisión canal", f"- {_money(quotation['commission'], currency)}"])
-    tot_rows.append(["TOTAL", _money(quotation.get("total", 0), currency)])
-    tot = Table(tot_rows, colWidths=[(CONTENT_W - 3.5) * cm, 3.5 * cm])
+    if usd:
+        tot_rows.append(["TOTAL", Paragraph(f"<para alignment='right'><font size='13' color='{PRIMARY.hexval().replace('0x', '#')}'><b>US${usd['total_usd']:,.2f}</b></font><br/>{small}{_money(usd['total_mxn'], currency)}</font></para>", s["soft"])])
+    else:
+        tot_rows.append(["TOTAL", _money(quotation.get("total", 0), currency)])
+    tot = Table(tot_rows, colWidths=[(CONTENT_W - 4.5) * cm, 4.5 * cm])
     tot.setStyle(TableStyle([
         ("ALIGN", (0, 0), (-1, -1), "RIGHT"),
         ("FONTSIZE", (0, 0), (-1, -1), 10),
@@ -486,12 +501,33 @@ def generate_quotation_pdf(company: dict, quotation: dict, package: dict, client
 
     # Precio por persona según ocupación (presentación; Iter 6). Suma exacta al total.
     if quotation.get("show_per_person"):
-        try:
-            from pricing_breakdown import build_per_person_breakdown
-            bd = build_per_person_breakdown(quotation)
-        except Exception:
-            bd = None
-        if bd and bd.get("rows"):
+        bd = bd_pp
+        if bd and bd.get("rows") and usd and usd.get("rows"):
+            story.append(Spacer(1, 12))
+            story.append(Paragraph("Precio por persona según ocupación", s["h2"]))
+            pp_rows = [["Concepto", "Personas", "Subtotal"]]
+            for r in usd["rows"]:
+                txt = (f"{r.get('title') or r['label']}: <font size='11'><b>US${r['price_per_person_usd']:,.2f}</b></font> ({r['pax']} personas)"
+                       f"<br/>{small}{_money(r['price_per_person_mxn'], currency)}</font>")
+                sub = f"<para alignment='right'><b>US${r['subtotal_usd']:,.2f}</b><br/>{small}{_money(r['subtotal_mxn'], currency)}</font></para>"
+                pp_rows.append([Paragraph(txt, concept_style), str(r["pax"]), Paragraph(sub, concept_style)])
+            pp_rows.append(["Total", str(bd["total_pax"]), Paragraph(
+                f"<para alignment='right'><b>US${usd['total_usd']:,.2f}</b><br/>{small}{_money(bd['total'], currency)}</font></para>", concept_style)])
+            ppt = Table(pp_rows, colWidths=[(CONTENT_W - 7) * cm, 2.5 * cm, 4.5 * cm])
+            ppt.setStyle(TableStyle([
+                ("FONTSIZE", (0, 0), (-1, -1), 9),
+                ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#EAF1FA")),
+                ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
+                ("FONTNAME", (0, -1), (-1, -1), "Helvetica-Bold"),
+                ("LINEABOVE", (0, -1), (-1, -1), 1, PRIMARY),
+                ("ALIGN", (1, 0), (-1, -1), "RIGHT"), ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+                ("TOPPADDING", (0, 0), (-1, -1), 3), ("BOTTOMPADDING", (0, 0), (-1, -1), 3),
+            ]))
+            story.append(ppt)
+            if bd.get("note"):
+                story.append(Spacer(1, 3))
+                story.append(Paragraph(f"<font color='#475569'><i>{_xml_escape(bd['note'])}</i></font>", s["soft"]))
+        elif bd and bd.get("rows"):
             story.append(Spacer(1, 12))
             story.append(Paragraph("Precio por persona según ocupación", s["h2"]))
             pp_rows = [["Concepto", "Personas", "Subtotal"]]
@@ -515,6 +551,9 @@ def generate_quotation_pdf(company: dict, quotation: dict, package: dict, client
                 story.append(Spacer(1, 3))
                 story.append(Paragraph(f"<font color='#475569'><i>{_xml_escape(bd['note'])}</i></font>", s["soft"]))
 
+    if usd:
+        story.append(Spacer(1, 4))
+        story.append(Paragraph(f"<font color='#475569'><i>{_xml_escape(usd['note'])}</i></font>", s["soft"]))
     price_note = (quotation.get("price_note") or "").strip()
     if price_note:
         story.append(Spacer(1, 4))

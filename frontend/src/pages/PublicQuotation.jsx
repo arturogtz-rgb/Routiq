@@ -9,6 +9,8 @@ const SESSION_KEY = (token) => `routiq:last-session:${token}`;
 const saveSession = (token, sid) => { try { if (sid) localStorage.setItem(SESSION_KEY(token), sid); } catch (_e) { /* storage off */ } };
 const readSession = (token) => { try { return localStorage.getItem(SESSION_KEY(token)); } catch (_e) { return null; } };
 const BLOCKING_STATES = ['processing', 'verification_error', 'registering', 'needs_review'];
+const usdFmt = (v) => `US$${Number(v || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+
 function stateMessage(state, code) {
   const map = {
     paid: { type: 'success', text: '¡Pago confirmado! Gracias por tu reserva.' },
@@ -168,6 +170,7 @@ export default function PublicQuotation() {
   const finalTotal = q.final_total != null ? q.final_total : q.total;
   const amountDue = q.amount_due != null ? q.amount_due : finalTotal;
   const isPaid = q.payment_status === 'paid';
+  const usd = q.usd_presentation;
   const payBlocked = !!payment?.unresolved || BLOCKING_STATES.includes(payMsg?.state);
 
   const paxDesc = (() => {
@@ -324,7 +327,7 @@ export default function PublicQuotation() {
         {/* Desglose de precios — todas las líneas juntas (réplica del PDF) */}
         {(q.items || []).length > 0 && (
           <div className="card-surface p-6" data-testid="public-price-breakdown">
-            <h2 className="font-display text-xl font-semibold text-ink-900 mb-4">{q.show_price_breakdown === false ? 'Conceptos incluidos' : 'Desglose de precios'}</h2>
+            <h2 className="font-display text-xl font-semibold text-ink-900 mb-4">{q.show_price_breakdown === false ? 'Conceptos incluidos' : 'Desglose de precios'}{usd && q.show_price_breakdown !== false && <span className="text-sm font-normal text-ink-400 ml-2" data-testid="public-detail-mxn-label">(detalle en MXN)</span>}</h2>
             {q.show_price_breakdown === false ? (
               <ul className="space-y-1.5 mb-2" data-testid="public-concepts-list">
                 {(q.items || []).map((it, i) => (
@@ -370,7 +373,12 @@ export default function PublicQuotation() {
               )}
               <div className="flex items-center justify-between pt-1.5 border-t border-ink-100">
                 <span className="font-semibold text-ink-900">Total</span>
-                <span className="font-display text-lg font-bold" style={{ color: primary }}>{money(finalTotal, q.currency)}</span>
+                {usd ? (
+                  <span className="text-right" data-testid="public-breakdown-total-usd">
+                    <span className="block font-display text-lg font-bold" style={{ color: primary }}>{usdFmt(usd.total_usd)}</span>
+                    <span className="block text-xs text-ink-400">{money(finalTotal, q.currency)}</span>
+                  </span>
+                ) : <span className="font-display text-lg font-bold" style={{ color: primary }}>{money(finalTotal, q.currency)}</span>}
               </div>
             </div>
             {q.price_note && (
@@ -380,7 +388,14 @@ export default function PublicQuotation() {
               <div className="mt-5 pt-4 border-t border-ink-100" data-testid="public-per-person-breakdown">
                 <h3 className="font-display text-base font-semibold text-ink-900 mb-2">Precio por persona según ocupación</h3>
                 <div className="space-y-1.5">
-                  {q.per_person_breakdown.rows.map((r) => (
+                  {usd?.rows?.length > 0 && usd.rows.map((r) => (
+                    <div key={r.key} className="flex items-center justify-between gap-3 text-sm" data-testid={`public-pp-row-${r.key}`}>
+                      <span className="text-ink-600">{r.title || r.label}: <b className="text-ink-900 text-base" data-testid={`public-pp-usd-${r.key}`}>{usdFmt(r.price_per_person_usd)}</b> <span className="text-ink-400">({r.pax} personas)</span>
+                        <span className="block text-xs text-ink-400">{money(r.price_per_person_mxn, q.currency)}</span></span>
+                      <span className="text-right font-medium text-ink-900">{usdFmt(r.subtotal_usd)}<span className="block text-xs font-normal text-ink-400">{money(r.subtotal_mxn, q.currency)}</span></span>
+                    </div>
+                  ))}
+                  {!(usd?.rows?.length > 0) && q.per_person_breakdown.rows.map((r) => (
                     <div key={r.key} className="flex items-center justify-between gap-3 text-sm" data-testid={`public-pp-row-${r.key}`}>
                       <span className="text-ink-600">{r.title || r.label}: <b className="text-ink-900">{money(r.price_per_person, q.currency)}</b> <span className="text-ink-400">({r.pax} personas)</span></span>
                       <span className="font-medium text-ink-900">{money(r.subtotal, q.currency)}</span>
@@ -388,7 +403,12 @@ export default function PublicQuotation() {
                   ))}
                   <div className="flex items-center justify-between pt-1.5 border-t border-ink-100">
                     <span className="font-semibold text-ink-900">Total</span>
-                    <span className="font-display font-bold" style={{ color: primary }} data-testid="public-pp-total">{money(q.per_person_breakdown.total, q.currency)}</span>
+                    {usd?.rows?.length > 0 ? (
+                      <span className="text-right" data-testid="public-pp-total">
+                        <span className="block font-display font-bold" style={{ color: primary }}>{usdFmt(usd.total_usd)}</span>
+                        <span className="block text-xs text-ink-400">{money(q.per_person_breakdown.total, q.currency)}</span>
+                      </span>
+                    ) : <span className="font-display font-bold" style={{ color: primary }} data-testid="public-pp-total">{money(q.per_person_breakdown.total, q.currency)}</span>}
                   </div>
                   {q.per_person_breakdown.note && <p className="text-xs text-ink-400 italic" data-testid="public-pp-note">{q.per_person_breakdown.note}</p>}
                 </div>
@@ -415,8 +435,14 @@ export default function PublicQuotation() {
         <div className="card-surface p-6 sticky bottom-4" data-testid="public-total-card">
           <div className="flex items-center justify-between mb-2">
             <p className="text-ink-500 text-sm">Total final</p>
-            <p className="font-display text-3xl md:text-4xl font-bold" style={{ color: primary }}>{money(finalTotal, q.currency)}</p>
+            {usd ? (
+              <div className="text-right" data-testid="public-total-usd">
+                <p className="font-display text-3xl md:text-4xl font-bold" style={{ color: primary }}>{usdFmt(usd.total_usd)}</p>
+                <p className="text-sm text-ink-500" data-testid="public-total-mxn">{money(finalTotal, q.currency)}</p>
+              </div>
+            ) : <p className="font-display text-3xl md:text-4xl font-bold" style={{ color: primary }}>{money(finalTotal, q.currency)}</p>}
           </div>
+          {usd && <p className="text-xs text-ink-500 italic mb-3" data-testid="public-usd-note">{usd.note}</p>}
           {payment?.equivalent_amount && payment?.equivalent_currency && (
             <p className="text-right text-xs text-ink-400 mb-4" data-testid="usd-equivalent">≈ ${Number(payment.equivalent_amount).toLocaleString(payment.equivalent_currency === 'USD' ? 'en-US' : 'es-MX')} {payment.equivalent_currency} (TC {payment.rate_mxn_per_usd})</p>
           )}

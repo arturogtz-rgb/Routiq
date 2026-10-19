@@ -4,13 +4,7 @@ import api, { formatApiError } from '@/lib/api';
 import { formatDateEs } from '@/lib/dates';
 import { UserCog, Plus, Search, Pencil, Trash2, AlertTriangle, FileText, TrendingUp, ChevronLeft, ChevronRight, Users, Star } from 'lucide-react';
 
-const CHANNELS = [
-  { v: 'directo', label: 'Directo' },
-  { v: 'agencia', label: 'Agencia' },
-  { v: 'mayorista', label: 'Mayorista' },
-  { v: 'operador', label: 'Mayorista Preferencial' },
-];
-const CHANNEL_LABEL = Object.fromEntries(CHANNELS.map((c) => [c.v, c.label]));
+import { CHANNEL_OPTIONS as CHANNELS, CHANNEL_LABEL } from '@/lib/channels';
 const PAGE_SIZE = 10;
 const uid = () => (crypto?.randomUUID ? crypto.randomUUID() : `id-${Date.now()}-${Math.random()}`);
 const money = (v) => `$${Number(v || 0).toLocaleString('es-MX', { maximumFractionDigits: 0 })}`;
@@ -159,7 +153,7 @@ export default function Clients() {
                   </div>
                 </div>
                 <div className="flex items-center gap-4 flex-wrap">
-                  <span className="pill bg-ink-100 text-ink-700 capitalize">{CHANNEL_LABEL[c.channel] || c.channel}</span>
+                  <span className="pill bg-ink-100 text-ink-700">{CHANNEL_LABEL[c.channel] || c.channel}</span>
                   <div className="text-center" title="Ejecutivos vinculados"><p className="font-semibold text-ink-900 flex items-center gap-1 text-sm" data-testid={`client-execs-${c.id}`}><Users className="w-3.5 h-3.5 text-ink-400" /> {c.executives_count || 0}</p></div>
                   <div className="text-center" title="Cotizaciones"><p className="font-semibold text-ink-900 flex items-center gap-1 text-sm" data-testid={`client-quotes-${c.id}`}><FileText className="w-3.5 h-3.5 text-ink-400" /> {c.quotations_count || 0}</p></div>
                   <div className="text-center" title="Ventas ganadas"><p className="font-semibold text-emerald-700 flex items-center gap-1 text-sm" data-testid={`client-sales-${c.id}`}><TrendingUp className="w-3.5 h-3.5" /> {money(c.sales_total)}</p></div>

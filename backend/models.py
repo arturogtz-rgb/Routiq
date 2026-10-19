@@ -1,6 +1,6 @@
 """Pydantic models for Routiq."""
 from __future__ import annotations
-from pydantic import BaseModel, EmailStr, Field, ConfigDict
+from pydantic import BaseModel, EmailStr, Field, ConfigDict, field_validator
 from typing import List, Optional, Literal, Dict, Any
 
 
@@ -42,6 +42,20 @@ class PricingConfig(BaseModel):
     minor_age_max: int = 11
     minor_discount: float = 0.40
     currency: str = "MXN"
+    # Iter 71: TC fijo capturado por el admin, SOLO presentación USD del canal Mayorista internacional.
+    fx_mayorista_mxn_per_usd: Optional[float] = None
+    fx_mayorista_updated_at: Optional[str] = None
+
+    @field_validator("fx_mayorista_mxn_per_usd")
+    @classmethod
+    def _fx_ok(cls, v):
+        if v is None:
+            return v
+        if v <= 0:
+            raise ValueError("El tipo de cambio debe ser mayor que 0")
+        if round(v, 4) != v:
+            raise ValueError("El tipo de cambio admite hasta 4 decimales")
+        return v
 
 
 class CompanyCreate(BaseModel):

@@ -26,6 +26,13 @@ log = logging.getLogger("routiq")
 from pricing_breakdown import build_per_person_breakdown
 
 
+def _public_usd(q: dict):
+    import fx_presentation
+    bd = build_per_person_breakdown(q) if q.get("show_per_person") else None
+    usd = fx_presentation.build(q, bd)
+    return usd if usd and usd.get("available") else None
+
+
 def _public_breakdown(q: dict):
     """Desglose por persona para el cliente: sin composición interna ni ajustes."""
     bd = build_per_person_breakdown(q)
@@ -107,6 +114,9 @@ async def get_public_quotation(token: str):
     rates = await currency.get_rates()
     other_ccy = "USD" if base_currency == "MXN" else "MXN"
     equivalent_amount = currency.convert(final_total, base_currency, other_ccy, rates) if base_currency != other_ccy else None
+    import fx_presentation
+    if fx_presentation.is_international(q):
+        equivalent_amount = None  # Iter 71: este canal usa SOLO el TC fijo de Ajustes
     total_usd = equivalent_amount if other_ccy == "USD" else None
     q["final_total"] = round(final_total, 2)
     return {
@@ -133,6 +143,7 @@ async def get_public_quotation(token: str):
             "show_price_breakdown": q.get("show_price_breakdown", True),
             "show_per_person": bool(q.get("show_per_person")),
             "per_person_breakdown": _public_breakdown(q) if q.get("show_per_person") else None,
+            "usd_presentation": _public_usd(q),
             "contacts": q.get("contacts") or None,
         },
         "company": {

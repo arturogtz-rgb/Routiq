@@ -4,7 +4,7 @@ import api, { formatApiError } from '@/lib/api';
 import { useConfirm } from '@/components/ConfirmDialog';
 import { CreditCard, Save, AlertTriangle, Trash2, FileText } from 'lucide-react';
 import { LogoSettings } from '@/components/settings/LogoSettings';
-import { PricingSettings, PricingExample } from '@/components/settings/PricingSettings';
+import { PricingSettings, PricingExample, fxError } from '@/components/settings/PricingSettings';
 import { PaymentSettings } from '@/components/settings/PaymentSettings';
 import { EmailSettings } from '@/components/settings/EmailSettings';
 import { BankingSettings } from '@/components/settings/BankingSettings';
@@ -61,9 +61,11 @@ export default function Settings() {
 
   const save = async () => {
     setError(''); setOk('');
+    const fxErr = fxError(pricing.fx_mayorista_mxn_per_usd);
+    if (fxErr) { setError(`Tipo de cambio: ${fxErr}`); return; }
     try {
       const { data } = await api.patch('/companies/me/pricing', pricing);
-      setCompany(data); setOk('Configuración guardada');
+      setCompany(data); setPricing(data.pricing_config); setOk('Configuración guardada');
       setTimeout(() => setOk(''), 2500);
     } catch (e) { setError(formatApiError(e)); }
   };

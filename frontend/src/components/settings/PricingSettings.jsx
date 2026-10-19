@@ -4,9 +4,44 @@ import { HelpTip } from '@/components/HelpTip';
 const CHANNELS = [
   { k: 'directo', label: 'Directo', tip: 'Cliente final. Ve el precio público (neto ÷ divisor). Normalmente 0%.' },
   { k: 'agencia', label: 'Agencia', tip: 'Las tarifas netas se muestran a precio público (no se comisionan). Los conceptos de precio público llevan este % de descuento.' },
-  { k: 'mayorista', label: 'Mayorista', tip: 'Precio público menos este %, tanto en tarifas netas como en conceptos de precio público. Precio neto no comisionable.' },
+  { k: 'mayorista', label: 'Mayorista internacional', tip: 'Precio público menos este %, tanto en tarifas netas como en conceptos de precio público. Precio neto no comisionable.' },
   { k: 'operador', label: 'Mayorista Preferencial', tip: 'Las tarifas netas se muestran sin divisor (neto original). Los conceptos de precio público llevan este % de descuento.' },
 ];
+
+const FX_TIP = 'Lo captura el administrador y NO se actualiza solo. Solo afecta la presentación en USD de las cotizaciones del canal Mayorista internacional; el cobro siempre es en MXN. Cada cotización guarda el tipo de cambio con el que se creó.';
+const fxError = (v) => {
+  if (v === '' || v === null || v === undefined) return '';
+  const n = Number(v);
+  if (!(n > 0)) return 'Debe ser un número mayor que 0.';
+  if (Math.round(n * 10000) / 10000 !== n) return 'Máximo 4 decimales.';
+  return '';
+};
+
+const FxSettings = ({ pricing, setPricing }) => {
+  const v = pricing.fx_mayorista_mxn_per_usd ?? '';
+  const err = fxError(v);
+  const upd = pricing.fx_mayorista_updated_at;
+  return (
+    <div data-testid="fx-settings">
+      <h2 className="font-display font-semibold text-lg text-ink-900">Tipo de cambio para Mayorista internacional (MXN por 1 USD)<HelpTip text={FX_TIP} testid="help-fx-mayorista" /></h2>
+      <div className="grid md:grid-cols-2 gap-4 mt-4">
+        <div>
+          <label className="label-text">MXN por 1 USD</label>
+          <input type="number" step="0.0001" min="0" className="input-field" placeholder="Ej. 18.50" value={v}
+            onChange={(e) => setPricing((p) => ({ ...p, fx_mayorista_mxn_per_usd: e.target.value === '' ? null : +e.target.value }))} data-testid="fx-mayorista-input" />
+          {err && <p className="text-xs text-red-600 mt-1" data-testid="fx-mayorista-error">{err}</p>}
+        </div>
+        <div className="flex items-end">
+          <p className="text-sm text-ink-500" data-testid="fx-mayorista-updated">
+            {upd ? `Última actualización: ${new Date(upd).toLocaleString('es-MX', { dateStyle: 'medium', timeStyle: 'short' })}` : 'Sin capturar: las cotizaciones de este canal se muestran solo en MXN.'}
+          </p>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+export { fxError };
 
 export const PricingSettings = ({ pricing, setPricing, save, marginPct }) => (
   <>
@@ -42,6 +77,8 @@ export const PricingSettings = ({ pricing, setPricing, save, marginPct }) => (
         ))}
       </div>
     </div>
+
+    <FxSettings pricing={pricing} setPricing={setPricing} />
 
     <div>
       <h2 className="font-display font-semibold text-lg text-ink-900">Menores</h2>

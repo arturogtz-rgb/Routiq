@@ -2,6 +2,7 @@
 public-link management and AI assistant endpoints."""
 import io
 import logging
+import fx_presentation
 import os
 from datetime import datetime, timezone
 
@@ -150,6 +151,7 @@ async def get_quotation(quotation_id: str, user: dict = Depends(require_tenant))
     if not q:
         raise HTTPException(status_code=404, detail="Cotización no encontrada")
     # P0 anti-doble-cobro: reconciliar pagos en vuelo con Stripe (solo txns no finalizadas).
+    company = None
     try:
         from deps import _reconcile_quotation_payments
         company = await db.companies.find_one({"id": user["tenant_id"]}, {"_id": 0})
@@ -166,7 +168,30 @@ async def get_quotation(quotation_id: str, user: dict = Depends(require_tenant))
     if q.get("show_per_person"):
         from pricing_breakdown import build_per_person_breakdown
         q["per_person_breakdown"] = build_per_person_breakdown(q)
+    q["usd_presentation"] = fx_presentation.build(q, q.get("per_person_breakdown"))
+    if q["usd_presentation"] is not None:
+        cur_rate, cur_date = fx_presentation.company_rate(company or {})
+        q["usd_presentation"].update({"company_rate": cur_rate, "company_rate_date": cur_date})
     return q
+
+
+@router.post("/quotations/{quotation_id}/fx/refresh")
+async def refresh_quotation_fx(quotation_id: str, user: dict = Depends(require_tenant)):
+    """Iter 71: botón explícito "Actualizar al tipo de cambio actual" (solo presentación USD)."""
+    db = get_db()
+    q = await db.quotations.find_one({"id": quotation_id, "tenant_id": user["tenant_id"]}, {"_id": 0})
+    if not q:
+        raise HTTPException(status_code=404, detail="Cotización no encontrada")
+    if not fx_presentation.is_international(q):
+        raise HTTPException(status_code=400, detail="Solo aplica al canal Mayorista internacional")
+    company = await db.companies.find_one({"id": user["tenant_id"]}, {"_id": 0}) or {}
+    snap = fx_presentation.snapshot_fields(company, fx_presentation.CHANNEL)
+    if not snap:
+        raise HTTPException(status_code=400, detail=fx_presentation.MISSING)
+    await db.quotations.update_one({"id": quotation_id}, {"$set": snap})
+    old = q.get("fx_rate_mxn_per_usd")
+    await _append_history(db, quotation_id, user, "fx", f"Tipo de cambio actualizado: {old or '—'} → {snap['fx_rate_mxn_per_usd']} MXN/USD")
+    return {"ok": True, **snap}
 
 
 @router.post("/quotations", status_code=201)
@@ -275,6 +300,7 @@ async def create_quotation(payload: QuotationCreate, user: dict = Depends(requir
         "show_all_occupancies": bool(payload.show_all_occupancies),
         "show_price_breakdown": bool(payload.show_price_breakdown),
         "show_per_person": bool(payload.show_per_person),
+        **fx_presentation.snapshot_fields(company or {}, client.get("channel")),
         "from_request": payload.from_request or None,
         "history": [{
             "at": now_iso(), "user_id": user["id"], "user_name": user.get("name", ""),

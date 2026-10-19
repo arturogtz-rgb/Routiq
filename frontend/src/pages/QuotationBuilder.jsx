@@ -6,6 +6,8 @@ import { ArrowLeft, ArrowRight, Check, User, Package, CalendarDays, Calculator, 
 import { sortByFavorite } from '@/lib/clients';
 import { CustomConceptsEditor } from '@/components/concepts/CustomConceptsEditor';
 import { AddExecutiveControl } from '@/components/AddExecutiveControl';
+import { CHANNEL_OPTIONS, channelLabel } from '@/lib/channels';
+import { FxChannelNotice } from '@/components/FxChannelNotice';
 import { conceptsTotals, cleanConcept, normalizeConcepts } from '@/components/concepts/conceptMath';
 import { formatDateEs, nightsBetween, addDays, weekdayMon0, WEEKDAYS_ES } from '@/lib/dates';
 
@@ -248,7 +250,7 @@ export default function QuotationBuilder() {
   };
 
   const selectClient = (c) => setForm((f) => {
-    const next = { ...f, client_id: c.id, executive_id: '' };    const execs = c.executives || [];
+    const next = { ...f, client_id: c.id, executive_id: '', ...(!editing && c.channel === 'mayorista' ? { show_per_person: true } : {}) };    const execs = c.executives || [];
     if (execs.length > 0) {
       // Empresa con ejecutivos: la agencia se llena al elegir el ejecutivo.
       next.contacts = { ...f.contacts, agency: { name: c.name || '', contact: '', email: '', phone: '' } };
@@ -499,10 +501,7 @@ export default function QuotationBuilder() {
                   <div><label className="label-text">Nombre</label><input className="input-field" value={newClient.name} onChange={(e) => setNewClient((x) => ({ ...x, name: e.target.value }))} data-testid="newclient-name" /></div>
                   <div><label className="label-text">Canal</label>
                     <select className="input-field" value={newClient.channel} onChange={(e) => setNewClient((x) => ({ ...x, channel: e.target.value }))} data-testid="newclient-channel">
-                      <option value="directo">Directo</option>
-                      <option value="agencia">Agencia</option>
-                      <option value="mayorista">Mayorista</option>
-                      <option value="operador">Mayorista Preferencial</option>
+                      {CHANNEL_OPTIONS.map((c) => <option key={c.v} value={c.v}>{c.label}</option>)}
                     </select>
                   </div>
                   <div><label className="label-text">Teléfono</label><input className="input-field" value={newClient.phone} onChange={(e) => setNewClient((x) => ({ ...x, phone: e.target.value }))} data-testid="newclient-phone" /></div>
@@ -531,7 +530,7 @@ export default function QuotationBuilder() {
                   <button onClick={() => !editing && selectClient(c)} disabled={editing} className="text-left w-full pr-7" data-testid={`client-option-${c.id}`}>
                     <p className="font-semibold text-ink-900 flex items-center gap-1.5">{c.is_favorite && <Star className="w-3.5 h-3.5 text-amber-500" fill="currentColor" />}{c.name}</p>
                     <p className="text-xs text-ink-500 mt-1">{c.email} · {c.phone}</p>
-                    <span className="pill bg-brand-50 text-brand-500 mt-2">{c.channel}</span>
+                    <span className="pill bg-brand-50 text-brand-500 mt-2">{channelLabel(c.channel)}</span>
                   </button>
                 </div>
               ))}
@@ -906,11 +905,12 @@ export default function QuotationBuilder() {
                 <span className="block text-xs text-ink-400 mt-0.5">Muestra el precio por persona diferenciado por tipo de habitación (ej. doble vs triple) más el gran total. El total siempre cuadra con el de la cotización.</span>
               </span>
             </label>
+            <FxChannelNotice client={client} company={company} />
             <div className="grid md:grid-cols-2 gap-4 text-sm">
               <div className="rounded-xl border border-ink-100 p-4">
                 <p className="text-xs uppercase tracking-widest font-bold text-ink-400 mb-1">Cliente</p>
                 <p className="font-semibold text-ink-900">{client?.name}</p>
-                <p className="text-ink-500">{client?.channel}</p>
+                <p className="text-ink-500">{channelLabel(client?.channel)}</p>
               </div>
               <div className="rounded-xl border border-ink-100 p-4">
                 <p className="text-xs uppercase tracking-widest font-bold text-ink-400 mb-1">{isServices ? 'Tipo' : 'Paquete'}</p>
