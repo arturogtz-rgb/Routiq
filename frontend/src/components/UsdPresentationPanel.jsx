@@ -21,13 +21,13 @@ function RefreshFx({ p, quotationId, onDone }) {
   if (!confirm) {
     return (
       <button type="button" className="btn-ghost text-xs border border-ink-200" onClick={() => setConfirm(true)} data-testid="fx-refresh-btn">
-        <RefreshCw className="w-3.5 h-3.5" /> Actualizar al tipo de cambio actual{same ? '' : ` ($${p.company_rate})`}
+        <RefreshCw className="w-3.5 h-3.5" /> Actualizar al tipo de cambio actual{same ? '' : ` ($${p.company_rate_label})`}
       </button>
     );
   }
   return (
     <div className="rounded-lg border border-amber-300 bg-amber-50 p-2 text-xs space-y-1.5" data-testid="fx-refresh-confirm">
-      <p className="text-amber-800">Se recalculará la presentación en USD con ${p.company_rate} MXN por USD{p.available ? ` (antes $${p.rate_label})` : ''}. Los montos en MXN y el cobro no cambian.</p>
+      <p className="text-amber-800">Se recalculará la presentación en USD con ${p.company_rate_label} MXN por USD{p.available ? ` (antes $${p.rate_label})` : ''}. Los montos en MXN y el cobro no cambian.</p>
       {err && <p className="text-red-600">{err}</p>}
       <div className="flex gap-2">
         <button type="button" className="btn-primary text-xs" disabled={busy} onClick={go} data-testid="fx-refresh-yes">{busy ? 'Actualizando…' : 'Confirmar'}</button>
@@ -49,17 +49,17 @@ export function UsdPresentationPanel({ q, onRefreshed }) {
           {p.company_rate ? 'Esta cotización no tiene tipo de cambio guardado: usa “Actualizar al tipo de cambio actual”.' : `${p.warning}.`} Mientras tanto el cliente la ve solo en MXN.</p>
       ) : (
         <>
-          <p className="text-xs text-ink-500" data-testid="usd-rate">TC guardado: <b>${p.rate_label} MXN por USD</b> · {day(p.rate_date)}{p.company_rate && Number(p.company_rate) !== Number(p.rate) ? ` · Ajustes hoy: $${p.company_rate}` : ''}</p>
+          <p className="text-xs text-ink-500" data-testid="usd-rate">TC guardado: <b>${p.rate_label} MXN por USD</b> · {day(p.rate_date)}{p.company_rate && Number(p.company_rate) !== Number(p.rate) ? ` · Ajustes hoy: $${p.company_rate_label}` : ''}</p>
           {p.rows.map((r) => (
-            <div key={r.key} className="grid grid-cols-[1fr_auto_auto] gap-3" data-testid={`usd-row-${r.key}`}>
-              <span className="text-ink-600">{r.title || r.label} ({r.pax} pers.)</span>
-              <span className="text-right"><b className="text-ink-900">{usd(r.price_per_person_usd)}</b> <span className="text-ink-400">· {mxn(r.price_per_person_mxn)}</span></span>
-              <span className="text-right text-ink-700">{usd(r.subtotal_usd)}</span>
+            <div key={r.key} className="flex justify-between gap-3" data-testid={`usd-row-${r.key}`}>
+              <span className="text-ink-600 whitespace-nowrap">{r.label} · {r.pax} pers.</span>
+              <span className="text-right"><b className="text-ink-900">{usd(r.price_per_person_usd)}</b> c/u · {usd(r.subtotal_usd)}
+                <span className="block text-xs text-ink-400">{mxn(r.price_per_person_mxn)} c/u · {mxn(r.subtotal_mxn)}</span></span>
             </div>
           ))}
           <div className="flex justify-between border-t border-ink-100 pt-1.5">
             <span className="font-semibold text-ink-900">Total</span>
-            <span className="text-right"><b className="text-brand-600" data-testid="usd-total">{usd(p.total_usd)}</b> <span className="text-ink-400">· {mxn(p.total_mxn)}</span></span>
+            <span className="text-right"><b className="text-brand-600" data-testid="usd-total">{usd(p.total_usd)}</b><span className="block text-xs text-ink-400">{mxn(p.total_mxn)}</span></span>
           </div>
           {Math.abs(p.rounding_diff_usd || 0) >= 0.01 && (
             <p className="text-[11px] text-ink-500" data-testid="usd-rounding-diff">Suma por persona {usd(p.total_usd)} vs total MXN ÷ TC {usd(p.direct_total_usd)}: diferencia de {usd(Math.abs(p.rounding_diff_usd))} por redondeo. El monto real a cobrar es el total en MXN.</p>

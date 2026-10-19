@@ -257,6 +257,8 @@ async def update_pricing(payload: PricingConfig, user: dict = Depends(require_ro
     db = get_db()
     cur = (await db.companies.find_one({"id": user["tenant_id"]}, {"_id": 0, "pricing_config": 1}) or {}).get("pricing_config") or {}
     data = payload.model_dump()
+    if "fx_mayorista_mxn_per_usd" not in payload.model_fields_set:  # quien no envía el campo no lo borra
+        data["fx_mayorista_mxn_per_usd"] = cur.get("fx_mayorista_mxn_per_usd")
     if data.get("fx_mayorista_mxn_per_usd") != cur.get("fx_mayorista_mxn_per_usd"):
         data["fx_mayorista_updated_at"] = now_iso() if data.get("fx_mayorista_mxn_per_usd") else None
     else:

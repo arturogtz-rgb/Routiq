@@ -171,7 +171,8 @@ async def get_quotation(quotation_id: str, user: dict = Depends(require_tenant))
     q["usd_presentation"] = fx_presentation.build(q, q.get("per_person_breakdown"))
     if q["usd_presentation"] is not None:
         cur_rate, cur_date = fx_presentation.company_rate(company or {})
-        q["usd_presentation"].update({"company_rate": cur_rate, "company_rate_date": cur_date})
+        q["usd_presentation"].update({"company_rate": cur_rate, "company_rate_date": cur_date,
+                                      "company_rate_label": fx_presentation.fmt_rate(cur_rate) if cur_rate else None})
     return q
 
 

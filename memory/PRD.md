@@ -15,6 +15,15 @@ Testing: `/app/test_reports/iteration_66.json` — backend 7/7 + inspección fro
 - **AJUSTE4 (fecha PDF):** `_fmt_date` → formato compacto DD/Mmm/AA (26/Sep/26); la tabla de Hospedaje del PDF ahora pasa checkin/checkout por `_fmt_date` (antes crudas).
 
 
+## Iteración 71 (jun-2026) — Mayorista internacional: USD primero con TC fijo (COMPLETADO ✅)
+- Etiqueta visible `mayorista` → "Mayorista internacional" (`frontend/src/lib/channels.js`; clave intacta) en Ajustes, Clientes, builders, insignia en ficha.
+- Ajustes > Precios: `pricing_config.fx_mayorista_mxn_per_usd` (>0, ≤4 decimales) + `fx_mayorista_updated_at` (servidor; PATCH sin el campo no lo borra). Snapshot `fx_rate_mxn_per_usd`/`fx_rate_date` al crear cotización del canal; editar conserva; `POST /api/quotations/{id}/fx/refresh` (botón con confirmación).
+- `backend/fx_presentation.py`: pp USD = round(pp MXN ÷ TC, 2); total USD = Σ pp×pax; sin desglose total USD = round(total ÷ TC, 2); `rounding_diff_usd` visible. Ficha (`UsdPresentationPanel`), PDF y enlace público: US$ grande / MXN pequeño, nota del TC, "(detalle en MXN)". Cobro y comisión bancaria siguen en MXN. Equivalente automático oculto en este canal.
+- `currency.py`: sin TC confiable ya no inventa 17.0 (mxn_per_usd null → se oculta el equivalente).
+- Nuevas cotizaciones del canal inician con desglose por persona encendido; aviso "Captura el tipo de cambio en Ajustes" en builders/ficha.
+- Confirmación de Reserva tiene su propio componente de totales: NO modificada (pendiente si se quiere USD ahí).
+- Tests: `tests/test_iteration71_usd.py`, `test_iteration71_api.py`; `/app/test_reports/iteration_71.json` 100%. Caso C TC 18.50: US$290.61 / US$250.41 / total US$1,582.86 vs ÷TC US$1,582.84 (dif. 0.02).
+
 ## Iteración 70 (jun-2026) — Lectura real de sesiones Stripe + anti doble acreditación (COMPLETADO ✅)
 - Causa raíz prod: `emergentintegrations.get_checkout_status` falla con stripe 15 (metadata StripeObject). Reemplazado por `payments_core.stripe_get_status` (StripeClient por llamada, `v1.checkout.sessions.retrieve`, `session_from_stripe` lee solo status/payment_status/amount_total/currency/payment_intent; metadata `to_dict()`). Expirar sesiones también vía StripeClient. `create_checkout_session` de la librería no tiene el problema.
 - Guardia atómica (`$expr`) en `apply_payment_to_quotation`: nunca amount_paid > final_total → `review_state: needs_review`, `quotations.payment_review: true`. Cliente: "Recibimos tu pago; tu ejecutivo lo está revisando. No vuelvas a pagar." (sin Pagar, checkout 409). Marca "Pago en revisión" en lista y banner en ficha.

@@ -5,8 +5,6 @@ El MXN es la fuente de verdad: no cambia ningún cálculo, cobro ni moneda de St
   - Total USD = Σ (pp USD × personas). Si difiere de total MXN ÷ TC se reporta (`rounding_diff_usd`).
   - Sin desglose por persona: total USD = round(total MXN ÷ TC, 2).
 """
-from database import now_iso
-
 CHANNEL = "mayorista"
 LABEL = "Mayorista internacional"
 MISSING = "Captura el tipo de cambio en Ajustes"
@@ -24,7 +22,7 @@ def note(rate: float) -> str:
 def company_rate(company: dict):
     pc = (company or {}).get("pricing_config") or {}
     rate = pc.get("fx_mayorista_mxn_per_usd")
-    return (float(rate), pc.get("fx_mayorista_updated_at") or now_iso()) if rate else (None, None)
+    return (float(rate), pc.get("fx_mayorista_updated_at")) if rate else (None, None)
 
 
 def snapshot_fields(company: dict, channel: str) -> dict:

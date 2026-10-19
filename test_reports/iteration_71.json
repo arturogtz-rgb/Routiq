@@ -1,0 +1,38 @@
+{
+  "summary": "Iteration 71 (USD presentation for 'Mayorista internacional', fixed exchange rate) tested end to end, backend and frontend. The required pytest suite (iter71/67/68/69/70) passed: 69 passed, 1 skipped. A new API E2E file test_iteration71_api.py passed 14/14. It covers: TC validation (0, -1 and 18.12345 return 422), fx_mayorista_updated_at set by the server (a client-supplied date is ignored; the date stays the same when the TC is unchanged), the snapshot saved on create, a no-TC mayorista quotation (warning, public has no USD, refresh returns 400), case C, directo/agencia/operador with no usd_presentation, the public USD block plus card fee in MXN, PDF text, changing Settings keeps the snapshot while refresh updates it, editing keeps the original TC, desglose off gives total only, and /exchange-rate never returns a fake 17.0. Case C at TC 18.50 confirmed: total MXN 29,282.50; Doble 5,376.25 -> US$290.61; Cuádruple 4,632.50 -> US$250.41; total USD 1,582.86; direct 29,282.50/18.50 = 1,582.837 -> US$1,582.84; rounding_diff 0.02. ARITHMETIC NOTE: the user's figure 1,582.78 is wrong; the correct value is 1,582.84. UI (Playwright, 1920x1080) all passed. Settings: FX input, error texts for each invalid value, saving blocked while invalid, updated-date text, help tooltip, commission label 'Mayorista internacional'. Clients: filter, modal and pill labels. Builders (Paquete, A la carta, Personalizado): client pill label; the per-person checkbox is turned on automatically for new mayorista quotations only (not for directo, not when editing); fx-channel-notice shows with a TC and fx-missing-warning without one, in all 3 flows. QuotationDetail: channel badge, usd-presentation-panel with usd-rate, usd-row-doble/cuadruple, usd-total, usd-rounding-diff and usd-note; fx-refresh-btn -> confirm -> cancel/confirm flow works and updates the panel; directo shows no panel. Public link: mayorista shows US$ big with MXN small, the note, public-pp-usd-*, public-breakdown-total-usd and '(detalle en MXN)', and usd-equivalent is hidden. Card fee 5.5% of MXN = 1,610.54 and 'Pagar $30,893.04 MXN'. No-TC mayorista public/PDF are MXN only. Directo public shows the automatic '≈ $1,866.5 USD (TC 18.4571)'. PDF contains US$, '(detalle en MXN)' and the exact note; directo PDF has no US$. Regression: 40 existing quotations open via detail/public with 0 failures. Original pricing_config was restored (fx null) and all TEST71 data was deleted.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "fx_presentation.company_rate", "issue": "Returns now_iso() as the date when the rate exists but fx_mayorista_updated_at is missing (e.g. legacy or direct DB writes), so the snapshot fx_rate_date can show a made-up date. Prefer None."},
+      {"endpoint": "PATCH /api/companies/me/pricing", "issue": "The full PricingConfig is replaced. Any caller that saves pricing without the fx field silently clears fx_mayorista_mxn_per_usd (the default is None). The current Settings UI sends the whole object, so this is not reproducible today, but it is fragile."},
+      {"endpoint": "fx_presentation.is_international", "issue": "Uses client_snapshot.channel (frozen at creation), while PATCH /quotations recalculates with the client's CURRENT channel. If a client's channel is changed later, the USD presentation and the MXN pricing channel can disagree. This is an edge case."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "QuotationDetail usd-presentation-panel (narrow right column)", "issues": ["Row labels like 'Precio por persona en ocupación Doble (2 pers.)' wrap to one word per line in the 3-column grid; shorten the labels (e.g. 'Doble · 2 pers.') or stack the amounts below."]},
+      {"screen": "UsdPresentationPanel refresh button/confirm", "issues": ["The company rate is shown unformatted ('$18.5') while the saved rate shows '$18.50'; use the same format (rate_label style) for both."]},
+      {"screen": "PublicQuotation sticky total card", "issues": ["Already existed before this iteration: on desktop the sticky total card (now taller because of the USD block, note and payment buttons) covers a large part of the viewport over the concept detail."]}
+    ]
+  },
+  "test_report_links": ["/app/backend/tests/test_iteration71_api.py", "/app/backend/tests/test_iteration71_usd.py", "/app/backend/tests/scripts/ui_setup_iter71.py", "/app/backend/tests/scripts/regress_iter71.py", "/app/test_reports/pytest/pytest_results_it71.xml"],
+  "action_items": [
+    "Optional: in fx_presentation.company_rate return None for the date instead of now_iso() when fx_mayorista_updated_at is missing.",
+    "Optional: tidy up the usd-presentation-panel row layout and the rate formatting in the refresh button.",
+    "Optional: consider merge semantics in PATCH /companies/me/pricing so a partial payload cannot wipe the FX rate."
+  ],
+  "critical_code_review_comments": [
+    "Card payment is still MXN: public_checkout calculates amount = amount_due (+ card fee on the MXN base) with currency=base_currency (MXN). The USD presentation never reaches Stripe. Verified by code review plus the public payload.",
+    "currency.get_rates no longer invents 17.0; on failure with no cache it returns None and convert() returns None. Covered by a unit test.",
+    "Builders: selectClient sets show_per_person=true for a mayorista client but never resets it if the user then picks a non-mayorista client in the same session. Minor."
+  ],
+  "updated_files": ["/app/backend/tests/test_iteration71_api.py", "/app/backend/tests/scripts/ui_setup_iter71.py", "/app/backend/tests/scripts/regress_iter71.py"],
+  "success_rate": {"backend": "100%", "frontend": "100%"},
+  "seed_data_creation": "TEST71/TEST71UI clients and quotations were created temporarily and then deleted. pricing_config was restored to the original (margin 0.75, commissions 0/0.12/0.15/0.2, fx null).",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Run: cd /app/backend && python -m pytest tests/test_iteration71_usd.py tests/test_iteration71_api.py -q -W ignore. For UI: python tests/scripts/ui_setup_iter71.py setup (writes /tmp/it71ui.json with notc/may/dir quotation ids and tokens; TC 18.5), then 'notc' clears the TC, then 'cleanup' restores. The quotation edit endpoint is PATCH /api/quotations/{id} (not PUT).",
+  "rca of the issue": "No functional bugs found. Arithmetic confirmation: 29,282.50 / 18.50 = 1,582.8378 -> 1,582.84, not 1,582.78; Σ pp USD = 290.61*2 + 250.41*4 = 1,582.86; diff 0.02."
+}
