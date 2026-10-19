@@ -11,8 +11,10 @@ cotización con un único update atómico guardado por `credited_sessions` (un s
 acredita dos veces). Si la aplicación falla, queda paid/applied=false y el reconciliador la
 reintenta en la siguiente verificación.
 """
+import asyncio
 import logging
 import os
+from types import SimpleNamespace
 
 from pymongo import ReturnDocument
 
@@ -21,7 +23,9 @@ import notifications
 
 log = logging.getLogger("routiq")
 
-UNRESOLVED = {"$nin": ["paid", "expired", "failed"]}
+UNRESOLVED = {"$nin": ["paid", "expired", "failed", "reconciled"]}
+NEEDS_REVIEW_REASON = "Posible pago duplicado o ya registrado manualmente: acreditarlo superaría el total de la cotización."
+
 
 
 def resolve_stripe_key(company: dict) -> str:
@@ -38,22 +42,55 @@ def _checkout(api_key: str):
     return StripeCheckout(api_key=api_key, webhook_url="")
 
 
+def _client(api_key: str):
+    """Cliente del SDK por llamada (sin estado global). Iter 70: no usamos el parseo de
+    emergentintegrations (falla con stripe 15: metadata llega como StripeObject)."""
+    import stripe
+    opts = {"base_addresses": {"api": "https://integrations.emergentagent.com/stripe"}} if "sk_test_emergent" in (api_key or "") else {}
+    return stripe.StripeClient(api_key, **opts)
+
+
+def _plain(v):
+    if v is None:
+        return {}
+    if hasattr(v, "to_dict"):
+        try:
+            return v.to_dict()
+        except Exception:
+            pass
+    try:
+        return dict(v)
+    except Exception:
+        return {}
+
+
+def session_from_stripe(obj) -> SimpleNamespace:
+    """Lee SOLO los campos que usamos de una Checkout Session (StripeObject o dict)."""
+    def g(k):
+        if isinstance(obj, dict):
+            return obj.get(k)
+        return getattr(obj, k, None)
+    pi = g("payment_intent")
+    if pi is not None and not isinstance(pi, str):
+        pi = getattr(pi, "id", None) or (pi.get("id") if isinstance(pi, dict) else None)
+    return SimpleNamespace(id=g("id"), status=g("status"), payment_status=g("payment_status"),
+                           amount_total=g("amount_total"), currency=g("currency"),
+                           payment_intent=pi, url=g("url"), metadata=_plain(g("metadata")))
+
+
 async def stripe_get_status(api_key: str, session_id: str):
-    """Consulta la sesión en Stripe (punto único, fácil de simular en pruebas)."""
-    return await _checkout(api_key).get_checkout_status(session_id)
+    """Consulta directa al SDK (punto único, fácil de simular en pruebas)."""
+    obj = await asyncio.to_thread(_client(api_key).v1.checkout.sessions.retrieve, session_id)
+    return session_from_stripe(obj)
 
 
 async def stripe_expire_session(api_key: str, session_id: str) -> bool:
-    import stripe
-    _checkout(api_key)  # fija api_key / api_base del SDK
-    stripe.checkout.Session.expire(session_id)
+    await asyncio.to_thread(_client(api_key).v1.checkout.sessions.expire, session_id)
     return True
 
 
 async def stripe_session_url(api_key: str, session_id: str) -> str:
-    import stripe
-    _checkout(api_key)
-    return getattr(stripe.checkout.Session.retrieve(session_id), "url", "") or ""
+    return (await stripe_get_status(api_key, session_id)).url or ""
 
 
 def readable_error(e: Exception) -> str:
@@ -81,20 +118,30 @@ def classify(st) -> str:
     return "open"
 
 
+class NeedsReview(Exception):
+    """Acreditar haría que amount_paid supere final_total."""
+
+
 async def apply_payment_to_quotation(db, txn: dict) -> bool:
-    """Acredita base_amount (sin comisión bancaria) una sola vez por session_id. True si acreditó."""
+    """Acredita base_amount (sin comisión bancaria) una sola vez por session_id. True si acreditó.
+    Iter 70: nunca deja amount_paid por encima de final_total (lanza NeedsReview)."""
     sid = txn["session_id"]
     credit = round(float(txn.get("base_amount", txn["amount"])), 2)
+    fits = {"$lte": [{"$add": [{"$ifNull": ["$amount_paid", 0]}, credit]},
+                     {"$add": [{"$ifNull": ["$final_total", {"$ifNull": ["$total", 0]}]}, 0.01]}]}
     q = await db.quotations.find_one_and_update(
-        {"id": txn["quotation_id"], "credited_sessions": {"$ne": sid}},
+        {"id": txn["quotation_id"], "credited_sessions": {"$ne": sid}, "$expr": fits},
         {"$inc": {"amount_paid": credit}, "$addToSet": {"credited_sessions": sid},
          "$set": {"last_activity_at": now_iso()}},
         projection={"_id": 0}, return_document=ReturnDocument.AFTER,
     )
     if q is None:
-        if not await db.quotations.find_one({"id": txn["quotation_id"]}, {"_id": 0, "id": 1}):
+        cur = await db.quotations.find_one({"id": txn["quotation_id"]}, {"_id": 0, "id": 1, "credited_sessions": 1})
+        if not cur:
             raise RuntimeError(f"cotización {txn['quotation_id']} no encontrada")
-        return False  # ya acreditada antes
+        if sid in (cur.get("credited_sessions") or []):
+            return False  # ya acreditada antes
+        raise NeedsReview(NEEDS_REVIEW_REASON)
     amount_paid = round(q.get("amount_paid", 0) or 0, 2)
     final_total = q.get("final_total")
     if final_total is None:
@@ -123,8 +170,18 @@ async def apply_pending_credit(db, session_id: str) -> dict:
     txn = await db.payment_transactions.find_one({"session_id": session_id}, {"_id": 0})
     if not txn or txn.get("payment_status") != "paid" or txn.get("applied") is True:
         return {"applied": bool(txn and txn.get("applied")), "credited": False}
+    if txn.get("review_state") == "needs_review":
+        return {"applied": False, "credited": False, "needs_review": True}
     try:
         credited = await apply_payment_to_quotation(db, txn)
+    except NeedsReview as e:
+        log.warning("payment needs_review session_id=%s quotation_id=%s base=%s: %s",
+                    session_id, txn.get("quotation_id"), txn.get("base_amount"), e)
+        await db.payment_transactions.update_one(
+            {"session_id": session_id},
+            {"$set": {"applied": False, "review_state": "needs_review", "review_reason": str(e), "review_at": now_iso()}})
+        await db.quotations.update_one({"id": txn["quotation_id"]}, {"$set": {"payment_review": True}})
+        return {"applied": False, "credited": False, "needs_review": True}
     except Exception as e:
         log.warning("payment apply failed session_id=%s quotation_id=%s exc=%s: %s",
                     session_id, txn.get("quotation_id"), type(e).__name__, e)
@@ -172,8 +229,11 @@ async def verify_session(db, txn: dict, api_key: str, source: str) -> dict:
             {"session_id": sid, "payment_status": {"$ne": "paid"}},
             {"$set": {**base_set, **extra}, "$unset": {"last_error": "", "last_error_at": ""}})
     out["outcome"] = outcome
-    fresh = await db.payment_transactions.find_one({"session_id": sid}, {"_id": 0, "applied": 1, "payment_status": 1})
+    fresh = await db.payment_transactions.find_one({"session_id": sid}, {"_id": 0, "applied": 1, "payment_status": 1, "review_state": 1})
     out["applied"] = bool((fresh or {}).get("applied"))
+    out["review_state"] = (fresh or {}).get("review_state")
+    if outcome == "paid" and out["review_state"] == "needs_review":
+        out["outcome"] = outcome = "needs_review"
     out["local_status"] = (fresh or {}).get("payment_status")
     return out
 
@@ -182,7 +242,8 @@ async def reconcile_quotation(db, quotation_id: str, company: dict, source: str 
     """1) reintenta paid/applied!=true; 2) verifica en Stripe las no finalizadas."""
     results = []
     async for t in db.payment_transactions.find(
-            {"quotation_id": quotation_id, "payment_status": "paid", "applied": False}, {"_id": 0, "session_id": 1}):
+            {"quotation_id": quotation_id, "payment_status": "paid", "applied": False,
+             "review_state": {"$ne": "needs_review"}}, {"_id": 0, "session_id": 1}):
         results.append({"session_id": t["session_id"], "outcome": "paid", **(await apply_pending_credit(db, t["session_id"]))})
     api_key = resolve_stripe_key(company)
     if not api_key:
@@ -197,13 +258,16 @@ async def unresolved_state(db, quotation_id: str) -> dict | None:
     """Transacción más reciente que impide volver a cobrar: paid sin aplicar, en proceso o sin verificar."""
     t = await db.payment_transactions.find_one(
         {"quotation_id": quotation_id, "$or": [
+            {"review_state": "needs_review", "applied": False},
             {"payment_status": "paid", "applied": False},
             {"payment_status": "processing"},
             {"payment_status": UNRESOLVED, "verification_state": "error"},
         ]}, {"_id": 0}, sort=[("created_at", -1)])
     if not t:
         return None
-    if t.get("payment_status") == "paid":
+    if t.get("review_state") == "needs_review" and not t.get("applied"):
+        state = "needs_review"
+    elif t.get("payment_status") == "paid":
         state = "registering"
     elif t.get("payment_status") == "processing":
         state = "processing"
@@ -239,3 +303,24 @@ async def migrate_applied_flag(db) -> int:
     if changed:
         log.warning("payments migration: %d legacy paid transactions flagged (applied)", changed)
     return changed
+
+
+async def reconcile_manually(db, txn: dict, user: dict, reason: str = "") -> dict:
+    """Cierra una transacción sin sumar nada (el pago ya se registró a mano). Solo admins."""
+    sid, qid = txn["session_id"], txn["quotation_id"]
+    info = {"by_id": user.get("id"), "by_name": user.get("name") or user.get("email", ""), "at": now_iso(), "reason": (reason or "").strip()[:300]}
+    sets = {"applied": True, "review_state": "manual", "reconciled_manually": info}
+    if txn.get("payment_status") != "paid":
+        sets["payment_status"] = "reconciled"
+    await db.payment_transactions.update_one({"session_id": sid}, {"$set": sets})
+    await db.quotations.update_one({"id": qid}, {"$addToSet": {"credited_sessions": sid}})
+    still = await db.payment_transactions.count_documents({"quotation_id": qid, "review_state": "needs_review", "applied": False})
+    await db.quotations.update_one({"id": qid}, {"$set": {"payment_review": still > 0}})
+    q = await db.quotations.find_one({"id": qid}, {"_id": 0})
+    try:
+        from deps import _record_audit
+        detail = f"Transacción {sid} conciliada manualmente (sin sumar monto)" + (f". Motivo: {info['reason']}" if info["reason"] else "")
+        await _record_audit(db, q["tenant_id"], user, "payment_reconciled", q, detail)
+    except Exception:
+        log.exception("audit payment_reconciled failed")
+    return info

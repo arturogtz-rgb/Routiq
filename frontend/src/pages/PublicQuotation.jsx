@@ -8,12 +8,13 @@ import { formatDateEs } from '@/lib/dates';
 const SESSION_KEY = (token) => `routiq:last-session:${token}`;
 const saveSession = (token, sid) => { try { if (sid) localStorage.setItem(SESSION_KEY(token), sid); } catch (_e) { /* storage off */ } };
 const readSession = (token) => { try { return localStorage.getItem(SESSION_KEY(token)); } catch (_e) { return null; } };
-const BLOCKING_STATES = ['processing', 'verification_error', 'registering'];
+const BLOCKING_STATES = ['processing', 'verification_error', 'registering', 'needs_review'];
 function stateMessage(state, code) {
   const map = {
     paid: { type: 'success', text: '¡Pago confirmado! Gracias por tu reserva.' },
     processing: { type: 'processing', text: 'Tu banco está procesando el pago; se confirmará en cuanto se acredite.' },
     registering: { type: 'processing', text: 'Recibimos tu pago y lo estamos registrando. No vuelvas a pagar.' },
+    needs_review: { type: 'processing', text: 'Recibimos tu pago; tu ejecutivo lo está revisando. No vuelvas a pagar.' },
     verification_error: { type: 'error', text: `No pudimos verificar tu pago en este momento. No vuelvas a pagar. Si ya se te hizo el cargo, avisa a tu ejecutivo con el folio ${code || ''}.`.replace(' .', '.') },
     expired: { type: 'warn', text: 'La sesión de pago expiró. Puedes intentarlo de nuevo.' },
     open: { type: 'warn', text: 'Aún no recibimos la confirmación de tu pago. Si no lo completaste, puedes intentarlo de nuevo.' },

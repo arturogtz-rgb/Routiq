@@ -29,3 +29,14 @@
 4. Opcional: un endpoint por empresa (`/api/webhook/stripe/{tenant_id}`) evita depender de metadata.
 5. Nota: `StripeCheckout.__init__` fija `stripe.api_key` global del SDK; con varias empresas concurrentes conviene
    migrar a `stripe.StripeClient(api_key)` por llamada (cambio de uso, no de dependencia).
+
+## Iter 70 — compatibilidad con stripe==15.0.1
+- `get_checkout_status` de emergentintegrations 0.1.0 falla con sesiones reales (metadata = StripeObject, el modelo exige dict).
+  Reemplazado por `payments_core.stripe_get_status` (StripeClient por llamada → `v1.checkout.sessions.retrieve`, lee solo
+  status/payment_status/amount_total/currency/payment_intent; metadata vía `to_dict()`).
+- `create_checkout_session` de la librería NO tiene el problema (solo lee `session.url` y `session.id`); se mantiene.
+- `handle_webhook` de la librería SÍ lo tendría si se usa con `webhook_secret` (construct_event devuelve StripeObject y
+  `WebhookEventResponse.metadata` exige dict). Nuestro webhook ya no la usa (parsea el JSON y verifica con Stripe).
+  Cuando se implemente la firma: usar `stripe.Webhook.construct_event(...)` directo y convertir con `to_dict()`.
+- La llave de prueba del entorno (proxy de Emergent) crea sesiones pero responde "No such checkout.session" al leerlas
+  (también con la librería), así que la prueba real create+read se omite salvo que exista `STRIPE_TEST_SECRET_KEY` (sk_test propia).

@@ -702,6 +702,11 @@ export default function QuotationDetail() {
                 </span>
                 <span className="text-ink-700">Pagado: <b>{money(q.amount_paid || 0, q.currency)}</b></span>
               </div>
+              {q.payment_review && (
+                <p className="mt-3 rounded-lg bg-amber-50 border border-amber-300 text-amber-800 text-xs px-3 py-2" data-testid="payment-review-banner">
+                  <b>Pago en revisión:</b> Stripe confirmó un pago que haría superar el total de la cotización (posible pago duplicado o ya registrado manualmente). Pulsa “Verificar pago con Stripe” para revisarlo.
+                </p>
+              )}
               <StripeVerifyPanel quotationId={q.id} currency={q.currency} onDone={load} />
 
               {/* Gating de pago por etapas (Iter 4 punto 1 y 2) */}

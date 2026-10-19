@@ -20,6 +20,7 @@ from deps import (
 from models import PublicCheckoutRequest, ManualPaymentInput, SendPaymentInput, QuotationPaymentConfig
 from emergentintegrations.payments.stripe.checkout import StripeCheckout, CheckoutSessionRequest
 import payments_core
+from pydantic import BaseModel
 
 log = logging.getLogger("routiq")
 from pricing_breakdown import build_per_person_breakdown
@@ -513,6 +514,7 @@ async def public_checkout(token: str, payload: PublicCheckoutRequest, request: R
 _UNRESOLVED_MSG = {
     "processing": "Tu banco está procesando el pago; se confirmará en cuanto se acredite. No vuelvas a pagar.",
     "registering": "Recibimos tu pago y lo estamos registrando. No vuelvas a pagar.",
+    "needs_review": "Recibimos tu pago; tu ejecutivo lo está revisando. No vuelvas a pagar.",
     "verification_error": "No pudimos verificar tu pago en este momento. No vuelvas a pagar. Si ya se te hizo el cargo, avisa a tu ejecutivo con el folio {code}.",
 }
 
@@ -533,7 +535,7 @@ async def _create_or_reuse_checkout(db, q, company, api_key, token, payload, amo
             r = await payments_core.verify_session(db, old, api_key, "checkout-expire")
             if r["outcome"] == "expired":
                 continue
-            if r["outcome"] == "paid":
+            if r["outcome"] in ("paid", "needs_review"):
                 raise HTTPException(status_code=400, detail="Esta cotización ya tiene un pago registrado. Recarga la página.")
             if r["outcome"] in ("processing", "verification_error"):
                 raise HTTPException(status_code=409, detail=_UNRESOLVED_MSG[r["outcome"]].format(code=q.get("code", "")))
@@ -586,10 +588,11 @@ async def public_payment_status(token: str, session_id: str, request: Request):
     if not q or not txn or txn.get("quotation_id") != q["id"]:
         raise HTTPException(status_code=404, detail="Transacción no encontrada")
     company = await db.companies.find_one({"id": txn["tenant_id"]}, {"_id": 0}) or {}
-    if txn.get("payment_status") == "paid":
+    if txn.get("payment_status") == "reconciled":
+        state = "paid"
+    elif txn.get("payment_status") == "paid":
         res = await payments_core.apply_pending_credit(db, session_id) if txn.get("applied") is False else {"applied": True}
-        state = "paid" if res.get("applied") else "registering"
-        r = {"outcome": state}
+        state = "paid" if res.get("applied") else ("needs_review" if res.get("needs_review") else "registering")
     else:
         r = await payments_core.verify_session(db, txn, payments_core.resolve_stripe_key(company), "payment-status")
         state = r["outcome"]
@@ -648,9 +651,12 @@ async def stripe_webhook(request: Request):
     return {"ok": True}
 
 
+DUPLICATE_WARNING = "Posible cobro doble: verifica un reembolso"
+
+
 @router.post("/quotations/{quotation_id}/verify-stripe")
 async def verify_stripe_payments(quotation_id: str, user: dict = Depends(require_tenant)):
-    """Iter 69: botón del ejecutivo. Reconciliación + detalle por transacción (sin correos ni loops)."""
+    """Iter 69/70: botón del ejecutivo. Reconciliación + detalle por transacción (sin correos ni loops)."""
     db = get_db()
     q = await db.quotations.find_one({"id": quotation_id, "tenant_id": user["tenant_id"]}, {"_id": 0, "id": 1})
     if not q:
@@ -659,29 +665,64 @@ async def verify_stripe_payments(quotation_id: str, user: dict = Depends(require
     api_key = payments_core.resolve_stripe_key(company)
     results = {r["session_id"]: r for r in await _reconcile_quotation_payments(db, quotation_id, company, source="executive")}
     txns = await db.payment_transactions.find({"quotation_id": quotation_id}, {"_id": 0}).sort("created_at", -1).to_list(20)
+    is_admin = user.get("role") == "company_admin"
     rows = []
     for t in txns:
         r = results.get(t["session_id"])
-        stripe_status, error = None, None
-        if r:
-            stripe_status = r.get("stripe_payment_status") and f"{r.get('stripe_status')} / {r.get('stripe_payment_status')}"
+        st_status, st_pay, error = None, None, None
+        if r and r.get("stripe_status") is not None:
+            st_status, st_pay = r.get("stripe_status"), r.get("stripe_payment_status")
+        elif r and r.get("error"):
             error = r.get("error")
         elif api_key:
             try:
                 st = await payments_core.stripe_get_status(api_key, t["session_id"])
-                stripe_status = f"{st.status} / {st.payment_status}"
+                st_status, st_pay = st.status, st.payment_status
             except Exception as e:
                 log.warning("verify-stripe read failed session_id=%s quotation_id=%s key_type=%s exc=%s: %s",
                             t["session_id"], quotation_id, payments_core.key_type(api_key), type(e).__name__, e)
                 error = payments_core.readable_error(e)
+        t = await db.payment_transactions.find_one({"session_id": t["session_id"]}, {"_id": 0}) or t
+        stripe_paid = st_pay == "paid" if st_pay is not None else t.get("payment_status") == "paid"
         rows.append({
             "session_id": t["session_id"], "local_status": t.get("payment_status"),
-            "stripe_status": stripe_status, "amount": t.get("amount"),
-            "base_amount": t.get("base_amount", t.get("amount")), "card_fee_amount": t.get("card_fee_amount", 0),
-            "applied": bool(t.get("applied")) if t.get("payment_status") == "paid" else None,
-            "created_at": t.get("created_at"), "error": error or t.get("apply_error"),
+            "stripe_status": f"{st_status} / {st_pay}" if st_status else None, "stripe_paid": stripe_paid,
+            "amount": t.get("amount"), "base_amount": t.get("base_amount", t.get("amount")),
+            "card_fee_amount": t.get("card_fee_amount", 0),
+            "applied": bool(t.get("applied")) if t.get("payment_status") in ("paid", "reconciled") or t.get("review_state") else None,
+            "review_state": t.get("review_state"), "review_reason": t.get("review_reason"), "review_at": t.get("review_at"),
+            "reconciled_manually": t.get("reconciled_manually"),
+            "created_at": t.get("created_at"), "paid_at": t.get("paid_at"),
+            "error": error or t.get("apply_error"),
+            "can_reconcile": is_admin and not t.get("applied"),
         })
-    fresh = await db.quotations.find_one({"id": quotation_id}, {"_id": 0, "amount_paid": 1, "payment_status": 1, "final_total": 1, "total": 1})
-    return {"key_type": payments_core.key_type(api_key) if api_key else None, "transactions": rows,
+    if sum(1 for r in rows if r["stripe_paid"]) >= 2:
+        for r in rows:
+            if r["stripe_paid"]:
+                r["duplicate_warning"] = DUPLICATE_WARNING
+    fresh = await db.quotations.find_one({"id": quotation_id}, {"_id": 0, "amount_paid": 1, "payment_status": 1, "payment_review": 1})
+    return {"key_type": payments_core.key_type(api_key) if api_key else None, "transactions": rows, "is_admin": is_admin,
             "amount_paid": round(fresh.get("amount_paid", 0) or 0, 2), "payment_status": fresh.get("payment_status", "unpaid"),
+            "payment_review": bool(fresh.get("payment_review")),
             "credited_now": sum(1 for r in results.values() if r.get("credited"))}
+
+
+class ManualReconcileInput(BaseModel):
+    reason: str = ""
+
+
+@router.post("/quotations/{quotation_id}/transactions/{session_id}/reconcile-manual")
+async def reconcile_manual(quotation_id: str, session_id: str, payload: ManualReconcileInput,
+                           user: dict = Depends(require_tenant)):
+    """Iter 70: solo administradores. Cierra la transacción sin sumar monto (pago ya registrado a mano)."""
+    if user.get("role") != "company_admin":
+        raise HTTPException(status_code=403, detail="Solo un administrador puede conciliar pagos manualmente.")
+    db = get_db()
+    txn = await db.payment_transactions.find_one(
+        {"session_id": session_id, "quotation_id": quotation_id, "tenant_id": user["tenant_id"]}, {"_id": 0})
+    if not txn:
+        raise HTTPException(status_code=404, detail="Transacción no encontrada")
+    if txn.get("applied") is True:
+        raise HTTPException(status_code=400, detail="Esta transacción ya está aplicada o conciliada.")
+    info = await payments_core.reconcile_manually(db, txn, user, payload.reason)
+    return {"ok": True, "reconciled_manually": info}

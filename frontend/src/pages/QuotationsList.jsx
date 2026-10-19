@@ -102,7 +102,10 @@ export default function QuotationsList() {
         <span className="block truncate" data-testid={`row-agent-${x.code}`}><span className="text-ink-400">Elaboró:</span> {x.agent_name || '—'}</span>
       </div>
       <div className="text-sm text-ink-700 font-mono" data-testid={`row-trip-${x.code}`}>{tripLabel(x.trip_start)}</div>
-      <div><span className={`pill ${STATE_TONES[x.state]}`}>{STATE_LABELS[x.state]}</span></div>
+      <div className="flex flex-wrap gap-1">
+        <span className={`pill ${STATE_TONES[x.state]}`}>{STATE_LABELS[x.state]}</span>
+        {x.payment_review && <span className="pill bg-amber-100 text-amber-800 border border-amber-300 text-[11px]" data-testid={`row-payment-review-${x.code}`}>Pago en revisión</span>}
+      </div>
       <div className="md:text-right font-display font-semibold text-ink-900" data-testid={`row-total-${x.code}`}>
         {money(displayTotal(x), x.currency)}
         {x.payment_status === 'paid' && <span className="ml-2 pill bg-amber-400 text-amber-950 ring-1 ring-amber-500 font-bold text-[10px]" data-testid={`row-paid-${x.code}`}>Pagada</span>}
