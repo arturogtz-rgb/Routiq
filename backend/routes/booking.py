@@ -32,9 +32,17 @@ async def _executive_fields(db, q: dict, company: dict) -> dict:
     if channel != "directo":
         exec_id = (q or {}).get("executive_id")
         ex = next((e for e in (client.get("executives") or []) if e.get("id") == exec_id), None)
+        exs = client.get("executives") or []
+        if not ex and len(exs) == 1:
+            ex = exs[0]
         if ex:
             name, email, phone = ex.get("name", ""), ex.get("email", ""), ex.get("phone", "")
-    if not (name or email or phone):
+        else:
+            agency = ((q or {}).get("contacts") or {}).get("agency") or {}
+            name = agency.get("contact", "")
+            email = agency.get("email", "") or client.get("email", "")
+            phone = agency.get("phone", "") or client.get("phone", "")
+    elif not (name or email or phone):
         name, email, phone = client.get("name", ""), client.get("email", ""), client.get("phone", "")
     agent_company = client.get("name", "") if channel != "directo" else (company or {}).get("name", "")
     return {"agent_name": name, "agent_email": email, "agent_company": agent_company, "agent_phone": phone}
@@ -80,6 +88,11 @@ async def _ctx_for_confirmation(db, conf: dict):
     conf["agent_company"] = ef["agent_company"]
     if not conf.get("agent_phone"):
         conf["agent_phone"] = ef["agent_phone"]
+    if q:
+        pack = await db.packages.find_one({"id": q["package_id"]}, {"_id": 0, "includes": 1, "excludes": 1}) \
+            if q.get("package_id") and q.get("type") != "personalizado" else None
+        conf["_includes"] = (pack or {}).get("includes") if pack else q.get("custom_includes") or []
+        conf["_excludes"] = (pack or {}).get("excludes") if pack else q.get("custom_excludes") or []
     return q or {}, company or {}, client or {"name": (q or {}).get("client_snapshot", {}).get("name", "")}
 
 

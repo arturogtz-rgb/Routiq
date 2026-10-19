@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useParams, useSearchParams } from 'react-router-dom';
 import api, { formatApiError } from '@/lib/api';
-import { CheckCircle2, Calendar, MapPin, Users, FileText, Sparkles, CreditCard, Loader2, Moon, Landmark, Copy, Download, Briefcase, AlertTriangle } from 'lucide-react';
+import { CheckCircle2, Calendar, MapPin, Users, FileText, Sparkles, CreditCard, Loader2, Moon, Landmark, Copy, Download, Briefcase, AlertTriangle, XCircle } from 'lucide-react';
 import { formatDateEs } from '@/lib/dates';
 
 // Iter 69 — último session_id por enlace (sobrevive a recargas).
@@ -584,12 +584,12 @@ export default function PublicQuotation() {
               </>
             )}
             {(includes?.length > 0 || excludes?.length > 0) && (
-              <div className="grid sm:grid-cols-2 gap-4 mt-6 pt-6 border-t border-ink-100" data-testid="public-includes-excludes">
+              <div className="space-y-5 mt-6 pt-6 border-t border-ink-100" data-testid="public-includes-excludes">
                 {includes?.length > 0 && (
                   <div>
                     <h3 className="font-display font-semibold text-ink-900 mb-3">Incluye</h3>
                     <ul className="space-y-1.5 text-sm">
-                      {includes.map((x, i) => <li key={i} className="flex items-start gap-2"><CheckCircle2 className="w-4 h-4 mt-0.5 text-emerald-600 shrink-0" />{x}</li>)}
+                      {includes.map((x, i) => <li key={i} data-testid={`public-include-${i}`} className="flex items-start gap-2"><CheckCircle2 className="w-4 h-4 mt-0.5 text-emerald-600 shrink-0" />{x}</li>)}
                     </ul>
                   </div>
                 )}
@@ -597,7 +597,7 @@ export default function PublicQuotation() {
                   <div>
                     <h3 className="font-display font-semibold text-ink-900 mb-3">No incluye</h3>
                     <ul className="space-y-1.5 text-sm">
-                      {excludes.map((x, i) => <li key={i} className="flex items-start gap-2 text-ink-500">• {x}</li>)}
+                      {excludes.map((x, i) => <li key={i} data-testid={`public-exclude-${i}`} className="flex items-start gap-2 text-ink-500"><XCircle className="w-4 h-4 mt-0.5 text-rose-500 shrink-0" />{x}</li>)}
                     </ul>
                   </div>
                 )}
