@@ -4,12 +4,12 @@ import AppShell from '@/components/AppShell';
 import api, { formatApiError } from '@/lib/api';
 import { ArrowLeft, ArrowRight, Check, User, Wand2, ListChecks, CalendarRange, Calculator, Plus, Trash2, Briefcase, Users, FileText, Sparkles, Save, BookmarkPlus, Star, Search, Package } from 'lucide-react';
 import { sortByFavorite } from '@/lib/clients';
-import { formatDateEs, nightsBetween } from '@/lib/dates';
+import { formatDateEs, nightsBetween, nextDay } from '@/lib/dates';
 import { UNIT_ES, EMPTY_CONTACTS, money, StringList } from './custom-builder/constants';
 import { CustomConceptsEditor } from '@/components/concepts/CustomConceptsEditor';
 import { AddExecutiveControl } from '@/components/AddExecutiveControl';
 import { CHANNEL_OPTIONS, channelLabel } from '@/lib/channels';
-import { FxChannelNotice } from '@/components/FxChannelNotice';
+import { FxRateField, emptyFx, fxFromQuotation, fxPayload } from '@/components/FxRateField';
 import { conceptsTotals, conceptCalc, conceptIsValid, cleanConcept, normalizeConcepts } from '@/components/concepts/conceptMath';
 
 export default function CustomQuotationBuilder() {
@@ -33,6 +33,7 @@ export default function CustomQuotationBuilder() {
   const [aiPresLoading, setAiPresLoading] = useState(false);
   const [presTone, setPresTone] = useState('formal');
 
+  const [fx, setFx] = useState(emptyFx());
   const [form, setForm] = useState({
     client_id: '',
     executive_id: '',
@@ -59,6 +60,7 @@ export default function CustomQuotationBuilder() {
       if (editing) {
         try {
           const { data: q } = await api.get(`/quotations/${id}`);
+          setFx(fxFromQuotation(q));
           setForm({
             client_id: q.client_id || '',
             executive_id: q.executive_id || '',
@@ -247,6 +249,7 @@ export default function CustomQuotationBuilder() {
         important_info: form.important_info || '',
         show_price_breakdown: !!form.show_price_breakdown,
         show_per_person: !!form.show_per_person,
+        ...fxPayload(fx, company, client, editing),
       };
       if (editing) {
         await api.patch(`/quotations/${id}`, payload);
@@ -441,7 +444,7 @@ export default function CustomQuotationBuilder() {
             </div>
             <div className="grid md:grid-cols-3 gap-4">
               <div><label className="label-text">Check-in (opcional)</label><input type="date" className="input-field" value={form.dates.start} onChange={(e) => setForm((f) => ({ ...f, dates: { ...f.dates, start: e.target.value } }))} data-testid="custom-date-start" /></div>
-              <div><label className="label-text">Check-out (opcional)</label><input type="date" className="input-field" value={form.dates.end} onChange={(e) => setForm((f) => ({ ...f, dates: { ...f.dates, end: e.target.value } }))} data-testid="custom-date-end" /></div>
+              <div><label className="label-text">Check-out (opcional)</label><input type="date" className="input-field" min={nextDay(form.dates.start) || undefined} value={form.dates.end} onChange={(e) => setForm((f) => ({ ...f, dates: { ...f.dates, end: e.target.value } }))} data-testid="custom-date-end" /></div>
               <div><label className="label-text">Noches {nightsBetween(form.dates.start, form.dates.end) > 0 ? '(auto)' : ''}</label><input type="number" min="0" className="input-field" value={nightsBetween(form.dates.start, form.dates.end) || form.custom_nights} disabled={nightsBetween(form.dates.start, form.dates.end) > 0} onChange={(e) => setForm((f) => ({ ...f, custom_nights: +e.target.value || 0 }))} data-testid="custom-nights" /></div>
             </div>
             <p className="text-xs text-ink-400">Las noches y personas se usan para calcular automáticamente la cantidad según la unidad de cobro de cada concepto.</p>
@@ -537,7 +540,7 @@ export default function CustomQuotationBuilder() {
                 <span className="block text-xs text-ink-400 mt-0.5">Muestra el precio por persona diferenciado por tipo de habitación más el gran total. El total siempre cuadra con el de la cotización.</span>
               </span>
             </label>
-            <FxChannelNotice client={client} company={company} />
+            <FxRateField client={client} company={company} fx={fx} setFx={setFx} totalMxn={total} pax={totalPax} />
             <div className="grid md:grid-cols-2 gap-4 text-sm">
               <div className="rounded-xl border border-ink-100 p-4">
                 <p className="text-xs uppercase tracking-widest font-bold text-ink-400 mb-1">Cliente</p>

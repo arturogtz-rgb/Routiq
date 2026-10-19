@@ -113,7 +113,7 @@ export default function Clients() {
       <div className="card-surface p-4 mb-5 flex flex-col md:flex-row md:items-center gap-3">
         <div className="relative flex-1">
           <Search className="w-4 h-4 text-ink-400 absolute left-3 top-1/2 -translate-y-1/2" />
-          <input className="input-field pl-9" placeholder="Buscar por nombre, correo o empresa…" value={q} onChange={(e) => setQ(e.target.value)} data-testid="clients-search" />
+          <input className="input-field pl-10" placeholder="Buscar por nombre, correo o empresa…" value={q} onChange={(e) => setQ(e.target.value)} data-testid="clients-search" />
         </div>
         <select className="input-field md:w-44" value={channel} onChange={(e) => setChannel(e.target.value)} data-testid="clients-filter-channel">
           <option value="todos">Todos los tipos</option>

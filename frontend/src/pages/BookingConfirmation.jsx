@@ -21,9 +21,10 @@ const newSvc = () => ({ _rid: rid(), date: '', service: '', details: '', persons
 const withRid = (arr) => (arr || []).map((r) => ({ _rid: r._rid || rid(), ...r }));
 const EMPTY_LODGING = { hotel: '', plan: '', checkin: '', checkout: '', nights: '', room_type: '', confirmation_number: '', guest_name: '' };
 
-function DateField({ value, onChange, testid }) {
+function DateField({ value, onChange, testid, fallback }) {
   const [open, setOpen] = useState(false);
-  const selected = value ? new Date(`${String(value).slice(0, 10)}T00:00:00`) : undefined;
+  const toDate = (v) => (v ? new Date(`${String(v).slice(0, 10)}T00:00:00`) : undefined);
+  const selected = toDate(value);
   return (
     <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger asChild>
@@ -36,6 +37,7 @@ function DateField({ value, onChange, testid }) {
         <Calendar
           mode="single"
           selected={selected}
+          defaultMonth={selected || toDate(fallback)}
           onSelect={(d) => {
             if (d) {
               const iso = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
@@ -52,7 +54,7 @@ function DateField({ value, onChange, testid }) {
   );
 }
 
-function SortableServiceRow({ row, i, updRow, delRow }) {
+function SortableServiceRow({ row, i, updRow, delRow, fallback }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: row._rid });
   const style = { transform: CSS.Transform.toString(transform), transition, opacity: isDragging ? 0.5 : 1, zIndex: isDragging ? 20 : undefined };
   return (
@@ -65,7 +67,7 @@ function SortableServiceRow({ row, i, updRow, delRow }) {
         <GripVertical className="w-4 h-4" />
       </button>
       <div className="md:col-span-2">
-        <DateField value={row.date} onChange={(v) => updRow(i, { date: v })} testid={`svc-date-${i}`} />
+        <DateField value={row.date} onChange={(v) => updRow(i, { date: v })} testid={`svc-date-${i}`} fallback={fallback} />
       </div>
       <input className="input-field md:col-span-3" placeholder="Servicio" value={row.service} onChange={(e) => updRow(i, { service: e.target.value })} data-testid={`svc-name-${i}`} />
       <input className="input-field md:col-span-2" placeholder="Detalles" value={row.details} onChange={(e) => updRow(i, { details: e.target.value })} data-testid={`svc-details-${i}`} />
@@ -340,7 +342,7 @@ export default function BookingConfirmation() {
             ))}
             <div>
               <label className="label-text">Fecha de reservación</label>
-              <DateField value={form.reservation_date} onChange={(v) => setField('reservation_date', v)} testid="conf-reservation_date" />
+              <DateField value={form.reservation_date} onChange={(v) => setField('reservation_date', v)} testid="conf-reservation_date" fallback={q?.dates?.start} />
             </div>
           </div>
         </div>
@@ -368,7 +370,7 @@ export default function BookingConfirmation() {
               <SortableContext items={form.services.map((r) => r._rid)} strategy={verticalListSortingStrategy}>
                 <div className="space-y-3">
                   {form.services.map((r, i) => (
-                    <SortableServiceRow key={r._rid} row={r} i={i} updRow={(idx, patch) => updRow('services', idx, patch)} delRow={(idx) => delRow('services', idx)} />
+                    <SortableServiceRow key={r._rid} row={r} i={i} fallback={q?.dates?.start} updRow={(idx, patch) => updRow('services', idx, patch)} delRow={(idx) => delRow('services', idx)} />
                   ))}
                 </div>
               </SortableContext>

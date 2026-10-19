@@ -208,7 +208,7 @@ export default function PackageEditor() {
                 <div key={j} className="flex items-center gap-2 text-sm">
                   <input type="date" className="input-field text-sm" value={r.start} onChange={(e) => updRange(i, j, { start: e.target.value })} data-testid={`season-${i}-start-${j}`} />
                   <span className="text-ink-400">→</span>
-                  <input type="date" className="input-field text-sm" value={r.end} onChange={(e) => updRange(i, j, { end: e.target.value })} data-testid={`season-${i}-end-${j}`} />
+                  <input type="date" className="input-field text-sm" min={r.start || undefined} value={r.end} onChange={(e) => updRange(i, j, { end: e.target.value })} data-testid={`season-${i}-end-${j}`} />
                 </div>
               ))}
               <button type="button" className="text-xs text-brand-500" onClick={() => addRange(i)}>+ rango de fechas</button>

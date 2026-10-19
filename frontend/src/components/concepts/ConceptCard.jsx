@@ -1,4 +1,5 @@
 import { Trash2, Sparkles, Bed, Car, Compass, Ticket } from 'lucide-react';
+import { nextDay } from '@/lib/dates';
 import { HelpTip } from '@/components/HelpTip';
 import { LodgingOccupancyTable } from './LodgingOccupancyTable';
 import { ConceptFormula } from './ConceptFormula';
@@ -40,7 +41,7 @@ function LodgingFields({ it, idx, update }) {
           {LODGING_UNITS.map((u) => <option key={u.v} value={u.v}>{u.label}</option>)}
         </select></div>
       <div><label className="label-text text-xs">Check-in</label><input type="date" className="input-field" value={it.checkin || ''} onChange={(e) => update({ checkin: e.target.value })} data-testid={`concept-checkin-${idx}`} /></div>
-      <div><label className="label-text text-xs">Check-out</label><input type="date" className="input-field" value={it.checkout || ''} onChange={(e) => update({ checkout: e.target.value })} data-testid={`concept-checkout-${idx}`} /></div>
+      <div><label className="label-text text-xs">Check-out</label><input type="date" className="input-field" min={nextDay(it.checkin) || undefined} value={it.checkout || ''} onChange={(e) => update({ checkout: e.target.value })} data-testid={`concept-checkout-${idx}`} /></div>
       <div><label className="label-text text-xs">Noches (auto)</label><input className="input-field bg-ink-50" value={it.nights || 0} readOnly disabled data-testid={`concept-nights-${idx}`} /></div>
     </div>
   );

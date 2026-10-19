@@ -286,15 +286,26 @@ def _build_itinerary_page(story, s, quotation: dict, client: dict, *, title: str
                 story.append(Paragraph(f"<font color='{color}'>{mark}</font>  {_xml_escape(str(x))}", li))
 
 
-def build_booking_totals(price_per_person: float, total: float, currency: str, width_cm: float = PAGE_CONTENT_W) -> Table:
-    """Bloque de totales de la Confirmación (Precio por persona + Total a pagar). Reutilizable."""
+def build_booking_totals(price_per_person: float, total: float, currency: str, width_cm: float = PAGE_CONTENT_W,
+                         usd_rate: float | None = None) -> Table:
+    """Bloque de totales de la Confirmación (Precio por persona + Total a pagar). Reutilizable.
+    usd_rate (Mayorista internacional): USD informativo grande + MXN pequeño, como en la cotización."""
+    st = _styles()
+    small = "<font size='7.5' color='#64748B'>"
+
+    def cell(mxn: float, size: int):
+        if not usd_rate:
+            return _money(mxn, currency)
+        import fx_presentation
+        return Paragraph(f"<para alignment='right'><font size='{size}'><b>US${fx_presentation.usd(mxn, usd_rate):,.2f}</b></font>"
+                         f"<br/>{small}{_money(mxn, currency)}</font></para>", st["soft"])
     rows = []
     if price_per_person > 0:
-        rows.append(["Precio por persona", _money(price_per_person, currency)])
-    rows.append(["Total a pagar", _money(total, currency)])
+        rows.append(["Precio por persona", cell(price_per_person, 10)])
+    rows.append(["Total a pagar", cell(total, 13)])
     t = Table(rows, colWidths=[(width_cm - 4.5) * cm, 4.5 * cm])
     t.setStyle(TableStyle([
-        ("ALIGN", (0, 0), (-1, -1), "RIGHT"),
+        ("ALIGN", (0, 0), (-1, -1), "RIGHT"), ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
         ("FONTNAME", (0, -1), (-1, -1), "Helvetica-Bold"),
         ("TEXTCOLOR", (0, -1), (-1, -1), PRIMARY),
         ("FONTSIZE", (0, -1), (-1, -1), 12),
@@ -879,8 +890,13 @@ def generate_booking_confirmation_pdf(company: dict, quotation: dict, confirmati
     _important_info(story, s, quotation)
     story.append(Spacer(1, 6))
 
+    import fx_presentation
+    fx_rate = float(quotation.get("fx_rate_mxn_per_usd") or 0) if fx_presentation.is_international(quotation) else 0
     story.append(build_booking_totals(float(confirmation.get("price_per_person", 0) or 0),
-                                      float(confirmation.get("total_amount", 0) or 0), ccy, W))
+                                      float(confirmation.get("total_amount", 0) or 0), ccy, W, usd_rate=fx_rate or None))
+    if fx_rate:
+        story.append(Spacer(1, 3))
+        story.append(Paragraph(f"<font color='#475569'><i>{_xml_escape(fx_presentation.note(fx_rate))}</i></font>", s["soft"]))
     story.append(Spacer(1, 8))
 
     # Datos bancarios

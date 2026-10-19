@@ -170,7 +170,7 @@ export default function QuotationsList() {
       <div className="flex flex-wrap items-center gap-2 -mt-3 mb-6" data-testid="trip-range">
         <span className="flex items-center gap-1.5 text-xs uppercase tracking-widest font-bold text-ink-400"><CalendarRange className="w-4 h-4" /> Inicio del viaje</span>
         <label className="flex items-center gap-2 text-xs text-ink-500">Desde<div className="w-44"><input type="date" value={tripFrom} onChange={(e) => setTripFrom(e.target.value)} className="input-field py-1.5 text-sm" data-testid="trip-from" /></div></label>
-        <label className="flex items-center gap-2 text-xs text-ink-500">Hasta<div className="w-44"><input type="date" value={tripTo} onChange={(e) => setTripTo(e.target.value)} className="input-field py-1.5 text-sm" data-testid="trip-to" /></div></label>
+        <label className="flex items-center gap-2 text-xs text-ink-500">Hasta<div className="w-44"><input type="date" min={tripFrom || undefined} value={tripTo} onChange={(e) => setTripTo(e.target.value)} className="input-field py-1.5 text-sm" data-testid="trip-to" /></div></label>
         {(tripFrom || tripTo) && <button type="button" onClick={() => { setTripFrom(''); setTripTo(''); }} className="pill bg-white border border-ink-200 text-ink-600 text-xs" data-testid="trip-range-clear">Quitar rango</button>}
         {searching && month && (
           <span className="pill bg-amber-50 border border-amber-200 text-amber-700 text-xs" data-testid="search-all-months-notice">Buscando en todos los meses</span>

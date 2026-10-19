@@ -8,7 +8,7 @@ from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.responses import StreamingResponse
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from database import get_db, new_id, now_iso, DEFAULT_PRICING_CONFIG
 from auth import require_tenant
@@ -173,12 +173,83 @@ async def get_quotation(quotation_id: str, user: dict = Depends(require_tenant))
         cur_rate, cur_date = fx_presentation.company_rate(company or {})
         q["usd_presentation"].update({"company_rate": cur_rate, "company_rate_date": cur_date,
                                       "company_rate_label": fx_presentation.fmt_rate(cur_rate) if cur_rate else None})
+        lock = await _fx_lock_reason(db, q)
+        q["fx_lock"] = {"locked": bool(lock), "reason": lock, "can_unlock": user.get("role") == "company_admin"}
     return q
 
 
+async def _fx_lock_reason(db, q: dict):
+    """Iter 72: el TC queda bloqueado si hay pago registrado o Confirmación de Reserva generada."""
+    if float(q.get("amount_paid") or 0) > 0 or q.get("payment_status") in ("paid", "partial"):
+        return "tiene un pago registrado"
+    if await db.booking_confirmations.find_one({"quotation_id": q["id"]}, {"_id": 1}):
+        return "ya tiene Confirmación de Reserva generada"
+    return None
+
+
+def _fx_entry(user: dict, old, new: float, reason: str, source: str, unlocked: bool = False) -> dict:
+    return {"at": now_iso(), "user_id": user.get("id"), "user_name": user.get("name", ""),
+            "old": old, "new": new, "reason": reason, "source": source, "unlocked": unlocked}
+
+
+def _fx_history_text(e: dict) -> str:
+    verb = "actualizado al de Ajustes" if e["source"] == "refresh" else "editado"
+    txt = f"Tipo de cambio {verb}: {e['old'] or '—'} → {e['new']} MXN/USD"
+    if e["unlocked"]:
+        txt += " · desbloqueo de admin"
+    if e["reason"]:
+        txt += f" · Motivo: {e['reason']}"
+    return txt
+
+
+async def _apply_fx(db, q: dict, user: dict, rate, reason: str, source: str) -> dict:
+    """Cambia el TC guardado en la cotización (solo presentación USD). Registra historial."""
+    if not fx_presentation.is_international(q):
+        raise HTTPException(status_code=400, detail="Solo aplica al canal Mayorista internacional")
+    try:
+        rate = fx_presentation.valid_rate(rate)
+    except (TypeError, ValueError) as e:
+        raise HTTPException(status_code=400, detail=str(e) or "Tipo de cambio inválido")
+    reason = (reason or "").strip()
+    old = q.get("fx_rate_mxn_per_usd")
+    if old is not None and round(float(old), 4) == rate:
+        return {"ok": True, "changed": False, "fx_rate_mxn_per_usd": rate, "fx_rate_date": q.get("fx_rate_date")}
+    lock = await _fx_lock_reason(db, q)
+    if lock:
+        if user.get("role") != "company_admin":
+            raise HTTPException(status_code=403, detail=f"Tipo de cambio bloqueado: la cotización {lock}. Solo un admin puede cambiarlo.")
+        if not reason:
+            raise HTTPException(status_code=400, detail="El motivo es obligatorio para desbloquear el tipo de cambio.")
+    entry = _fx_entry(user, old, rate, reason, source, unlocked=bool(lock))
+    date = now_iso()
+    await db.quotations.update_one({"id": q["id"]}, {"$set": {"fx_rate_mxn_per_usd": rate, "fx_rate_date": date},
+                                                    "$push": {"fx_history": entry}})
+    await _append_history(db, q["id"], user, "fx", _fx_history_text(entry))
+    return {"ok": True, "changed": True, "fx_rate_mxn_per_usd": rate, "fx_rate_date": date}
+
+
+class FxUpdate(BaseModel):
+    rate: float
+    reason: str = Field(default="", max_length=300)
+
+
+class FxRefresh(BaseModel):
+    reason: str = Field(default="", max_length=300)
+
+
+@router.put("/quotations/{quotation_id}/fx")
+async def update_quotation_fx(quotation_id: str, payload: FxUpdate, user: dict = Depends(require_tenant)):
+    """Iter 72: tipo de cambio editable por cotización (solo presentación USD)."""
+    db = get_db()
+    q = await db.quotations.find_one({"id": quotation_id, "tenant_id": user["tenant_id"]}, {"_id": 0})
+    if not q:
+        raise HTTPException(status_code=404, detail="Cotización no encontrada")
+    return await _apply_fx(db, q, user, payload.rate, payload.reason, "manual")
+
+
 @router.post("/quotations/{quotation_id}/fx/refresh")
-async def refresh_quotation_fx(quotation_id: str, user: dict = Depends(require_tenant)):
-    """Iter 71: botón explícito "Actualizar al tipo de cambio actual" (solo presentación USD)."""
+async def refresh_quotation_fx(quotation_id: str, payload: FxRefresh | None = None, user: dict = Depends(require_tenant)):
+    """Botón "Actualizar al tipo de cambio actual": mismo registro y candado que la edición manual."""
     db = get_db()
     q = await db.quotations.find_one({"id": quotation_id, "tenant_id": user["tenant_id"]}, {"_id": 0})
     if not q:
@@ -186,13 +257,10 @@ async def refresh_quotation_fx(quotation_id: str, user: dict = Depends(require_t
     if not fx_presentation.is_international(q):
         raise HTTPException(status_code=400, detail="Solo aplica al canal Mayorista internacional")
     company = await db.companies.find_one({"id": user["tenant_id"]}, {"_id": 0}) or {}
-    snap = fx_presentation.snapshot_fields(company, fx_presentation.CHANNEL)
-    if not snap:
+    rate, _ = fx_presentation.company_rate(company)
+    if not rate:
         raise HTTPException(status_code=400, detail=fx_presentation.MISSING)
-    await db.quotations.update_one({"id": quotation_id}, {"$set": snap})
-    old = q.get("fx_rate_mxn_per_usd")
-    await _append_history(db, quotation_id, user, "fx", f"Tipo de cambio actualizado: {old or '—'} → {snap['fx_rate_mxn_per_usd']} MXN/USD")
-    return {"ok": True, **snap}
+    return await _apply_fx(db, q, user, rate, (payload.reason if payload else ""), "refresh")
 
 
 @router.post("/quotations", status_code=201)
@@ -208,6 +276,18 @@ async def create_quotation(payload: QuotationCreate, user: dict = Depends(requir
         if not any(e.get("id") == payload.executive_id for e in execs):
             raise HTTPException(status_code=400, detail="El ejecutivo seleccionado no pertenece a esta empresa.")
     company = await db.companies.find_one({"id": user["tenant_id"]}, {"_id": 0})
+    # Iter 72: TC por cotización — sugerido = Ajustes; el ejecutivo puede capturar otro.
+    fx_snap = fx_presentation.snapshot_fields(company or {}, client.get("channel"))
+    fx_entry = None
+    if client.get("channel") == fx_presentation.CHANNEL and payload.fx_rate_mxn_per_usd is not None:
+        try:
+            rate = fx_presentation.valid_rate(payload.fx_rate_mxn_per_usd)
+        except (TypeError, ValueError) as e:
+            raise HTTPException(status_code=400, detail=str(e))
+        suggested = fx_snap.get("fx_rate_mxn_per_usd")
+        if suggested is None or round(float(suggested), 4) != rate:
+            fx_entry = _fx_entry(user, suggested, rate, (payload.fx_reason or "").strip(), "manual")
+            fx_snap = {"fx_rate_mxn_per_usd": rate, "fx_rate_date": fx_entry["at"]}
     pricing_config = company.get("pricing_config") or DEFAULT_PRICING_CONFIG
     pricing_config = _apply_client_commission(pricing_config, client)
     services_sel = [s.model_dump() for s in payload.services]
@@ -301,7 +381,7 @@ async def create_quotation(payload: QuotationCreate, user: dict = Depends(requir
         "show_all_occupancies": bool(payload.show_all_occupancies),
         "show_price_breakdown": bool(payload.show_price_breakdown),
         "show_per_person": bool(payload.show_per_person),
-        **fx_presentation.snapshot_fields(company or {}, client.get("channel")),
+        **fx_snap,
         "from_request": payload.from_request or None,
         "history": [{
             "at": now_iso(), "user_id": user["id"], "user_name": user.get("name", ""),
@@ -310,6 +390,10 @@ async def create_quotation(payload: QuotationCreate, user: dict = Depends(requir
         "last_activity_at": now_iso(),
         "created_at": now_iso(),
     }
+    if fx_entry:
+        doc["fx_history"] = [fx_entry]
+        doc["history"].append({"at": fx_entry["at"], "user_id": user["id"], "user_name": user.get("name", ""),
+                               "action": "fx", "detail": _fx_history_text(fx_entry)})
     await db.quotations.insert_one(dict(doc))
     return doc
 
@@ -391,6 +475,10 @@ async def update_quotation(quotation_id: str, payload: QuotationUpdate, user: di
     q = await db.quotations.find_one({"id": quotation_id, "tenant_id": user["tenant_id"]}, {"_id": 0})
     if not q:
         raise HTTPException(status_code=404, detail="Cotización no encontrada")
+    fx_rate = updates.pop("fx_rate_mxn_per_usd", None)
+    fx_reason = updates.pop("fx_reason", None) or ""
+    if fx_rate is not None:
+        await _apply_fx(db, q, user, fx_rate, fx_reason, "manual")
     # H1: diff real — registrar SOLO los campos que efectivamente cambiaron (payload del usuario).
     changed_fields = [k for k in updates if q.get(k) != updates[k]]
     if q.get("type") == "personalizado":

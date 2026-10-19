@@ -111,17 +111,19 @@ h1, h2, h3, h4, h5, h6, .font-display {
 }
 .btn-ghost:hover { background: rgb(var(--brand-50)); color: rgb(var(--brand-500)); }
 
-.input-field {
-  width: 100%;
-  background: #fff;
-  border: 1px solid #E2E8F0;
-  border-radius: 10px;
-  padding: 0.65rem 0.9rem;
-  font-size: 0.95rem;
-  color: #0F172A;
-  transition: border-color 150ms ease, box-shadow 150ms ease;
+@layer components {
+  .input-field {
+    width: 100%;
+    background: #fff;
+    border: 1px solid #E2E8F0;
+    border-radius: 10px;
+    padding: 0.65rem 0.9rem;
+    font-size: 0.95rem;
+    color: #0F172A;
+    transition: border-color 150ms ease, box-shadow 150ms ease;
+  }
+  .input-field:focus { outline: none; border-color: rgb(var(--brand-400)); box-shadow: 0 0 0 3px rgb(var(--brand-400) / 0.2); }
 }
-.input-field:focus { outline: none; border-color: rgb(var(--brand-400)); box-shadow: 0 0 0 3px rgb(var(--brand-400) / 0.2); }
 
 .label-text {
   display: block; font-size: 0.8rem; font-weight: 600;

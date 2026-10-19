@@ -8,7 +8,7 @@ const CHANNELS = [
   { k: 'operador', label: 'Mayorista Preferencial', tip: 'Las tarifas netas se muestran sin divisor (neto original). Los conceptos de precio público llevan este % de descuento.' },
 ];
 
-const FX_TIP = 'Lo captura el administrador y NO se actualiza solo. Solo afecta la presentación en USD de las cotizaciones del canal Mayorista internacional; el cobro siempre es en MXN. Cada cotización guarda el tipo de cambio con el que se creó.';
+const FX_TIP = 'Tipo de cambio sugerido para cotizaciones nuevas. Lo captura el administrador y NO se actualiza solo. Cada cotización guarda su propio tipo de cambio (editable en la cotización); cambiarlo aquí no altera cotizaciones existentes. Solo afecta la presentación en USD del canal Mayorista internacional; el cobro siempre es en MXN.';
 const fxError = (v) => {
   if (v === '' || v === null || v === undefined) return '';
   const n = Number(v);
@@ -23,7 +23,7 @@ const FxSettings = ({ pricing, setPricing }) => {
   const upd = pricing.fx_mayorista_updated_at;
   return (
     <div data-testid="fx-settings">
-      <h2 className="font-display font-semibold text-lg text-ink-900">Tipo de cambio para Mayorista internacional (MXN por 1 USD)<HelpTip text={FX_TIP} testid="help-fx-mayorista" /></h2>
+      <h2 className="font-display font-semibold text-lg text-ink-900">Tipo de cambio sugerido para Mayorista internacional (MXN por 1 USD)<HelpTip text={FX_TIP} testid="help-fx-mayorista" /></h2>
       <div className="grid md:grid-cols-2 gap-4 mt-4">
         <div>
           <label className="label-text">MXN por 1 USD</label>

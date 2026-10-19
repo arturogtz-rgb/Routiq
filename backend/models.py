@@ -511,6 +511,8 @@ class QuotationCreate(BaseModel):
     custom_excludes: List[str] = []
     custom_nights: int = Field(default=0, ge=0)
     custom_rooms: int = Field(default=0, ge=0)
+    fx_rate_mxn_per_usd: Optional[float] = None  # Iter 72: TC por cotización (solo Mayorista internacional)
+    fx_reason: str = Field(default="", max_length=300)
 
 
 class QuotationStateUpdate(BaseModel):
@@ -592,6 +594,8 @@ class QuotationUpdate(BaseModel):
     custom_excludes: Optional[List[str]] = None
     custom_nights: Optional[int] = None
     custom_rooms: Optional[int] = None
+    fx_rate_mxn_per_usd: Optional[float] = None
+    fx_reason: Optional[str] = Field(default=None, max_length=300)
 
 
 

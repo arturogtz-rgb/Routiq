@@ -7,9 +7,9 @@ import { sortByFavorite } from '@/lib/clients';
 import { CustomConceptsEditor } from '@/components/concepts/CustomConceptsEditor';
 import { AddExecutiveControl } from '@/components/AddExecutiveControl';
 import { CHANNEL_OPTIONS, channelLabel } from '@/lib/channels';
-import { FxChannelNotice } from '@/components/FxChannelNotice';
+import { FxRateField, emptyFx, fxFromQuotation, fxPayload } from '@/components/FxRateField';
 import { conceptsTotals, cleanConcept, normalizeConcepts } from '@/components/concepts/conceptMath';
-import { formatDateEs, nightsBetween, addDays, weekdayMon0, WEEKDAYS_ES } from '@/lib/dates';
+import { formatDateEs, nightsBetween, addDays, weekdayMon0, WEEKDAYS_ES, nextDay } from '@/lib/dates';
 
 const SERVICE_UNIT_ES = { per_person: 'por persona', per_group: 'por grupo', per_day: 'por día', per_access: 'por acceso' };
 const OCC_COUNT = { sencilla: 1, doble: 2, triple: 3, cuadruple: 4 };
@@ -37,6 +37,7 @@ export default function QuotationBuilder() {
   const [presTone, setPresTone] = useState('formal');
   const [company, setCompany] = useState(null);
 
+  const [fx, setFx] = useState(emptyFx());
   const [form, setForm] = useState({
     type: search.get('type') === 'servicios' ? 'servicios' : 'paquete',
     client_id: '',
@@ -64,6 +65,7 @@ export default function QuotationBuilder() {
       if (editing) {
         try {
           const { data: q } = await api.get(`/quotations/${id}`);
+          setFx(fxFromQuotation(q));
           setForm({
             type: q.type || 'paquete',
             client_id: q.client_id || '',
@@ -340,6 +342,7 @@ export default function QuotationBuilder() {
           show_all_occupancies: !!form.show_all_occupancies,
           show_price_breakdown: !!form.show_price_breakdown,
           show_per_person: !!form.show_per_person,
+          ...fxPayload(fx, company, client, true),
         };
         if (!isServices) {
           patch.hotel_name = form.hotel_name;
@@ -362,6 +365,7 @@ export default function QuotationBuilder() {
         show_price_breakdown: !!form.show_price_breakdown,
         show_per_person: !!form.show_per_person,
         from_request: search.get('lead') || undefined,
+        ...fxPayload(fx, company, client, false),
       };
       if (isServices) {
         payload.pax = { adultos: totalAdults, menores: form.pax.menores || 0, rooms: [] };
@@ -657,7 +661,7 @@ export default function QuotationBuilder() {
                 {form.dates.start && <p className="text-xs text-ink-400 mt-1">{WEEKDAYS_ES[startWeekday]} · {formatDateEs(form.dates.start)}</p>}
               </div>
               <div><label className="label-text">Check-out</label>
-                <input type="date" className="input-field" value={form.dates.end} onChange={(e) => setEnd(e.target.value)} data-testid="date-end" />
+                <input type="date" className="input-field" min={nextDay(form.dates.start) || undefined} value={form.dates.end} onChange={(e) => setEnd(e.target.value)} data-testid="date-end" />
                 {form.dates.end && <p className="text-xs text-ink-400 mt-1">{formatDateEs(form.dates.end)} · {tripNights} noche(s)</p>}
               </div>
             </div>
@@ -824,7 +828,7 @@ export default function QuotationBuilder() {
               <div><label className="label-text">Fecha inicio (opcional)</label>
                 <input type="date" className="input-field" value={form.dates.start} onChange={(e) => setForm((f) => ({ ...f, dates: { ...f.dates, start: e.target.value } }))} data-testid="servicios-date-start" /></div>
               <div><label className="label-text">Fecha fin (opcional)</label>
-                <input type="date" className="input-field" value={form.dates.end} onChange={(e) => setForm((f) => ({ ...f, dates: { ...f.dates, end: e.target.value } }))} data-testid="servicios-date-end" /></div>
+                <input type="date" className="input-field" min={form.dates.start || undefined} value={form.dates.end} onChange={(e) => setForm((f) => ({ ...f, dates: { ...f.dates, end: e.target.value } }))} data-testid="servicios-date-end" /></div>
             </div>
             {services.length > 0 && (
               <div className="flex flex-wrap gap-2" data-testid="servicios-cat-filter">
@@ -905,7 +909,7 @@ export default function QuotationBuilder() {
                 <span className="block text-xs text-ink-400 mt-0.5">Muestra el precio por persona diferenciado por tipo de habitación (ej. doble vs triple) más el gran total. El total siempre cuadra con el de la cotización.</span>
               </span>
             </label>
-            <FxChannelNotice client={client} company={company} />
+            <FxRateField client={client} company={company} fx={fx} setFx={setFx} totalMxn={total} pax={totalPax} />
             <div className="grid md:grid-cols-2 gap-4 text-sm">
               <div className="rounded-xl border border-ink-100 p-4">
                 <p className="text-xs uppercase tracking-widest font-bold text-ink-400 mb-1">Cliente</p>

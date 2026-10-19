@@ -1,4 +1,5 @@
 import { Trash2, Sparkles } from 'lucide-react';
+import { nextDay } from '@/lib/dates';
 import { UNITS, UNIT_ES, UNIT_HINT, CATEGORIES, CAT_ICON, money } from './constants';
 
 export function CustomItemCard({ it, idx, currency, updateItem, removeItem, unitPriceFor, itemSubtotal, publicPrice }) {
@@ -54,7 +55,7 @@ export function CustomItemCard({ it, idx, currency, updateItem, removeItem, unit
             </select>
           </div>
           <div><label className="label-text">Check-in</label><input type="date" className="input-field" value={it.checkin || ''} onChange={(e) => updateItem(idx, { checkin: e.target.value })} data-testid={`custom-item-checkin-${idx}`} /></div>
-          <div><label className="label-text">Check-out</label><input type="date" className="input-field" value={it.checkout || ''} onChange={(e) => updateItem(idx, { checkout: e.target.value })} data-testid={`custom-item-checkout-${idx}`} /></div>
+          <div><label className="label-text">Check-out</label><input type="date" className="input-field" min={nextDay(it.checkin) || undefined} value={it.checkout || ''} onChange={(e) => updateItem(idx, { checkout: e.target.value })} data-testid={`custom-item-checkout-${idx}`} /></div>
           <div><label className="label-text">Noches (auto)</label><input className="input-field bg-ink-50" value={it.nights || 0} readOnly disabled data-testid={`custom-item-nights-${idx}`} /></div>
         </div>
       ) : it.category === 'acceso' ? (

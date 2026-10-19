@@ -15,8 +15,22 @@ def fmt_rate(rate: float) -> str:
 
 
 def note(rate: float) -> str:
-    return (f"Montos en dólares de referencia al tipo de cambio de ${fmt_rate(rate)} MXN por USD. "
-            "El pago con tarjeta se cobra en pesos mexicanos (MXN).")
+    return (f"Montos en dólares solo como referencia, al tipo de cambio de ${fmt_rate(rate)} MXN por USD. "
+            "El cobro se realiza en pesos mexicanos (MXN) y el tipo de cambio puede variar según su banco.")
+
+
+def valid_rate(rate) -> float:
+    """TC capturado: > 0 y hasta 4 decimales. ValueError si no cumple."""
+    r = float(rate)
+    if not r > 0:
+        raise ValueError("El tipo de cambio debe ser mayor que 0.")
+    if abs(round(r, 4) - r) > 1e-9:
+        raise ValueError("El tipo de cambio admite hasta 4 decimales.")
+    return round(r, 4)
+
+
+def usd(mxn: float, rate: float) -> float:
+    return round(float(mxn or 0) / float(rate), 2)
 
 
 def company_rate(company: dict):
