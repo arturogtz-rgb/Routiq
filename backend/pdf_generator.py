@@ -866,7 +866,7 @@ def generate_booking_confirmation_pdf(company: dict, quotation: dict, confirmati
         rows = [[x.get("hotel", ""), x.get("plan", ""), _fmt_date(x.get("checkin", "")), _fmt_date(x.get("checkout", "")),
                  x.get("nights", ""), x.get("room_type", ""), x.get("confirmation_number", ""), x.get("guest_name", "")] for x in lodging]
         story.append(_grid_table(["Hotel", "Plan", "Check-in", "Check-out", "Noches", "Habitación", "N° Conf.", "Huésped"],
-                                 rows, [3.2, 2.0, 1.9, 1.9, 1.3, 2.6, 2.5, 4.1]))
+                                 rows, [3.2, 2.0, 1.9, 1.9, 1.6, 2.6, 2.5, 3.8]))
         story.append(Spacer(1, 6))
 
     if (confirmation.get("general_observations") or "").strip():

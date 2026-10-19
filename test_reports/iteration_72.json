@@ -1,0 +1,31 @@
+{
+  "summary": "Iter 71 Part 2 (reorganized Quotation and Booking Confirmation PDFs) tested end to end on the backend plus the public page UI. New suite /app/backend/tests/test_iteration72_pdf_layout.py: 17/17 passed. Regression suites iter71_usd, iter71_api, iter66, iter67_e2e and iter64: 50/50 passed. Quotation ea2a2a1f checked: page 1 has columns Fecha|Concepto|Cant.|$ unitario|Subtotal with no Detalle column; TOTAL $86,133.34 matches the API; 'Generado con Routiq' is drawn in the canvas footer of the price page. Page 2 is a separate page starting with CLIENTE + name/Tel./Correo + ITINERARIO, then title, Fechas/Noches/Pasajeros/Hospedaje, description, days, and Incluye/No incluye one per line. Its text has no $, MXN, USD, Aventúrate, aventurateporjalisco or 'Generado con Routiq'. Incluye/No incluye no longer appear on page 1. A new paquete quotation for Agencia Demo SA with executive Laura gives an itinerary header of AGENCIA / Agencia Demo SA / Ejecutivo Laura Vendedora · Tel. 3311111 · Correo laura@agdemo.mx. important_info: when set, 'Información importante' appears in both the quotation PDF and the confirmation PDF; when set back to '', the heading disappears from both. Confirmation 1ef0db49 and de6d8655: general data and bank data in 2 columns; services table is Fecha|Servicio|Pers. with details and observations in gray below (DetalleXYZ/ObsABC verified); totals 'Precio por persona'/'Total a pagar' with no US$; the itinerary page is separate and clean. Legacy agency quotation with executive_id=None, 2 executives and a saved agent_name='Agencia Demo SA': the prefill and the PDF Ejecutivo field do NOT show the agency name, and Empresa = Agencia Demo SA. Public quotation PDF and public confirmation PDF both return 200 with a clean itinerary page. Regression: servicios and personalizado quotation PDFs and 5 other confirmations of various types render fine. USD mayorista quotation PDFs show US$ on the price page and none on the itinerary page. Unit check: white_label=True removes the footer; no itinerary content means no extra page; margins measured at 1.0 cm. Frontend /q/{token}: public-includes-excludes shows 5 includes with lucide circle-check in emerald and 3 excludes with circle-x in rose, one per line, stacked, on desktop and mobile.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "generate_booking_confirmation_pdf (Hospedaje table)", "issue": "The 'Noches' column (1.3cm) is too narrow, so the header wraps as 'Noche/s'. Widen it to about 1.6cm and take the space from 'Huésped' (4.1cm)."},
+      {"endpoint": "_build_itinerary_page", "issue": "Free text (package description, day descriptions, includes) is printed as is. If a user types '$' or prices into them, they will appear on the 'no prices' sheet. This is acceptable but not enforced."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": ["/app/backend/tests/test_iteration72_pdf_layout.py", "/app/test_reports/pytest/pytest_results_it72.xml"],
+  "action_items": [
+    "Optional: widen the 'Noches' column in the confirmation Hospedaje table so the header does not wrap."
+  ],
+  "critical_code_review_comments": [
+    "_footer_cb relies on canv._routiq_itin being set by the zero-size _ItinStart flowable before the PageBreak. onPage runs at page begin, so every page after it (including a multi-page itinerary) gets no footer. This works because the itinerary is always the last section; if anything is added after the itinerary in the future, it will also lose the footer.",
+    "POST /quotations requires executive_id for agency clients with executives, so the 'no executive_id' fallback in _executive_fields/_party_block only applies to legacy data. It was verified by forcing executive_id=None in the DB.",
+    "Pricing is unchanged: pricing.py is untouched; the fx_presentation.py diff only removes the now_iso() fallback date (an iter71 recommendation)."
+  ],
+  "updated_files": ["/app/backend/tests/test_iteration72_pdf_layout.py"],
+  "success_rate": {"backend": "100%", "frontend": "100%"},
+  "seed_data_creation": "The test creates 2 TEST quotations for Agencia Demo SA (plus 1 booking confirmation) and deletes the quotations in teardown. Quotation 1708d572 important_info was set temporarily and restored to ''.",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Run: cd /app/backend && export REACT_APP_BACKEND_URL=$(grep REACT_APP_BACKEND_URL /app/frontend/.env | cut -d= -f2) && python -m pytest tests/test_iteration72_pdf_layout.py -q -W ignore. Note that test_iteration66 needs REACT_APP_BACKEND_URL exported. ✔/✘ extract as '4'/'8' (ZapfDingbats). Confirmation de6d8655 = Agencia Demo with executive_id 'exec1' (no match) which falls back to contacts.agency.contact 'Laura Vendedora'. Public quotation token for ea2a2a1f: rF6_ilC12oci46mUOyEWlpLY; public confirmation token for 1ef0db49: BnV7-SD1GLxVEZeJOG1Y5w.",
+  "rca of the issue": "No functional bugs found."
+}

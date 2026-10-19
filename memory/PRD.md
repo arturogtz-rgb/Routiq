@@ -582,3 +582,13 @@ Ver `/app/memory/test_credentials.md`. Seed automático en cada startup.
 - Fix token de un solo uso (Signup.jsx): tras CUALQUIER error del backend se resetea el widget (`turnstileRef.current.reset()`) y se limpia el token, para que el reintento use un token nuevo (evita el falso 'timeout-or-duplicate'). Backend `_verify_turnstile` ahora devuelve (ok, code); el endpoint /signup mapea timeout-or-duplicate/invalid-input-response/missing-input-response → 400 "La verificación expiró, inténtalo de nuevo." [marcador '[turnstile:timeout-or-duplicate]']; otros códigos → mensaje genérico. Verificado iter_55: backend 22/22 pytest + frontend Playwright, sin issues.
 - Backlog P2 (fuera de esta iteración): miniaturas WhatsApp, dry-run Excel, pago por ocupación, top agencias/ejecutivos, timeline público, comparar dos meses. Refactor pendiente (aislado, post-deploy Iter3): extraer "Conceptos adicionales" a componente reutilizable (refactor puro + regresión de precios).
 - Pendiente (próximo): Lote E — reportes por mes calendario + filtros date_from/date_to en GET /quotations + selector de mes + comparativa mes vs mes anterior en stats.py.
+
+## [2026-06] ITERACIÓN 71 Parte 2 — Reorganización de PDFs (COMPLETADO ✅, iter_72)
+- Márgenes 1.0 cm laterales / 0.95 cm arriba-abajo (ancho útil 19.5 cm); logo sin cambios.
+- Hoja de itinerario SIEMPRE en página propia (Cotización y Confirmación): encabezado de la agencia/mayorista + ejecutivo (tel/correo) o del cliente directo (nombre/tel/correo); título, Fechas, Noches, Pasajeros, Hospedaje, descripción, días, Incluye ✔ / No incluye ✘ un punto por renglón. Sin precios, monedas ni datos de Aventúrate; sin pie "Generado con Routiq" (pie ahora en canvas solo en páginas de precios).
+- Desglose de Cotización: Fecha | Concepto | Cant. | $ unitario | Subtotal (detalle en gris bajo el concepto). Servicios confirmados: Fecha | Servicio | Pers. (detalles/observaciones en gris bajo el servicio).
+- Confirmación: datos generales y bancarios en 2 columnas; "Información importante" en ambos PDFs solo si tiene texto; fix Ejecutivo (no muestra nombre de agencia; usa executive_id → único ejecutivo → contacts.agency).
+- Bloque de totales de Confirmación extraído a `build_booking_totals()` en pdf_generator.py (listo para agregar USD por cotización en la próxima iteración).
+- PublicQuotation.jsx: Incluye/No incluye apilados con íconos, un elemento por línea.
+- Próximo: USD con tipo de cambio por cotización en el bloque de totales de la Confirmación.
+
