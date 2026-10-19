@@ -1,0 +1,37 @@
+{
+  "summary": "Iter 69 Stripe verification robustness tested end-to-end. Unit suite (mocked Stripe) 10/10 pass, extended by testing agent with 7 edge cases (deposit x2 partial->paid, registering state, error->recovered open allows repay, expired not blocking, migration when quotation reflects amount, webhook retries paid+unapplied, executive verify credits once + 404) -> 17/17 pass. E2E against public URL with REAL invalid Stripe key rk_test_invalid000 on demo tenant: 10/10 API tests pass (public unresolved=verification_error, payment-status state verification_error, checkout 409 'No vuelvas a pagar' + folio, token-mismatch 404, verify-stripe readable error 'La llave de Stripe es inválida o fue revocada.', auth 401/403 & unknown/other-tenant 404, fake webhook paid payload NOT credited + 200, unknown session 200 + WARNING, mark-paid works, paid quotation checkout 400 'ya está pagada' also after regenerating public link). Backend log WARNING 'stripe get_checkout_status failed ... session_id, quotation_id, key_type=rk_, exc=CheckoutError' present for all sources; full key never logged (Stripe masks it). UI: /q/{token} shows payment-message data-state=verification_error with folio, payment-buttons/pay-total-btn hidden, verify-payment-btn visible; ?session_id saved to localStorage routiq:last-session:{token}, URL cleaned, after reload verify-payment-btn still visible and click calls GET payment-status/{sid}. Executive /app/quotations/{id}: stripe-verify-btn lists stripe-txn-{sid} with Local Pendiente, Stripe —, $1,055 (base $1,000 + comisión $55), stripe-txn-error-{sid} with readable invalid-key message. Regression iter67+iter68: 36/36 pass; 40 existing quotations detail+public open without error. Company stripe restored ($unset secret_key; now {enabled:false, publishable_key:''}) and TEST data deleted.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "POST /api/public/quotations/{token}/checkout", "issue": "Lock release in finally sets checkout_lock_at=None unconditionally; if a request takes >30s and a second request grabs the stale lock, the first request releases the second's lock. Consider releasing only if checkout_lock_at equals the value it set."},
+      {"endpoint": "_create_or_reuse_checkout", "issue": "If the old session was completed between reconcile and expire, expire fails and the code reuses the old (completed) session URL instead of re-verifying; no double charge, but client lands on a finished Stripe page. Consider re-verifying the session when expire fails."},
+      {"endpoint": "GET /api/public/quotations/{token}", "issue": "Reconciles with Stripe synchronously on every public view (up to 50 unresolved txns sequentially) -> added latency per page load; acceptable now, consider limiting."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "PublicQuotation payment card (verification_error/processing)", "issues": ["'Pagar por transferencia bancaria' button remains visible while the message says 'No vuelvas a pagar' – could invite a double payment by transfer", "Footer 'Pago seguro procesado por Stripe' still shown when the card button is hidden"]},
+      {"screen": "QuotationDetail payment section", "issues": ["Hint 'El cliente debe aceptar la cotización antes de habilitar el pago' shown even when payment_enabled is already true (API allows enabling before acceptance)", "Registrar pago date field uses native browser date picker (pre-existing)"]}
+    ]
+  },
+  "test_report_links": ["/app/backend/tests/test_iteration69_payments.py", "/app/backend/tests/test_iteration69_e2e_api.py", "/app/backend/tests/it69_e2e_setup.py", "/app/test_reports/pytest/pytest_it69.xml"],
+  "action_items": [
+    "Optional: hide/disable bank-transfer option (or add warning) while payment.unresolved is set",
+    "Optional: make checkout lock release conditional on own lock timestamp",
+    "Optional: re-verify old session when Stripe expire fails before reusing its URL"
+  ],
+  "critical_code_review_comments": [
+    "Single paid criterion (payment_status=='paid') consistently applied in classify/verify_session; credited_sessions guard makes apply idempotent (verified with concurrent reconciles and repeated webhooks/status calls)",
+    "public_payments.py is 678 lines – near the 700-line split threshold",
+    "PublicQuotation.jsx is 588 lines; payBlocked also depends on stale payMsg state (after a blocking message, buttons stay hidden until another message replaces it) – acceptable but note"
+  ],
+  "updated_files": ["/app/backend/tests/test_iteration69_payments.py (7 edge-case tests appended)", "/app/backend/tests/test_iteration69_e2e_api.py (new)", "/app/backend/tests/it69_e2e_setup.py (new helper: setup|teardown|state)"],
+  "success_rate": {"backend": "100%", "frontend": "100%"},
+  "test_credentials": "admin@aventurate.mx / Demo2026!, owner@routiq.mx / Routiq2026!",
+  "seed_data_creation": "Temporary TEST-IT69 quotation (cloned) + payment_transactions cs_test_fake_it69 + company stripe.secret_key=rk_test_invalid000; all removed/restored after testing.",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "E2E flow: `cd /app/backend/tests && python it69_e2e_setup.py setup` (sets invalid rk_ key on demo tenant, creates TEST-IT69 quotation, writes /tmp/it69_state.json), run `pytest tests/test_iteration69_e2e_api.py -k 'not test_10'`, do UI checks on /q/{token}, then test_10 (marks paid), then `python it69_e2e_setup.py teardown` (restores by $unset stripe.secret_key since demo had none). Unit tests need no network."
+}

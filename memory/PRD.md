@@ -15,6 +15,14 @@ Testing: `/app/test_reports/iteration_66.json` — backend 7/7 + inspección fro
 - **AJUSTE4 (fecha PDF):** `_fmt_date` → formato compacto DD/Mmm/AA (26/Sep/26); la tabla de Hospedaje del PDF ahora pasa checkin/checkout por `_fmt_date` (antes crudas).
 
 
+## Iteración 69 (jun-2026) — Robustez de verificación de pagos Stripe (COMPLETADO ✅)
+- `backend/payments_core.py`: regla única pagado = `payment_status=="paid"` (complete+unpaid = processing, no acredita); fallos de Stripe → WARNING (session_id, quotation_id, exc, key_type sk_/rk_) y estado `verification_error`; acreditación atómica e idempotente (`credited_sessions` en cotización + `applied` en transacción, reintento automático de paid/applied=false); migración al arrancar (`migrate_applied_flag`).
+- Endpoint estado público devuelve `state` (paid|processing|open|expired|registering|verification_error) y valida que la sesión sea del token. GET público expone `payment.unresolved` y `payment.last_session_id`.
+- Checkout: 409 si hay pago en proceso/sin verificar/registrando; candado por cotización (30 s, liberación condicional); expira sesiones abiertas previas o reutiliza su URL (re-verificando antes) → nunca dos sesiones abiertas; guarda `url` en la transacción.
+- Webhook: no confía en el payload, verifica con la llave de la empresa de nuestra transacción, session desconocida → WARNING + 200. Análisis de firma: `/app/memory/stripe_webhook_report.md` (no implementado).
+- Frontend: mensajes por estado, localStorage `routiq:last-session:{token}`, botón "Ya pagué, verificar pago" persiste tras F5, oculta Pagar/transferencia/pie Stripe si hay pago sin resolver. Ejecutivo: `StripeVerifyPanel` ("Verificar pago con Stripe") en QuotationDetail → POST `/api/quotations/{id}/verify-stripe`.
+- Tests: `tests/test_iteration69_payments.py` (17 casos con Stripe simulado) + `test_iteration69_e2e_api.py`; `/app/test_reports/iteration_69.json` 100%.
+
 ## Iteración 68 (jun-2026) — Buscador, fecha de viaje y agente nuevo en todos los flujos (COMPLETADO ✅)
 - `GET /api/quotations` acepta `q`, `trip_from`, `trip_to`, `sort=trip_asc|trip_desc`; agrega `trip_start`, `executive_name`, `final_client_names` (traveler + guest_name de confirmaciones). Con búsqueda/rango se ignora el mes. Helper `backend/quotation_search.py` (sin acentos/mayúsculas; fechas "nov", "11/2026", "04/Nov", "04/11/2026").
 - `QuotationsList.jsx`: lupa sin encimarse, botón limpiar, aviso "Buscando en todos los meses", columna "Inicio del viaje" (DD/Mmm/AA o —), "Agente:" (ejecutivo agencia) y "Elaboró:" (Routiq), rango Desde/Hasta, selector de orden (creación por defecto / viaje).

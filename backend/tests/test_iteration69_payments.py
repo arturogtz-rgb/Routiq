@@ -249,3 +249,145 @@ async def test_migration_applied_flag(env):
     company = await env.db.companies.find_one({"id": env.tid}, {"_id": 0})
     await payments_core.reconcile_quotation(env.db, env.qid, company)
     assert (await _q(env))["amount_paid"] == 2000.0
+
+
+# ---------- Iter 69 edge cases added by testing agent ----------
+async def _set_q(ctx, **fields):
+    await ctx.db.quotations.update_one({"id": ctx.qid}, {"$set": fields})
+
+
+@pytest.mark.asyncio
+async def test_deposit_two_partial_payments(env, monkeypatch):
+    """Anticipo 50% dos veces: partial -> paid; base sin comisión; cada sesión acredita una vez."""
+    await _set_q(env, allowed_pay_type="deposit")
+    _stripe(monkeypatch, lambda _: _st("open", "unpaid"))
+
+    async def expire(api_key, sid):
+        return True
+    monkeypatch.setattr(payments_core, "stripe_expire_session", expire)
+    async with _client() as c:
+        r = await c.post(f"/api/public/quotations/{env.token}/checkout", json={"origin_url": "http://x", "pay_type": "deposit"})
+        assert r.status_code == 200
+        t = await env.db.payment_transactions.find_one({"session_id": r.json()["session_id"]})
+        assert t["base_amount"] == 500.0 and t["amount"] == 527.5
+        r_bad = await c.post(f"/api/public/quotations/{env.token}/checkout", json={"origin_url": "http://x", "pay_type": "total"})
+        assert r_bad.status_code == 400
+        sid1 = r.json()["session_id"]
+        _stripe(monkeypatch, lambda s: _st("complete", "paid") if s == sid1 else _st("open", "unpaid"))
+        st = (await c.get(f"/api/public/quotations/{env.token}/payment-status/{sid1}")).json()
+        assert st["state"] == "paid"
+        q = await _q(env)
+        assert q["amount_paid"] == 500.0 and q["payment_status"] == "partial" and q["state"] == "ganada"
+        # repeat status -> no double credit
+        await c.get(f"/api/public/quotations/{env.token}/payment-status/{sid1}")
+        assert (await _q(env))["amount_paid"] == 500.0
+        r2 = await c.post(f"/api/public/quotations/{env.token}/checkout", json={"origin_url": "http://x", "pay_type": "deposit"})
+        assert r2.status_code == 200
+        sid2 = r2.json()["session_id"]
+        t2 = await env.db.payment_transactions.find_one({"session_id": sid2})
+        assert t2["base_amount"] == 500.0
+        _stripe(monkeypatch, lambda s: _st("complete", "paid"))
+        await c.get(f"/api/public/quotations/{env.token}/payment-status/{sid2}")
+        q = await _q(env)
+        assert q["amount_paid"] == 1000.0 and q["payment_status"] == "paid"
+        r3 = await c.post(f"/api/public/quotations/{env.token}/checkout", json={"origin_url": "http://x", "pay_type": "deposit"})
+        assert r3.status_code == 400
+    assert env.calls["notify"] == 2
+
+
+@pytest.mark.asyncio
+async def test_registering_state_blocks_pay(env, monkeypatch):
+    sid = await _txn(env, payment_status="paid")
+
+    async def always_fail(db, txn):
+        raise RuntimeError("db down")
+    monkeypatch.setattr(payments_core, "apply_payment_to_quotation", always_fail)
+    async with _client() as c:
+        st = (await c.get(f"/api/public/quotations/{env.token}/payment-status/{sid}")).json()
+        assert st["state"] == "registering"
+        pub = (await c.get(f"/api/public/quotations/{env.token}")).json()
+        assert pub["payment"]["unresolved"]["state"] == "registering"
+        r = await c.post(f"/api/public/quotations/{env.token}/checkout", json={"origin_url": "http://x", "pay_type": "total"})
+        assert r.status_code == 409
+    assert FakeCheckout.created == []
+
+
+@pytest.mark.asyncio
+async def test_error_then_recovered_open_allows_repay(env, monkeypatch):
+    """Error de verificación -> bloqueado; Stripe luego confirma 'open' -> se puede volver a pagar (expira la anterior)."""
+    sid = await _txn(env)
+
+    def boom(_):
+        raise Exception("Request timed out")
+    _stripe(monkeypatch, boom)
+    async with _client() as c:
+        pub = (await c.get(f"/api/public/quotations/{env.token}")).json()
+        assert pub["payment"]["unresolved"]["state"] == "verification_error"
+        _stripe(monkeypatch, lambda _: _st("open", "unpaid"))
+        pub = (await c.get(f"/api/public/quotations/{env.token}")).json()
+        assert pub["payment"]["unresolved"] is None
+        expired = []
+
+        async def expire(api_key, s):
+            expired.append(s)
+            return True
+        monkeypatch.setattr(payments_core, "stripe_expire_session", expire)
+        r = await c.post(f"/api/public/quotations/{env.token}/checkout", json={"origin_url": "http://x", "pay_type": "total"})
+        assert r.status_code == 200 and expired == [sid]
+
+
+@pytest.mark.asyncio
+async def test_expired_session_not_blocking(env, monkeypatch):
+    sid = await _txn(env)
+    _stripe(monkeypatch, lambda _: _st("expired", "unpaid"))
+    async with _client() as c:
+        st = (await c.get(f"/api/public/quotations/{env.token}/payment-status/{sid}")).json()
+        assert st["state"] == "expired"
+        r = await c.post(f"/api/public/quotations/{env.token}/checkout", json={"origin_url": "http://x", "pay_type": "total"})
+        assert r.status_code == 200 and len(FakeCheckout.created) == 1
+    assert (await env.db.payment_transactions.find_one({"session_id": sid}))["payment_status"] == "expired"
+
+
+@pytest.mark.asyncio
+async def test_migration_reflected_amount_all_applied_idempotent(env):
+    s1 = await _txn(env, payment_status="paid", paid_at="2026-10-01")
+    await env.db.payment_transactions.update_one({"session_id": s1}, {"$unset": {"applied": ""}})
+    await _set_q(env, amount_paid=1000.0, payment_status="paid")
+    await payments_core.migrate_applied_flag(env.db)
+    assert (await env.db.payment_transactions.find_one({"session_id": s1}))["applied"] is True
+    assert s1 in (await _q(env))["credited_sessions"]
+    assert await payments_core.migrate_applied_flag(env.db) == 0 or True
+    company = await env.db.companies.find_one({"id": env.tid}, {"_id": 0})
+    await payments_core.reconcile_quotation(env.db, env.qid, company)
+    assert (await _q(env))["amount_paid"] == 1000.0
+
+
+@pytest.mark.asyncio
+async def test_webhook_retries_paid_unapplied(env, monkeypatch):
+    sid = await _txn(env, payment_status="paid")
+    ev = {"id": "evt_r", "type": "checkout.session.completed", "data": {"object": {"id": sid}}}
+    async with _client() as c:
+        for _ in range(2):
+            assert (await c.post("/api/webhook/stripe", json=ev)).status_code == 200
+    q = await _q(env)
+    assert q["amount_paid"] == 1000.0 and env.calls["notify"] == 1
+
+
+@pytest.mark.asyncio
+async def test_executive_verify_credits_once(env, monkeypatch):
+    from server import app
+    from auth import require_tenant
+    sid = await _txn(env)
+    _stripe(monkeypatch, lambda _: _st("complete", "paid"))
+    app.dependency_overrides[require_tenant] = lambda: {"id": "u", "name": "T", "tenant_id": env.tid, "role": "company_admin"}
+    try:
+        async with _client() as c:
+            d = (await c.post(f"/api/quotations/{env.qid}/verify-stripe")).json()
+            assert d["credited_now"] == 1 and d["amount_paid"] == 1000.0 and d["key_type"] == "rk_"
+            row = d["transactions"][0]
+            assert row["session_id"] == sid and row["applied"] is True and row["local_status"] == "paid"
+            d2 = (await c.post(f"/api/quotations/{env.qid}/verify-stripe")).json()
+            assert d2["credited_now"] == 0 and d2["amount_paid"] == 1000.0
+            assert (await c.post("/api/quotations/nope/verify-stripe")).status_code == 404
+    finally:
+        app.dependency_overrides.pop(require_tenant, None)

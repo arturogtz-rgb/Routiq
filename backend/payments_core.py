@@ -187,7 +187,7 @@ async def reconcile_quotation(db, quotation_id: str, company: dict, source: str 
     api_key = resolve_stripe_key(company)
     if not api_key:
         return results
-    pend = await db.payment_transactions.find({"quotation_id": quotation_id, "payment_status": UNRESOLVED}, {"_id": 0}).to_list(50)
+    pend = await db.payment_transactions.find({"quotation_id": quotation_id, "payment_status": UNRESOLVED}, {"_id": 0}).sort("created_at", -1).to_list(10)
     for t in pend:
         results.append(await verify_session(db, t, api_key, source))
     return results

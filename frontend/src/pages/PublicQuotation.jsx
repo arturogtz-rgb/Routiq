@@ -475,7 +475,7 @@ export default function PublicQuotation() {
                   )}
                 </div>
               )}
-              {payment?.transfer_enabled && payment?.bank && (
+              {payment?.transfer_enabled && payment?.bank && !payBlocked && (
                 <div className="mb-3 rounded-2xl border-2 border-ink-100 p-4" data-testid="transfer-section">
                   {!showTransfer ? (
                     <button onClick={requestTransfer}
@@ -524,9 +524,11 @@ export default function PublicQuotation() {
               )}
             </>
           )}
-          <p className="text-xs text-ink-400 mt-3 text-center">
-            <FileText className="w-3 h-3 inline mr-1" /> Pago seguro procesado por Stripe. Al confirmar, {company.name} procederá con la reserva.
-          </p>
+          {payment?.enabled && !payBlocked && !isPaid && (
+            <p className="text-xs text-ink-400 mt-3 text-center" data-testid="stripe-footer">
+              <FileText className="w-3 h-3 inline mr-1" /> Pago seguro procesado por Stripe. Al confirmar, {company.name} procederá con la reserva.
+            </p>
+          )}
         </div>
 
         {/* Página 2: Descripción + Itinerario día a día + Incluye/No incluye (réplica del PDF) */}

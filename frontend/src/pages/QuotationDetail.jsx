@@ -706,7 +706,7 @@ export default function QuotationDetail() {
 
               {/* Gating de pago por etapas (Iter 4 punto 1 y 2) */}
               <div className="mt-3 rounded-xl border border-ink-100 bg-cream p-3" data-testid="payment-gating">
-                {!(q.public_link?.accepted_at || q.state === 'ganada') ? (
+                {!(q.public_link?.accepted_at || q.state === 'ganada' || payCfg.payment_enabled) ? (
                   <p className="text-xs text-ink-500">El cliente debe <b>aceptar</b> la cotización desde el enlace antes de habilitar el pago.</p>
                 ) : (
                   <>

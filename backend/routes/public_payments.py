@@ -498,15 +498,16 @@ async def public_checkout(token: str, payload: PublicCheckoutRequest, request: R
 
     # Iter 69: candado por cotización -> dos clics seguidos no crean dos sesiones.
     lock_cutoff = (datetime.now(timezone.utc) - timedelta(seconds=30)).isoformat()
+    my_lock = now_iso()
     locked = await db.quotations.find_one_and_update(
         {"id": q["id"], "$or": [{"checkout_lock_at": {"$exists": False}}, {"checkout_lock_at": None}, {"checkout_lock_at": {"$lt": lock_cutoff}}]},
-        {"$set": {"checkout_lock_at": now_iso()}})
+        {"$set": {"checkout_lock_at": my_lock}})
     if locked is None:
         raise HTTPException(status_code=409, detail="Estamos preparando tu pago. Espera unos segundos e inténtalo de nuevo.")
     try:
         return await _create_or_reuse_checkout(db, q, company, api_key, token, payload, amount, base_amount, card_fee_amount)
     finally:
-        await db.quotations.update_one({"id": q["id"]}, {"$set": {"checkout_lock_at": None}})
+        await db.quotations.update_one({"id": q["id"], "checkout_lock_at": my_lock}, {"$set": {"checkout_lock_at": None}})
 
 
 _UNRESOLVED_MSG = {
@@ -528,6 +529,14 @@ async def _create_or_reuse_checkout(db, q, company, api_key, token, payload, amo
         except Exception as e:
             log.warning("checkout: could not expire session_id=%s quotation_id=%s exc=%s: %s",
                         old["session_id"], q["id"], type(e).__name__, e)
+            # Re-verificar: pudo haberse pagado/completado entre la reconciliación y el intento de expirar.
+            r = await payments_core.verify_session(db, old, api_key, "checkout-expire")
+            if r["outcome"] == "expired":
+                continue
+            if r["outcome"] == "paid":
+                raise HTTPException(status_code=400, detail="Esta cotización ya tiene un pago registrado. Recarga la página.")
+            if r["outcome"] in ("processing", "verification_error"):
+                raise HTTPException(status_code=409, detail=_UNRESOLVED_MSG[r["outcome"]].format(code=q.get("code", "")))
             url = old.get("url") or ""
             if not url:
                 try:
