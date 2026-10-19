@@ -5,7 +5,7 @@ import logging
 import os
 from datetime import datetime, timezone
 
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
@@ -71,7 +71,11 @@ async def _check_ai_enabled(tenant_id: str):
 @router.get("/quotations")
 async def list_quotations(state: str | None = None, archived: bool = False,
                           date_from: str | None = None, date_to: str | None = None,
+                          q_text: str | None = Query(None, alias="q"),
+                          trip_from: str | None = None, trip_to: str | None = None,
+                          sort: str | None = None,
                           user: dict = Depends(require_tenant)):
+    from quotation_search import trip_start, haystack, matches
     db = get_db()
     q = {"tenant_id": user["tenant_id"], "deleted": {"$ne": True}}
     if archived:
@@ -80,29 +84,61 @@ async def list_quotations(state: str | None = None, archived: bool = False,
         q["archived"] = {"$ne": True}
     if state:
         q["state"] = state
-    # Lote E: filtro por rango de fechas sobre created_at (inclusive en ambos extremos).
-    if date_from or date_to:
+    searching = bool((q_text or "").strip() or trip_from or trip_to)
+    # Lote E: filtro por rango de fechas sobre created_at. Iter 68: con búsqueda activa se ignora el mes.
+    if (date_from or date_to) and not searching:
         rng = {}
         if date_from:
             rng["$gte"] = date_from
         if date_to:
             rng["$lte"] = f"{date_to}T23:59:59.999999"
         q["created_at"] = rng
-    items = await db.quotations.find(q, {"_id": 0}).sort("created_at", -1).to_list(500)
+    items = await db.quotations.find(q, {"_id": 0}).sort("created_at", -1).to_list(None if searching else 500)
     # Resolve the elaborating executive (created_by) -> display name for the list.
     uids = list({it.get("created_by") for it in items if it.get("created_by")})
     umap = {}
     if uids:
         async for u in db.users.find({"id": {"$in": uids}}, {"_id": 0, "id": 1, "name": 1, "email": 1}):
             umap[u["id"]] = u.get("name") or u.get("email") or ""
+    # Iter 68: ejecutivo de la agencia (executive_id) y cliente final ("a nombre de" en la confirmación).
+    cids = list({it.get("client_id") for it in items if it.get("executive_id")})
+    emap = {}
+    if cids:
+        async for c in db.clients.find({"id": {"$in": cids}}, {"_id": 0, "executives": 1}):
+            for ex in (c.get("executives") or []):
+                emap[ex.get("id")] = ex.get("name") or ""
+    guests = {}
+    qids = [it["id"] for it in items]
+    if qids:
+        async for bc in db.booking_confirmations.find({"quotation_id": {"$in": qids}}, {"_id": 0, "quotation_id": 1, "lodging": 1}):
+            guests[bc["quotation_id"]] = [h.get("guest_name") for h in (bc.get("lodging") or []) if h.get("guest_name")]
     now = datetime.now(timezone.utc)
     for it in items:
         it["agent_name"] = umap.get(it.get("created_by"), "")
+        it["executive_name"] = emap.get(it.get("executive_id"), "") or (((it.get("contacts") or {}).get("agency") or {}).get("contact") if it.get("executive_id") else "") or ""
+        traveler = (((it.get("contacts") or {}).get("traveler") or {}).get("name") or "").strip()
+        it["final_client_names"] = list(dict.fromkeys([n for n in [traveler, *guests.get(it["id"], [])] if n]))
+        it["trip_start"] = trip_start(it)
         try:
             last = datetime.fromisoformat(it.get("last_activity_at", it.get("created_at")))
             it["days_idle"] = (now - last).days
         except Exception:
             it["days_idle"] = 0
+    if searching:
+        out = []
+        for it in items:
+            if trip_from and (not it["trip_start"] or it["trip_start"] < trip_from):
+                continue
+            if trip_to and (not it["trip_start"] or it["trip_start"] > trip_to):
+                continue
+            it["_hay"] = haystack(it)
+            if matches(it, q_text or ""):
+                it.pop("_hay", None)
+                out.append(it)
+        items = out[:500]
+    if sort in ("trip_asc", "trip_desc"):
+        dated = sorted([i for i in items if i["trip_start"]], key=lambda i: i["trip_start"], reverse=sort == "trip_desc")
+        items = dated + [i for i in items if not i["trip_start"]]
     return items
 
 

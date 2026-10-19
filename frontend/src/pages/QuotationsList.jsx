@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import AppShell from '@/components/AppShell';
 import api from '@/lib/api';
-import { Plus, Search } from 'lucide-react';
+import { Plus, Search, X, CalendarRange } from 'lucide-react';
 
 const STATE_LABELS = {
   nueva_consulta: 'Nueva consulta', cotizando: 'Cotizando', enviada: 'Enviada',
@@ -18,6 +18,13 @@ function money(v, c = 'MXN') { return `$${Number(v || 0).toLocaleString('es-MX')
 function monthKeyOf(x) { return (x.created_at || '').slice(0, 7); }
 function monthLabel(ym) { const [y, m] = ym.split('-'); return `${MESES[Number(m) - 1] || ''} ${y}`; }
 function displayTotal(x) { return x.final_total != null ? x.final_total : x.total; }
+const MES_CORTO = ['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic'];
+function tripLabel(iso) {
+  if (!iso) return '—';
+  const [y, m, d] = iso.split('-');
+  return `${d}/${MES_CORTO[Number(m) - 1] || ''}/${y.slice(2)}`;
+}
+const GRID = 'grid grid-cols-2 gap-2 md:grid-cols-[1fr_1.4fr_1.2fr_1.5fr_0.9fr_1fr_1.1fr] md:gap-3';
 
 export default function QuotationsList() {
   const [items, setItems] = useState([]);
@@ -28,29 +35,39 @@ export default function QuotationsList() {
   const [month, setMonth] = useState('');
   const [openOlder, setOpenOlder] = useState('');
   const [yearSel, setYearSel] = useState('');
+  const [tripFrom, setTripFrom] = useState('');
+  const [tripTo, setTripTo] = useState('');
+  const [sort, setSort] = useState('created');
+  const [debouncedQ, setDebouncedQ] = useState('');
+
+  useEffect(() => { const t = setTimeout(() => setDebouncedQ(q.trim()), 300); return () => clearTimeout(t); }, [q]);
+  // Con texto o rango de viaje se busca en todos los meses (se ignora el mes elegido).
+  const searching = !!(debouncedQ || tripFrom || tripTo);
 
   useEffect(() => {
+    let alive = true;
     (async () => {
       const params = showArchived ? { archived: true } : {};
-      if (month) {
+      if (month && !searching) {
         const [y, m] = month.split('-').map(Number);
         params.date_from = `${month}-01`;
         params.date_to = `${month}-${String(new Date(y, m, 0).getDate()).padStart(2, '0')}`;
       }
+      if (debouncedQ) params.q = debouncedQ;
+      if (tripFrom) params.trip_from = tripFrom;
+      if (tripTo) params.trip_to = tripTo;
+      if (sort !== 'created') params.sort = sort;
       const { data } = await api.get('/quotations', { params });
-      setItems(data);
+      if (alive) setItems(data);
     })();
-  }, [showArchived, month]);
+    return () => { alive = false; };
+  }, [showArchived, month, searching, debouncedQ, tripFrom, tripTo, sort]);
 
   const filtered = useMemo(() => items.filter((x) => {
     if (onlyPaid && x.payment_status !== 'paid') return false;
     if (state && x.state !== state) return false;
-    if (q) {
-      const s = q.toLowerCase();
-      return ((x.code || '') + (x.client_snapshot?.name || '') + (x.package_snapshot?.name || '')).toLowerCase().includes(s);
-    }
     return true;
-  }), [items, onlyPaid, state, q]);
+  }), [items, onlyPaid, state]);
 
   const { groups, monthKeys } = useMemo(() => {
     const g = {};
@@ -73,51 +90,60 @@ export default function QuotationsList() {
 
   const Row = (x) => (
     <Link key={x.id} to={`/app/quotations/${x.id}`} data-testid={`row-${x.code}`}
-      className="grid grid-cols-12 gap-2 px-6 py-4 border-b border-ink-100 last:border-0 hover:bg-brand-50/40 transition-colors">
-      <div className="col-span-12 md:col-span-2 font-mono text-sm text-brand-500 font-semibold">{x.code}</div>
-      <div className="col-span-6 md:col-span-2 text-sm text-ink-900 font-medium">
-        {x.client_snapshot?.name}
-        <span className="block text-xs text-ink-400 font-normal truncate">{x.package_snapshot?.name || 'Servicios a la carta'}</span>
+      className={`${GRID} px-6 py-4 border-b border-ink-100 last:border-0 hover:bg-brand-50/40 transition-colors items-center`}>
+      <div className="col-span-2 md:col-span-1 font-mono text-sm text-brand-500 font-semibold">{x.code}</div>
+      <div className="text-sm text-ink-900 font-medium min-w-0">
+        <span className="block truncate">{x.client_snapshot?.name}</span>
+        <span className="block text-xs text-ink-400 font-normal truncate">{x.package_snapshot?.name || x.custom_title || 'Servicios a la carta'}</span>
       </div>
-      <div className="col-span-6 md:col-span-2 text-sm text-ink-700 truncate" data-testid={`row-traveler-${x.code}`}>{x.contacts?.traveler?.name || '—'}</div>
-      <div className="col-span-6 md:col-span-2 text-sm text-ink-500 truncate" data-testid={`row-agent-${x.code}`}>{x.agent_name || '—'}</div>
-      <div className="col-span-6 md:col-span-2"><span className={`pill ${STATE_TONES[x.state]}`}>{STATE_LABELS[x.state]}</span></div>
-      <div className="col-span-6 md:col-span-2 md:text-right font-display font-semibold text-ink-900" data-testid={`row-total-${x.code}`}>
+      <div className="text-sm text-ink-700 truncate" data-testid={`row-traveler-${x.code}`}>{(x.final_client_names || []).join(', ') || x.contacts?.traveler?.name || '—'}</div>
+      <div className="text-xs text-ink-500 min-w-0 space-y-0.5">
+        <span className="block truncate" data-testid={`row-executive-${x.code}`}><span className="text-ink-400">Agente:</span> {x.executive_name || '—'}</span>
+        <span className="block truncate" data-testid={`row-agent-${x.code}`}><span className="text-ink-400">Elaboró:</span> {x.agent_name || '—'}</span>
+      </div>
+      <div className="text-sm text-ink-700 font-mono" data-testid={`row-trip-${x.code}`}>{tripLabel(x.trip_start)}</div>
+      <div><span className={`pill ${STATE_TONES[x.state]}`}>{STATE_LABELS[x.state]}</span></div>
+      <div className="md:text-right font-display font-semibold text-ink-900" data-testid={`row-total-${x.code}`}>
         {money(displayTotal(x), x.currency)}
         {x.payment_status === 'paid' && <span className="ml-2 pill bg-amber-400 text-amber-950 ring-1 ring-amber-500 font-bold text-[10px]" data-testid={`row-paid-${x.code}`}>Pagada</span>}
       </div>
     </Link>
   );
 
-  const MonthBlock = (ym) => (
-    <div key={ym} className="card-surface overflow-hidden" data-testid={`month-group-${ym}`}>
-      <div className="flex items-center justify-between px-6 py-3 bg-cream border-b border-ink-100" data-testid={`month-header-${ym}`}>
-        <h3 className="font-display font-semibold text-ink-900 capitalize">{monthLabel(ym)}</h3>
-        <span className="pill bg-white border border-ink-200 text-ink-500 text-xs">{groups[ym].length}</span>
-      </div>
-      <div className="hidden md:grid grid-cols-12 px-6 py-2 border-b border-ink-100 text-xs uppercase tracking-widest font-bold text-ink-400">
-        <div className="col-span-2">Código</div><div className="col-span-2">Cliente</div>
-        <div className="col-span-2">Cliente final</div><div className="col-span-2">Agente</div>
-        <div className="col-span-2">Estado</div><div className="col-span-2 text-right">Total</div>
-      </div>
-      {groups[ym].map(Row)}
+  const Header = () => (
+    <div className={`hidden md:grid ${GRID} px-6 py-2 border-b border-ink-100 text-xs uppercase tracking-widest font-bold text-ink-400`}>
+      <div>Código</div><div>Cliente</div><div>Cliente final</div><div>Agente / Elaboró</div>
+      <div>Inicio del viaje</div><div>Estado</div><div className="text-right">Total</div>
     </div>
   );
+  const Block = (key, title, list) => (
+    <div key={key} className="card-surface overflow-hidden" data-testid={`month-group-${key}`}>
+      <div className="flex items-center justify-between px-6 py-3 bg-cream border-b border-ink-100" data-testid={`month-header-${key}`}>
+        <h3 className="font-display font-semibold text-ink-900 capitalize">{title}</h3>
+        <span className="pill bg-white border border-ink-200 text-ink-500 text-xs">{list.length}</span>
+      </div>
+      <Header />
+      {list.map(Row)}
+    </div>
+  );
+  const MonthBlock = (ym) => Block(ym, monthLabel(ym), groups[ym]);
+  const byTrip = sort !== 'created';
 
   return (
     <AppShell>
       <div className="flex items-end justify-between gap-4 mb-8">
         <div>
           <h1 className="font-display text-3xl font-semibold text-ink-900 tracking-tight">Cotizaciones</h1>
-          <p className="text-ink-500 mt-1">{filtered.length} {showArchived ? 'archivadas' : (month ? 'en el mes' : 'en total')}</p>
+          <p className="text-ink-500 mt-1" data-testid="quotations-count">{filtered.length} {showArchived ? 'archivadas' : (searching ? 'encontradas' : (month ? 'en el mes' : 'en total'))}</p>
         </div>
         <Link to="/app/quotations/new" className="btn-primary" data-testid="new-quotation-btn"><Plus className="w-4 h-4" /> Nueva</Link>
       </div>
 
       <div className="flex flex-col sm:flex-row flex-wrap gap-3 mb-6">
         <div className="relative flex-1 min-w-[200px]">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-ink-400" />
-          <input value={q} onChange={(e) => setQ(e.target.value)} className="input-field pl-10" placeholder="Buscar por código, cliente o paquete" data-testid="quotations-search" />
+          <Search className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-ink-400 z-10" />
+          <input value={q} onChange={(e) => setQ(e.target.value)} className="input-field !pl-11 pr-9" placeholder="Código, cliente, paquete, pasajero, agente o fecha (ej. nov, 04/Nov)" data-testid="quotations-search" />
+          {q && <button type="button" onClick={() => setQ('')} className="absolute right-3 top-1/2 -translate-y-1/2 text-ink-300 hover:text-ink-600" aria-label="Limpiar" data-testid="quotations-search-clear"><X className="w-4 h-4" /></button>}
         </div>
         <select value={state} onChange={(e) => setState(e.target.value)} className="input-field sm:w-56" data-testid="quotations-filter-state">
           <option value="">Todos los estados</option>
@@ -125,12 +151,29 @@ export default function QuotationsList() {
         </select>
         <input type="month" value={month} onChange={(e) => setMonth(e.target.value)} className={`input-field sm:w-auto ${month ? 'border-brand-400 text-brand-600' : ''}`} data-testid="quotations-filter-month" title="Filtrar por mes (fecha de creación)" />
         {month && <button onClick={() => setMonth('')} className="pill whitespace-nowrap bg-white border border-ink-200 text-ink-600" data-testid="quotations-month-clear">Todo el tiempo</button>}
+        <select value={sort} onChange={(e) => setSort(e.target.value)} className="input-field sm:w-60" data-testid="quotations-sort">
+          <option value="created">Orden: fecha de creación</option>
+          <option value="trip_asc">Orden: fecha de viaje (más próxima)</option>
+          <option value="trip_desc">Orden: fecha de viaje (más lejana)</option>
+        </select>
         <button onClick={() => setOnlyPaid((v) => !v)} className={`pill whitespace-nowrap ${onlyPaid ? 'bg-emerald-600 text-white' : 'bg-white border border-ink-200 text-ink-600'}`} data-testid="toggle-paid">
           {onlyPaid ? 'Ver todas' : 'Reservas pagadas'}
         </button>
         <button onClick={() => setShowArchived((v) => !v)} className={`pill whitespace-nowrap ${showArchived ? 'bg-brand-500 text-white' : 'bg-white border border-ink-200 text-ink-600'}`} data-testid="toggle-archived">
           {showArchived ? 'Ver activas' : 'Ver archivadas'}
         </button>
+      </div>
+
+      <div className="flex flex-wrap items-center gap-2 -mt-3 mb-6" data-testid="trip-range">
+        <span className="flex items-center gap-1.5 text-xs uppercase tracking-widest font-bold text-ink-400"><CalendarRange className="w-4 h-4" /> Inicio del viaje</span>
+        <label className="text-xs text-ink-500">Desde</label>
+        <div className="w-44"><input type="date" value={tripFrom} onChange={(e) => setTripFrom(e.target.value)} className="input-field py-1.5 text-sm" data-testid="trip-from" /></div>
+        <label className="text-xs text-ink-500">Hasta</label>
+        <div className="w-44"><input type="date" value={tripTo} onChange={(e) => setTripTo(e.target.value)} className="input-field py-1.5 text-sm" data-testid="trip-to" /></div>
+        {(tripFrom || tripTo) && <button type="button" onClick={() => { setTripFrom(''); setTripTo(''); }} className="pill bg-white border border-ink-200 text-ink-600 text-xs" data-testid="trip-range-clear">Quitar rango</button>}
+        {searching && month && (
+          <span className="pill bg-amber-50 border border-amber-200 text-amber-700 text-xs" data-testid="search-all-months-notice">Buscando en todos los meses</span>
+        )}
       </div>
 
       {onlyPaid && (
@@ -154,9 +197,11 @@ export default function QuotationsList() {
         </div>
       ) : (
         <div className="space-y-6" data-testid="quotations-grouped">
-          {topMonths.map(MonthBlock)}
+          {byTrip && Block('trip', `Ordenadas por fecha de viaje (${sort === 'trip_asc' ? 'más próxima primero' : 'más lejana primero'})`, filtered)}
+          {!byTrip && searching && Block('search', `Resultados de búsqueda`, filtered)}
+          {!byTrip && !searching && topMonths.map(MonthBlock)}
 
-          {(olderTabs.length > 0 || olderYears.length > 0) && (
+          {!byTrip && !searching && (olderTabs.length > 0 || olderYears.length > 0) && (
             <div className="pt-2" data-testid="older-months">
               <div className="flex flex-wrap items-center gap-2 mb-4">
                 <span className="text-xs uppercase tracking-widest font-bold text-ink-400 mr-1">Meses anteriores:</span>

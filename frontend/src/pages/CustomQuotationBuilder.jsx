@@ -7,6 +7,7 @@ import { sortByFavorite } from '@/lib/clients';
 import { formatDateEs, nightsBetween } from '@/lib/dates';
 import { UNIT_ES, EMPTY_CONTACTS, money, StringList } from './custom-builder/constants';
 import { CustomConceptsEditor } from '@/components/concepts/CustomConceptsEditor';
+import { AddExecutiveControl } from '@/components/AddExecutiveControl';
 import { conceptsTotals, conceptCalc, conceptIsValid, cleanConcept, normalizeConcepts } from '@/components/concepts/conceptMath';
 
 export default function CustomQuotationBuilder() {
@@ -182,6 +183,7 @@ export default function CustomQuotationBuilder() {
     ...f, executive_id: ex.id,
     contacts: { ...f.contacts, agency: { name: (clients.find((c) => c.id === f.client_id) || {}).name || '', contact: ex.name || '', email: ex.email || '', phone: ex.phone || '' } },
   }));
+  const onExecutiveSaved = (updated, ex) => { setClients((cs) => cs.map((c) => (c.id === updated.id ? updated : c))); selectExecutive(ex); };
   const handleCreateClient = async () => {
     setError('');
     try {
@@ -367,6 +369,10 @@ export default function CustomQuotationBuilder() {
                     <div><label className="label-text">Teléfono</label><input className="input-field" value={form.contacts.agency.phone} onChange={(e) => setContact('agency', 'phone', e.target.value)} data-testid="custom-contact-agency-phone" /></div>
                     <div><label className="label-text">Correo</label><input className="input-field" value={form.contacts.agency.email} onChange={(e) => setContact('agency', 'email', e.target.value)} data-testid="custom-contact-agency-email" /></div>
                   </div>
+                  <div className="pt-2 border-t border-ink-100">
+                    <p className="text-xs text-ink-400 mb-1.5">¿Manejas ejecutivos para esta empresa? Agrégalos y quedarán guardados.</p>
+                    <AddExecutiveControl client={client} onSaved={onExecutiveSaved} />
+                  </div>
                 </div>
                 <div className="rounded-xl border border-ink-100 p-4 space-y-3">
                   <p className="font-semibold text-ink-900 flex items-center gap-2"><Users className="w-4 h-4 text-brand-500" /> Cliente final / Turista</p>
@@ -396,6 +402,7 @@ export default function CustomQuotationBuilder() {
                   ))}
                 </div>
                 <p className="text-xs text-ink-400">En el PDF y el enlace: <b>{client.name}</b> + el ejecutivo seleccionado (teléfono y correo).</p>
+                <AddExecutiveControl client={client} onSaved={onExecutiveSaved} />
               </div>
               <div className="rounded-xl border border-ink-100 p-4 space-y-3">
                 <p className="font-semibold text-ink-900 flex items-center gap-2"><Users className="w-4 h-4 text-brand-500" /> Cliente final / Turista</p>
