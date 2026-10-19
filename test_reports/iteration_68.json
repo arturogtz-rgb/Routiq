@@ -1,0 +1,38 @@
+{
+  "summary": "Iter68 tested (backend + frontend). Backend: new pytest tests/test_iteration68_search.py, 24/24 pass. Covered: text search on code, client, custom_title, executive_name, agent_name, traveler and booking-confirmation guest_name, case- and accent-insensitive (jose/JOSÉ/pérez/angela/nunez/'nono ibanez'). Date search 'nov','noviembre','11/2026','04/Nov','04/11/2026','04/nov/26','04-11' matches trip 2026-11-04; non-matching dates ('05/Nov', other trips, no-date) are excluded. trip_from/trip_to is inclusive and leaves out quotations without a trip date. sort=trip_asc/desc puts no-date ones last. Month filter is ignored when q or a range is set. trip_start: dates.start, else the earliest custom_items checkin (servicios 2026-12-15 case); all 47 paquete quotations have trip_start == dates.start. Regression: test_iteration67_per_person.py + test_iteration67_e2e_api.py 25/25 pass (A–E totals unchanged); pricing_config restored (0.75). Frontend: list search icon does not overlap the text (icon ends at x=512, text starts at x=524). With month 2026-03 selected, typing 'jose' shows search-all-months-notice and month-group-search with the cross-month result. Clearing the text returns to the month view (month still 2026-03, notice hidden). Rows show row-traveler 'José Pérez', row-executive 'Agente: Ángela Núñez', row-agent 'Elaboró: María González', row-trip '04/Nov/26', and '—' when there is no date. '04/Nov' search works. trip-from/trip-to range and trip-range-clear work. quotations-sort trip_asc/trip_desc shows month-group-trip ordered correctly, no-date rows last. AddExecutiveControl tested in all 3 flows: paquete new (contacts-block and executive-block), servicios new (contacts-block → saved quotation keeps the new executive_id, verified via API), custom new (custom-contacts-block and custom-executive-block, auto-selected, custom-next enabled), paquete edit (contacts-block → saved, executive_id persisted), custom edit (custom-executive-block → saved, executive_id persisted, total unchanged 2640). Executives persisted in client.executives (verified via GET /api/clients). Existing quotations (2 each of paquete/servicios/personalizado) open in detail and edit pages with no page errors. All TEST_it68 data cleaned up.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "POST /api/quotations (type=paquete)", "issue": "Pre-existing, not from iter68: if hotel_name is missing or not in the package, it returns 500 (pricing.compute_quotation raises ValueError \"Hotel '' not found in package\") instead of 400 with a message."},
+      {"endpoint": "GET /api/quotations (no search)", "issue": "Without search the list is capped at 500 docs by created_at, and sort=trip_* only reorders inside that window. Fine at current data size (65)."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [
+      {"flow": "Custom builder new → custom-contacts-block → add-executive-save", "issue": "Seen once and not reproduced. After save with a 1.5s wait, the contacts-block stayed and no 'Ejecutivo' step appeared, although the executive was saved on the client. A retry (4s wait / waiting for the PATCH response) worked. Likely a slow PATCH (a 401 + token refresh was seen in the console on load). The control shows no loading feedback other than the 'Guardando…' button label.", "affected_selectors": ["add-executive-save", "custom-contacts-block"]}
+    ],
+    "design_issues": [
+      {"screen": "/app/quotations filters", "issues": ["The long search placeholder ('Código, cliente, paquete, pasajero, agente o fecha (ej. nov, 04/Nov)') is cut off on desktop, and the input gets narrow once the month filter + 'Todo el tiempo' pill are shown.", "Mobile 390px: the 'Inicio del viaje Desde/Hasta' row wraps unevenly ('Hasta' label floats beside the first date input)."]},
+      {"screen": "Quotation detail", "issues": ["The header label 'Ejecutivo: María González' shows the Routiq agent who prepared the quotation, while the list now calls that person 'Elaboró' and uses 'Agente' for the agency executive. Wording is inconsistent."]}
+    ]
+  },
+  "test_report_links": ["/app/backend/tests/test_iteration68_search.py", "/app/test_reports/pytest/iter68_search.xml"],
+  "action_items": [
+    "Optional: return 400 instead of 500 for an invalid/missing hotel_name in paquete create (pre-existing).",
+    "Optional: shorten the search placeholder, fix the trip-range row wrapping on mobile, and align the 'Ejecutivo' label in the detail header with the list's 'Elaboró' wording."
+  ],
+  "critical_code_review_comments": [
+    "AddExecutiveControl PATCHes the whole executives array built from the client object in memory. If another user or tab changed that client's executives in the meantime, those changes are overwritten. Consider a dedicated POST /clients/{id}/executives (append) endpoint.",
+    "The executive id is generated client-side with Math.random (12 hex chars). Low collision risk, but the backend Executive model already has a default uuid factory; letting the server assign the id would be safer.",
+    "QuotationsList fetch useEffect has no try/catch or loading/error state. An API error leaves stale items and no feedback.",
+    "list_quotations loads all tenant quotations into memory when searching (to_list(None)) and filters in Python. Fine for now; a Mongo text pre-filter would be needed at scale.",
+    "quotation_search.matches: short words like 'mar' or 'nov' match by substring in the haystack as well as by date, so a search for 'mar' also returns clients/titles containing 'mar' (e.g. 'Mariana'). This is acceptable but worth knowing."
+  ],
+  "updated_files": ["/app/backend/tests/test_iteration68_search.py"],
+  "success_rate": {"backend": "100% (24/24 iter68 + 25/25 iter67 regression)", "frontend": "100% of tested flows (1 timing issue seen once, not reproduced)"},
+  "seed_data_creation": "TEST_it68 clients/quotations created and deleted during the run; none left.",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Run: cd /app/backend && python -m pytest tests/test_iteration68_search.py tests/test_iteration67_per_person.py tests/test_iteration67_e2e_api.py -q. The servicios type drops custom_title (stored as None), so filter TEST data by client_snapshot.name. A paquete create via API needs hotel_name = an existing quotation's hotel_selected. Booking confirmation (guest_name) needs state=ganada first."
+}

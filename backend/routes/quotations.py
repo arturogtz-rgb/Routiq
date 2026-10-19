@@ -85,6 +85,7 @@ async def list_quotations(state: str | None = None, archived: bool = False,
     if state:
         q["state"] = state
     searching = bool((q_text or "").strip() or trip_from or trip_to)
+    by_trip = sort in ("trip_asc", "trip_desc")
     # Lote E: filtro por rango de fechas sobre created_at. Iter 68: con búsqueda activa se ignora el mes.
     if (date_from or date_to) and not searching:
         rng = {}
@@ -93,7 +94,7 @@ async def list_quotations(state: str | None = None, archived: bool = False,
         if date_to:
             rng["$lte"] = f"{date_to}T23:59:59.999999"
         q["created_at"] = rng
-    items = await db.quotations.find(q, {"_id": 0}).sort("created_at", -1).to_list(None if searching else 500)
+    items = await db.quotations.find(q, {"_id": 0}).sort("created_at", -1).to_list(None if (searching or by_trip) else 500)
     # Resolve the elaborating executive (created_by) -> display name for the list.
     uids = list({it.get("created_by") for it in items if it.get("created_by")})
     umap = {}
@@ -136,7 +137,7 @@ async def list_quotations(state: str | None = None, archived: bool = False,
                 it.pop("_hay", None)
                 out.append(it)
         items = out[:500]
-    if sort in ("trip_asc", "trip_desc"):
+    if by_trip:
         dated = sorted([i for i in items if i["trip_start"]], key=lambda i: i["trip_start"], reverse=sort == "trip_desc")
         items = dated + [i for i in items if not i["trip_start"]]
     return items
@@ -228,11 +229,14 @@ async def create_quotation(payload: QuotationCreate, user: dict = Depends(requir
             raise HTTPException(status_code=400, detail="Agrega al menos un servicio o concepto para una cotización a la carta")
         extra_cfg = payload.extra_nights.model_dump() if payload.extra_nights else None
         pack_nights = pack["nights"] if pack else 0
-        calc = compute_quotation(pack, payload.hotel_name, payload.pax.model_dump(),
-                                 pack_nights, client["channel"], pricing_config,
-                                 services_catalog, services_sel,
-                                 dates={"start": d_start, "end": d_end}, extra_nights_cfg=extra_cfg,
-                                 custom_items=[c.model_dump() for c in payload.custom_items])
+        try:
+            calc = compute_quotation(pack, payload.hotel_name, payload.pax.model_dump(),
+                                     pack_nights, client["channel"], pricing_config,
+                                     services_catalog, services_sel,
+                                     dates={"start": d_start, "end": d_end}, extra_nights_cfg=extra_cfg,
+                                     custom_items=[c.model_dump() for c in payload.custom_items])
+        except ValueError as e:
+            raise HTTPException(status_code=400, detail=f"No se pudo cotizar: {e}. Selecciona un hotel del paquete.")
     type_label = {"personalizado": "programa personalizado", "servicios": "servicios a la carta"}.get(payload.type, "paquete")
     code = await _next_quotation_code(db, user["tenant_id"])
     doc = {

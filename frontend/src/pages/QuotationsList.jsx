@@ -140,9 +140,9 @@ export default function QuotationsList() {
       </div>
 
       <div className="flex flex-col sm:flex-row flex-wrap gap-3 mb-6">
-        <div className="relative flex-1 min-w-[200px]">
+        <div className="relative flex-[2] min-w-[300px]">
           <Search className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-ink-400 z-10" />
-          <input value={q} onChange={(e) => setQ(e.target.value)} className="input-field !pl-11 pr-9" placeholder="Código, cliente, paquete, pasajero, agente o fecha (ej. nov, 04/Nov)" data-testid="quotations-search" />
+          <input value={q} onChange={(e) => setQ(e.target.value)} className="input-field !pl-11 pr-9" placeholder="Buscar código, cliente, pasajero, agente o fecha" title="Código, cliente, paquete, pasajero, agente o fecha de viaje (ej. nov, 11/2026, 04/Nov)" data-testid="quotations-search" />
           {q && <button type="button" onClick={() => setQ('')} className="absolute right-3 top-1/2 -translate-y-1/2 text-ink-300 hover:text-ink-600" aria-label="Limpiar" data-testid="quotations-search-clear"><X className="w-4 h-4" /></button>}
         </div>
         <select value={state} onChange={(e) => setState(e.target.value)} className="input-field sm:w-56" data-testid="quotations-filter-state">
@@ -166,10 +166,8 @@ export default function QuotationsList() {
 
       <div className="flex flex-wrap items-center gap-2 -mt-3 mb-6" data-testid="trip-range">
         <span className="flex items-center gap-1.5 text-xs uppercase tracking-widest font-bold text-ink-400"><CalendarRange className="w-4 h-4" /> Inicio del viaje</span>
-        <label className="text-xs text-ink-500">Desde</label>
-        <div className="w-44"><input type="date" value={tripFrom} onChange={(e) => setTripFrom(e.target.value)} className="input-field py-1.5 text-sm" data-testid="trip-from" /></div>
-        <label className="text-xs text-ink-500">Hasta</label>
-        <div className="w-44"><input type="date" value={tripTo} onChange={(e) => setTripTo(e.target.value)} className="input-field py-1.5 text-sm" data-testid="trip-to" /></div>
+        <label className="flex items-center gap-2 text-xs text-ink-500">Desde<div className="w-44"><input type="date" value={tripFrom} onChange={(e) => setTripFrom(e.target.value)} className="input-field py-1.5 text-sm" data-testid="trip-from" /></div></label>
+        <label className="flex items-center gap-2 text-xs text-ink-500">Hasta<div className="w-44"><input type="date" value={tripTo} onChange={(e) => setTripTo(e.target.value)} className="input-field py-1.5 text-sm" data-testid="trip-to" /></div></label>
         {(tripFrom || tripTo) && <button type="button" onClick={() => { setTripFrom(''); setTripTo(''); }} className="pill bg-white border border-ink-200 text-ink-600 text-xs" data-testid="trip-range-clear">Quitar rango</button>}
         {searching && month && (
           <span className="pill bg-amber-50 border border-amber-200 text-amber-700 text-xs" data-testid="search-all-months-notice">Buscando en todos los meses</span>

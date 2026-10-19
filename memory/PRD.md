@@ -15,6 +15,13 @@ Testing: `/app/test_reports/iteration_66.json` — backend 7/7 + inspección fro
 - **AJUSTE4 (fecha PDF):** `_fmt_date` → formato compacto DD/Mmm/AA (26/Sep/26); la tabla de Hospedaje del PDF ahora pasa checkin/checkout por `_fmt_date` (antes crudas).
 
 
+## Iteración 68 (jun-2026) — Buscador, fecha de viaje y agente nuevo en todos los flujos (COMPLETADO ✅)
+- `GET /api/quotations` acepta `q`, `trip_from`, `trip_to`, `sort=trip_asc|trip_desc`; agrega `trip_start`, `executive_name`, `final_client_names` (traveler + guest_name de confirmaciones). Con búsqueda/rango se ignora el mes. Helper `backend/quotation_search.py` (sin acentos/mayúsculas; fechas "nov", "11/2026", "04/Nov", "04/11/2026").
+- `QuotationsList.jsx`: lupa sin encimarse, botón limpiar, aviso "Buscando en todos los meses", columna "Inicio del viaje" (DD/Mmm/AA o —), "Agente:" (ejecutivo agencia) y "Elaboró:" (Routiq), rango Desde/Hasta, selector de orden (creación por defecto / viaje).
+- `components/AddExecutiveControl.jsx` reutilizable en Paquete, A la carta y Personalizado (alta y edición): guarda en client.executives y autoselecciona.
+- Ficha: "Elaboró:" en lugar de "Ejecutivo:". POST paquete sin hotel válido → 400 (antes 500).
+- Tests: `/app/test_reports/iteration_68.json` (backend 24/24 + regresión Iter67 25/25; frontend 100%).
+
 ## Iteración 67 (jun-2026) — Conceptos unificados, hospedaje por ocupación y "precio por persona primero" (COMPLETADO ✅)
 - **Componente único** `components/concepts/CustomConceptsEditor` (+ `ConceptCard`, `ConceptFormula`, `LodgingOccupancyTable`, `conceptMath.js`) usado en Servicios a la carta, Programa personalizado y Paquete armado (engine `carta|custom|package`). Reemplaza `CustomItemCard` y los 2 bloques duplicados de `QuotationBuilder`.
 - **Sin sobreescritura de unidad** al cambiar categoría (solo se corrige si deja de ser válida: →hospedaje = por noche; por estancia→otra = por grupo).
