@@ -592,3 +592,10 @@ Ver `/app/memory/test_credentials.md`. Seed automático en cada startup.
 - PublicQuotation.jsx: Incluye/No incluye apilados con íconos, un elemento por línea.
 - Próximo: USD con tipo de cambio por cotización en el bloque de totales de la Confirmación.
 
+## [2026-06] ITERACIÓN 72 — TC por cotización, USD en Confirmación, buscadores y calendarios (COMPLETADO ✅, iter_73/74)
+- A: TC editable por cotización (canal mayorista). Ajustes = sugerido para nuevas. Endpoints: PUT /api/quotations/{id}/fx {rate, reason}; POST /fx/refresh {reason?}; POST/PATCH /quotations aceptan fx_rate_mxn_per_usd + fx_reason. fx_history[{at,user,old,new,reason,source,unlocked}] + history 'fx'. Candado: pago registrado (amount_paid>0 / partial / paid) o Confirmación generada → ejecutivo 403; admin con motivo obligatorio (desbloqueo por cambio). GET devuelve fx_lock. Validación >0, ≤4 decimales. Leyenda nueva en fx_presentation.note (público + ambos PDFs). UI: FxRateField (builders paquete/servicios/personalizado) y editor en UsdPresentationPanel con preview en vivo e historial.
+- B: build_booking_totals(usd_rate,total_usd): US$ grande + MXN pequeño + leyenda solo canal mayorista con TC; total USD igual al de la cotización si el total MXN coincide. Itinerario sin montos.
+- C: .input-field movido a @layer components (pl-10 etc. aplican). Buscadores revisados: QuotationBuilder, CustomQuotationBuilder, Clients (pl-10), WhatsAppInbox, QuotationDetail (vincular chat), QuotationsList.
+- D: min en fechas de salida (nextDay en lib/dates.js) en QuotationBuilder (paquete/servicios), CustomQuotationBuilder, ConceptCard, CustomItemCard, PackageEditor, QuotationsList; BookingConfirmation Calendar defaultMonth + locale es.
+- Pendiente conocido: Check-in/Check-out del Hospedaje en BookingConfirmation son texto libre (ISO).
+

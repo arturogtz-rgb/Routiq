@@ -196,7 +196,7 @@ def test_11_lock_by_confirmation_and_pdf(s):
     pages = _pdf_pages(pdf.content)
     txt = "\n".join(pages)
     S["conf_txt"] = txt
-    assert f"US${round(29282.50/18.5, 2):,.2f}" in txt, txt[-1500:]
+    assert "US$1,582.86" in txt, txt[-1500:]  # iter74: same as quotation total_usd (Σ pp × pax)
     assert f"US${round(5376.25/18.5, 2):,.2f}" in txt
     assert "$18.50 MXN por USD" in txt.replace("\n", " ")
     last = pages[-1]

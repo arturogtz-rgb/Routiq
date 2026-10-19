@@ -1,0 +1,25 @@
+{
+  "summary": "Retest of the iteration_73 fixes. All passed. Backend: new suite test_iteration74_fx_fixes.py, 7/7 pass. (1) Confirmation PDF, mayorista, TC 18.50: when the confirmation total equals the quotation total (29,282.50), 'Total a pagar' shows US$1,582.86, the same as quotation usd_presentation.total_usd. US$1,582.84 no longer appears. The MXN amount, the per-person US$290.61 and the '$18.50 MXN por USD' legend are present. The itinerary page has no $/USD/MXN. When the confirmation total differs (30,000), it shows round(MXN/TC,2) = US$1,621.62. The directo confirmation PDF has no US$. (2) PATCH atomicity: an executive on a locked quotation sending fx + notes gets 403, and the notes, TC and history length are unchanged. An invalid rate (5 decimals) + notes gets 400 and the notes are not saved. An admin on a locked quotation without a reason gets 400 and nothing is saved. A valid PATCH (executive, unlocked) saves the notes and the TC together with fx_history {old 18.5, new 19.75, reason}. Regression of iter73, iter71 (api + usd) and iter72_pdf_layout: 60/60 pass in total, after updating the iter73 test_11 assertion from US$1,582.84 to US$1,582.86 (expected, the behaviour changed by design). Frontend (Playwright 1920x1080): UsdPresentationPanel with draft 0 or 18.12345 shows fx-detail-error ('Debe ser un número mayor que 0.' / 'Máximo 4 decimales.'), keeps the saved values (TC guardado $18.50, usd-total US$1,652.54), and shows no usd-missing-warning, no Guardar and no draft flag. Draft 20 gives a live preview of US$1,528.58 with the draft flag. FxRateField (custom builder, Revisión step): the DollarSign icon, the text 'Tipo de cambio (MXN por 1 USD)' and the help icon are all on the same line (same y). Detail panel label: text + help on the same line. BookingConfirmation DateField: the calendar shows 'octubre 2026' and 'lu ma mi ju vi sá do' for the reservation date (opens on the selected month, Oct 2026), and 'noviembre 2026' for an empty service date (trip start month).",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "QuotationDetail UsdPresentationPanel RateEditor label", "issues": ["The detail label 'Tipo de cambio (MXN por 1 USD)' has the help icon but no DollarSign icon. The panel heading above it already has the DollarSign, so this is acceptable. Add the icon to the label only if strict parity with FxRateField is wanted."]},
+      {"screen": "BookingConfirmation Hospedaje", "issues": ["Check-in/Check-out are still raw ISO text inputs (pre-existing, known)."]}
+    ]
+  },
+  "test_report_links": ["/app/backend/tests/test_iteration74_fx_fixes.py", "/app/backend/tests/test_iteration73_fx_per_quote.py", "/app/test_reports/pytest/pytest_iter74.xml"],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "update_quotation: the dry-run _apply_fx validates before any write, and the real _apply_fx runs after $set. If the DB write of the fx step fails after the updates are saved, the patch is still only partly applied. This is acceptable (there is no validation left between the two steps).",
+    "generate_booking_confirmation_pdf rebuilds the per-person breakdown only when show_per_person is set. Otherwise fx_presentation.build(q, None) is used, which is consistent with the panel/public behaviour.",
+    "routes/quotations.py (884 lines) and pdf_generator.py (962 lines) are still over 700 lines."
+  ],
+  "updated_files": ["/app/backend/tests/test_iteration74_fx_fixes.py (new)", "/app/backend/tests/test_iteration73_fx_per_quote.py (test_11 expects US$1,582.86 now)"],
+  "success_rate": {"backend": "100% (7/7 new + 53 regression)", "frontend": "100%"},
+  "seed_data_creation": "TEST74* and TEST73UI* clients and quotations were created and deleted (soft delete). Company pricing_config was restored (fx_mayorista_mxn_per_usd = null).",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "Run: cd /app/backend && python -m pytest tests/test_iteration74_fx_fixes.py tests/test_iteration73_fx_per_quote.py tests/test_iteration71_api.py tests/test_iteration71_usd.py tests/test_iteration72_pdf_layout.py -q -W ignore. UI data: python tests/scripts/ui_setup_iter73.py setup, then cleanup. A quotation must be in state 'ganada' before POST booking-confirmation. The custom builder FxRateField is in the 'Revisión' step."
+}
