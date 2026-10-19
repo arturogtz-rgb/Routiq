@@ -16,7 +16,7 @@ const STATES = [
   { id: 'perdida', label: 'Perdida' },
 ];
 
-function money(v, c = 'MXN') { return `$${Number(v || 0).toLocaleString('es-MX')} ${c}`; }
+function money(v, c = 'MXN') { const n = Number(v || 0); return `$${n.toLocaleString('es-MX', { minimumFractionDigits: Number.isInteger(n) ? 0 : 2, maximumFractionDigits: 2 })} ${c}`; }
 
 export default function QuotationDetail() {
   const confirm = useConfirm();
@@ -339,7 +339,7 @@ export default function QuotationDetail() {
       const adults = p.rooms.reduce((s, r) => s + ({ sencilla: 1, doble: 2, triple: 3, cuadruple: 4 }[r.ocupacion] || 0) * r.count, 0);
       return `${rooms} (${adults} adultos${p.menores > 0 ? ` + ${p.menores} menores` : ''})`;
     }
-    return `${p.adultos || 0} adultos · ${p.menores || 0} menores (${p.ocupacion || ''})`;
+    return `${p.adultos || 0} adultos · ${p.menores || 0} menores${p.ocupacion ? ` (${p.ocupacion})` : ''}`;
   })();
 
   return (

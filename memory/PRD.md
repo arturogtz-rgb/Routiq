@@ -15,6 +15,15 @@ Testing: `/app/test_reports/iteration_66.json` — backend 7/7 + inspección fro
 - **AJUSTE4 (fecha PDF):** `_fmt_date` → formato compacto DD/Mmm/AA (26/Sep/26); la tabla de Hospedaje del PDF ahora pasa checkin/checkout por `_fmt_date` (antes crudas).
 
 
+## Iteración 67 (jun-2026) — Conceptos unificados, hospedaje por ocupación y "precio por persona primero" (COMPLETADO ✅)
+- **Componente único** `components/concepts/CustomConceptsEditor` (+ `ConceptCard`, `ConceptFormula`, `LodgingOccupancyTable`, `conceptMath.js`) usado en Servicios a la carta, Programa personalizado y Paquete armado (engine `carta|custom|package`). Reemplaza `CustomItemCard` y los 2 bloques duplicados de `QuotationBuilder`.
+- **Sin sobreescritura de unidad** al cambiar categoría (solo se corrige si deja de ser válida: →hospedaje = por noche; por estancia→otra = por grupo).
+- **Hospedaje (a la carta / personalizado):** unidad solo Por noche / Por estancia; tabla de ocupación `occupancy_rows[{ocupacion, rooms, price}]` con precio SIEMPRE por persona; personas = hab × ocupación; botón para sincronizar pax. Backend `pricing._price_lodging_rows`: una línea por ocupación, subtotal = precio canal × personas × noches (o ×1). Paquete armado conserva su motor histórico; los conceptos no-hospedaje de a la carta conservan su regla (qty).
+- **`pricing_breakdown.py` reescrito (de la persona al total):** comisión del canal línea por línea (residuo vs motor → concepto mayor, `commission_adjustment`), hospedaje ÷ personas de su ocupación, resto ÷ total pax, descuento proporcional (factor final_total/total), residuo de redondeo → fila mayor (`rounding_adjustment`). Devuelve `title`, `components` (solo interno) y `note`.
+- **Fórmulas** visibles solo en captura (por concepto + línea de comisión) y en ficha interna; PDF/enlace limpios: "Precio por persona en ocupación Doble: $X (2 personas)", total y nota "Precios por persona en base a N personas; si varía, se recotiza." El payload público omite `components`.
+- Tooltips "?" (`components/HelpTip`) en conceptos y en Ajustes > fórmula/divisor/comisiones por canal. A la carta permite cotizar solo con conceptos. Builders respetan `client.commission_rate`. Confirmación de reserva muestra "1 Doble + 1 Cuádruple". Guardar como paquete usa precios por ocupación.
+- Tests: `/app/test_reports/iteration_67.json` — backend 25/25 (casos A–E exactos en ambos flujos, `tests/test_iteration67_per_person.py` + `test_iteration67_e2e_api.py`), frontend OK. Hallazgos menores corregidos post-test (estimado hospedaje paquete qty=0, formato $x.50, paréntesis vacíos, ejemplo de Ajustes).
+
 ## Bugfix/Feature iter_65 (jun-2026) — Ocupación en conceptos custom de hospedaje (COMPLETADO ✅)
 Testing: `/app/test_reports/iteration_65.json` — backend 9/9 + regresión 11/11, frontend 100%. NO se tocó `pricing.py`.
 - **Problema:** el desglose por persona (iter64) no diferenciaba ocupación en Programa personalizado / Servicios a la carta porque el hospedaje es un `CustomItem` sin campo de ocupación → caía al fallback uniforme.

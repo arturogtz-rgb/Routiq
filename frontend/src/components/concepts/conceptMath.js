@@ -52,6 +52,7 @@ export function conceptQty(it, ctx) {
     if (it.unit === 'per_night') return Number(it.nights) || 0;
     if (it.unit === 'per_group') return 1;
   }
+  if (ctx.engine === 'package' && it.category === 'hospedaje') return q > 0 ? q : 1;  // motor histórico
   return q > 0 ? q : defaultQty(it.unit, ctx);
 }
 

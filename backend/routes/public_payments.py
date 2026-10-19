@@ -23,6 +23,15 @@ from emergentintegrations.payments.stripe.checkout import StripeCheckout, Checko
 log = logging.getLogger("routiq")
 from pricing_breakdown import build_per_person_breakdown
 
+
+def _public_breakdown(q: dict):
+    """Desglose por persona para el cliente: sin composición interna ni ajustes."""
+    bd = build_per_person_breakdown(q)
+    if not bd:
+        return None
+    rows = [{k: v for k, v in r.items() if k != "components"} for r in bd["rows"]]
+    return {"rows": rows, "total": bd["total"], "total_pax": bd["total_pax"], "currency": bd["currency"], "note": bd["note"]}
+
 router = APIRouter()
 
 
@@ -117,7 +126,7 @@ async def get_public_quotation(token: str):
             "occupancy_prices": occupancy_prices,
             "show_price_breakdown": q.get("show_price_breakdown", True),
             "show_per_person": bool(q.get("show_per_person")),
-            "per_person_breakdown": build_per_person_breakdown(q) if q.get("show_per_person") else None,
+            "per_person_breakdown": _public_breakdown(q) if q.get("show_per_person") else None,
             "contacts": q.get("contacts") or None,
         },
         "company": {

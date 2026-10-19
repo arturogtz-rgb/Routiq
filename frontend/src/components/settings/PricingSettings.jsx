@@ -12,7 +12,7 @@ export const PricingSettings = ({ pricing, setPricing, save, marginPct }) => (
   <>
     <div>
       <h2 className="font-display font-semibold text-lg text-ink-900 flex items-center gap-2"><Calculator className="w-5 h-5 text-brand-500" /> Fórmula base<HelpTip text="El divisor convierte la tarifa neta en precio público: público = neto ÷ divisor. Ej. $700 ÷ 0.80 = $875 (margen 20%)." testid="help-margin-formula" /></h2>
-      <p className="text-sm text-ink-500 mt-1">Costo total ÷ divisor = precio público. Ej: 0.76 ⇒ margen del 24%.</p>
+      <p className="text-sm text-ink-500 mt-1">Costo total ÷ divisor = precio público. Ej: {pricing.margin_divisor} ⇒ margen del {marginPct}%.</p>
       <div className="grid md:grid-cols-2 gap-4 mt-4">
         <div>
           <label className="label-text">Divisor de margen<HelpTip text="Valor entre 0.1 y 1. Margen equivalente = 1 − divisor. 0.80 ⇒ 20% de margen." testid="help-margin-divisor" /></label>
@@ -58,18 +58,23 @@ export const PricingSettings = ({ pricing, setPricing, save, marginPct }) => (
   </>
 );
 
-export const PricingExample = ({ pricing }) => (
-  <aside className="card-surface p-6">
-    <h3 className="font-display font-semibold text-ink-900">Ejemplo</h3>
-    <p className="text-sm text-ink-500 mt-1">Cómo se aplica a un costo de $7,600 MXN:</p>
-    <div className="mt-4 space-y-2 text-sm">
-      <div className="flex justify-between"><span>Costo base</span><span className="font-semibold">$7,600</span></div>
-      <div className="flex justify-between"><span>÷ {pricing.margin_divisor}</span><span className="font-semibold">$ {(7600 / pricing.margin_divisor).toFixed(0)}</span></div>
-      <div className="rounded-lg bg-mint-100 text-emerald-800 p-3">
-        <p className="text-xs font-bold uppercase tracking-widest">Precio público</p>
-        <p className="font-display text-2xl font-bold">${(7600 / pricing.margin_divisor).toFixed(0)}</p>
+const fmt = (v) => `$${Math.round(v).toLocaleString('es-MX')}`;
+
+export const PricingExample = ({ pricing }) => {
+  const pub = 7600 / (pricing.margin_divisor || 1);
+  return (
+    <aside className="card-surface p-6">
+      <h3 className="font-display font-semibold text-ink-900">Ejemplo</h3>
+      <p className="text-sm text-ink-500 mt-1">Cómo se aplica a un costo de $7,600 MXN:</p>
+      <div className="mt-4 space-y-2 text-sm">
+        <div className="flex justify-between"><span>Costo base</span><span className="font-semibold">$7,600</span></div>
+        <div className="flex justify-between"><span>÷ {pricing.margin_divisor}</span><span className="font-semibold" data-testid="pricing-example-public">{fmt(pub)}</span></div>
+        <div className="rounded-lg bg-mint-100 text-emerald-800 p-3">
+          <p className="text-xs font-bold uppercase tracking-widest">Precio público</p>
+          <p className="font-display text-2xl font-bold">{fmt(pub)}</p>
+        </div>
+        <p className="text-xs text-ink-400">Comisión agencia {(pricing.commissions.agencia * 100).toFixed(0)}%: −{fmt(pub * pricing.commissions.agencia)}</p>
       </div>
-      <p className="text-xs text-ink-400">Comisión agencia {(pricing.commissions.agencia * 100).toFixed(0)}%: -${((7600 / pricing.margin_divisor) * pricing.commissions.agencia).toFixed(0)}</p>
-    </div>
-  </aside>
-);
+    </aside>
+  );
+};

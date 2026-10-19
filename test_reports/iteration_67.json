@@ -1,0 +1,41 @@
+{
+  "summary": "Iter67 (per-person breakdown, unified concepts editor, lodging occupancy table, tooltips). BACKEND: unit tests test_iteration67_per_person.py 12/12 pass; new E2E API suite test_iteration67_e2e_api.py 13/13 pass — cases A–E EXACT in BOTH 'personalizado' and 'servicios' (a la carta with services=[]), using TEST_ clients for directo/agencia/mayorista/operador with pricing_config temporarily 0.80/0.10/0.15/0.15 (restored to 0.75/0/0.12/0.15/0.2, verified). Public link JSON has per_person_breakdown rows+note; internal & public PDF render, contain 'Precio por persona en ocupación Doble: $6,130.00 MXN (2 personas)' and the note. PATCH custom_items (rooms 1→2, pax 8) recomputes total + breakdown (note '8 personas'). Paquete regression: totals identical with/without occupancy_rows (historic engine). FRONTEND: Personalizado flow (Caso B agencia via UI) — unit select only Por noche/Por estancia, check-in/out prefilled from program dates, nights=5 auto, occupancy table add row, total persons 6, pax-sync button works and disappears, formulas exact ('Doble: 1 hab × 2 pax = 2 pers × $875 MXN (neto $700 MXN) × 5 noches = $8,750 MXN'), commission line on public concepts, review total $33,280 = backend; detail shows per-person-breakdown/pp-row-doble/pp-formula-doble/pp-note with exact values. Category change keeps unit (tour per_vehicle → traslado keeps per_vehicle; →hospedaje corrects to per_night; per_stay→extra becomes per_group). A la carta (Caso E per_stay directo) with only custom concepts → $34,450 FE = BE, breakdown exact. Edit flow of custom quotation via UI recomputes (FE $42,840 = BE). Public page /q/:token shows clean per-person rows, Total and public-pp-note, no per-person formulas. Tooltips present in concepts and Settings, hover text displayed. Paquete: concepts editor shows legacy hospedaje (concept-ocupacion-N, no table). One FE/BE mismatch found in Paquete hospedaje concept with qty=0 (pre-existing, see issues).",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "GET /api/public/quotations/{token}", "issue": "per_person_breakdown.rows[].components (per-concept per-person amounts, e.g. Hotel $4,375 / Vehiculo $900) is returned in the public payload though not rendered. Not a formula leak per se, but internal composition is exposed to the client via API; consider stripping 'components' in public serializer/PDF context."},
+      {"endpoint": "POST/PATCH /api/quotations (client commission_rate override)", "issue": "Backend honors client.commission_rate override (routes/quotations.py:51) but frontend builders (CustomQuotationBuilder.jsx:128-131, QuotationBuilder.jsx:120) use only global channel commission → review totals/formula commission line would differ from saved total for clients with override."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [
+      {"component": "Paquete armado > Servicios step > hospedaje concept (engine 'package')", "issue": "FE estimate ≠ backend when qty=0: conceptMath.conceptQty uses defaultQty(per_night)=trip nights (3) → formula '$1,000 MXN (neto $800) × 3 noches = $3,000' and review total $26,250, but backend historic engine (pricing._price_custom_item custom_engine=False, hospedaje qty default 1, nights multiply only when it.nights>0) saves $1,000 → total $24,250. Pre-existing (old QuotationBuilder customDefaultQty did the same) but now more visible with formula. Fix: in conceptQty, for engine==='package' && category==='hospedaje' use q>0?q:1 (or make backend use nights default). Package totals must not change, so fix the FE side.", "selector": "[data-testid='concept-formula-0'], [data-testid='builder-totals']", "priority": "MEDIUM"}
+    ],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "QuotationDetail / PublicQuotation per-person", "issues": ["money() uses toLocaleString('es-MX') without minimumFractionDigits → '$5,792.5 MXN' (should be $5,792.50); PDF formats correctly"]},
+      {"screen": "QuotationDetail personalizado", "issues": ["'Habitaciones / Pax' shows '8 adultos · 0 menores ()' with empty parentheses when rooms=[]"]},
+      {"screen": "Settings > Pricing", "issues": ["Ejemplo panel shows '$ 9500' / '$9500' without thousands separator and inconsistent spacing; Fórmula base helper text example says '0.76 ⇒ margen del 24%' (static) while divisor is 0.80"]}
+    ]
+  },
+  "test_report_links": ["/app/backend/tests/test_iteration67_per_person.py", "/app/backend/tests/test_iteration67_e2e_api.py", "/app/backend/tests/scripts/iter67_ui_setup.py", "/app/test_reports/pytest/iter67_e2e.xml"],
+  "action_items": [
+    "Fix Paquete hospedaje concept FE estimate (conceptMath.conceptQty: package+hospedaje default qty 1) so builder review total equals backend.",
+    "Optional: strip per_person_breakdown.rows[].components from public quotation payload.",
+    "Optional: use client.commission_rate override in frontend commissionRate.",
+    "Optional: format money with 2 decimals when non-integer in detail/public pages; remove empty '()' in personalizado pax line."
+  ],
+  "critical_code_review_comments": [
+    "QuotationBuilder canNext('servicios') only checks custom_items.length>0 — does not validate concept name/price (CustomQuotationBuilder does via conceptIsValid); a la carta can submit empty/zero concepts.",
+    "CustomConceptsEditor.applyPatch: switching category to hospedaje keeps previous nights/checkin empty (checkin/checkout cleared on leaving hospedaje but not re-defaulted to program dates on re-entering) → nights may be 0 until user re-enters dates.",
+    "HelpTip is hover-only (Radix Tooltip) — not reachable on touch devices.",
+    "QuotationBuilder.jsx is 1018 lines (>700) — consider splitting steps into modules."
+  ],
+  "updated_files": ["/app/backend/tests/test_iteration67_e2e_api.py", "/app/backend/tests/scripts/iter67_ui_setup.py"],
+  "success_rate": {"backend": "100% (25/25)", "frontend": "95% (all requested flows pass; 1 pre-existing paquete FE estimate mismatch)"},
+  "seed_data_creation": "None persisted. TEST_iter67_* and TEST_UI67_* clients/quotations created and deleted; pricing_config restored to margin_divisor 0.75, commissions {directo 0, agencia 0.12, mayorista 0.15, operador 0.2} (verified).",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Run `pytest tests/test_iteration67_e2e_api.py` (self-contained: sets 0.80 config, creates TEST_ clients with an executive, restores). For UI, `python tests/scripts/iter67_ui_setup.py setup|restore` sets pricing + creates TEST_UI67_directo/agencia clients (no executives) and restores. Custom builder steps: client → program (custom-title, custom-adultos, custom-date-start/end) → items → itinerary → review (custom-totals, custom-submit). A la carta: /app/quotations/new → type-servicios → client-option → servicios-personas/dates → builder-next → builder-totals.",
+  "rca of the issue": "Paquete hospedaje mismatch: frontend conceptMath.conceptQty (non-custom engine) falls back to defaultQty(unit) → per_night = nights; backend _price_custom_item custom_engine=False treats hospedaje qty default as 1 and only multiplies by ci.nights if >0 (new package concepts send nights=0). Repro: Paquete GDL, 1 doble, add hospedaje neto 800 qty 0 → review $26,250 vs saved $24,250."
+}

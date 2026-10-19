@@ -127,6 +127,7 @@ export default function CustomQuotationBuilder() {
   const currency = company?.pricing_config?.currency || 'MXN';
   const commissionRate = (() => {
     if (!client) return 0;
+    if (client.commission_rate != null) return Number(client.commission_rate);
     return Number(company?.pricing_config?.commissions?.[client.channel] ?? 0);
   })();
 
@@ -135,7 +136,7 @@ export default function CustomQuotationBuilder() {
   const rooms = Number(form.custom_rooms) || 0;
 
   const channel = client?.channel || 'directo';
-  const commissions = company?.pricing_config?.commissions || {};
+  const commissions = { ...(company?.pricing_config?.commissions || {}), [channel]: commissionRate };
   const conceptCtx = {
     engine: 'custom', pricing: { margin, channel, commissions, commissionRate },
     totalPax, nights, rooms, defaultDates: form.dates,

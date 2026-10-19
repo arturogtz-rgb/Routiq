@@ -4,7 +4,7 @@ import api, { formatApiError } from '@/lib/api';
 import { CheckCircle2, Calendar, MapPin, Users, FileText, Sparkles, CreditCard, Loader2, Moon, Landmark, Copy, Download, Briefcase } from 'lucide-react';
 import { formatDateEs } from '@/lib/dates';
 
-function money(v, c = 'MXN') { return `$${Number(v || 0).toLocaleString('es-MX')} ${c}`; }
+function money(v, c = 'MXN') { const n = Number(v || 0); return `$${n.toLocaleString('es-MX', { minimumFractionDigits: Number.isInteger(n) ? 0 : 2, maximumFractionDigits: 2 })} ${c}`; }
 function conceptWhen(it) {
   if (it.category === 'hospedaje' && (it.checkin || it.checkout)) {
     const rango = [it.checkin ? formatDateEs(it.checkin) : '', it.checkout ? formatDateEs(it.checkout) : ''].filter(Boolean).join(' → ');

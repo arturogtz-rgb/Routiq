@@ -115,8 +115,8 @@ export default function QuotationBuilder() {
   const cur = STEPS[Math.min(step, STEPS.length - 1)].key;
 
   const margin = Number(company?.pricing_config?.margin_divisor) || 0.76;
-  const commissions = company?.pricing_config?.commissions || {};
   const channel = client?.channel || 'directo';
+  const commissions = { ...(company?.pricing_config?.commissions || {}), ...(client?.commission_rate != null ? { [channel]: Number(client.commission_rate) } : {}) };
   const commissionRate = client ? Number(commissions[channel] ?? 0) : 0;
   // Paquetes: catálogo guarda TARIFA NETA. Público = neto / divisor; el precio por
   // canal define lo que VE el cliente (directo/agencia=público, mayorista=público-comisión,
