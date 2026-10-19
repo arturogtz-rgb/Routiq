@@ -287,22 +287,23 @@ def _build_itinerary_page(story, s, quotation: dict, client: dict, *, title: str
 
 
 def build_booking_totals(price_per_person: float, total: float, currency: str, width_cm: float = PAGE_CONTENT_W,
-                         usd_rate: float | None = None) -> Table:
+                         usd_rate: float | None = None, total_usd: float | None = None) -> Table:
     """Bloque de totales de la Confirmación (Precio por persona + Total a pagar). Reutilizable.
     usd_rate (Mayorista internacional): USD informativo grande + MXN pequeño, como en la cotización."""
     st = _styles()
     small = "<font size='7.5' color='#64748B'>"
 
-    def cell(mxn: float, size: int):
+    def cell(mxn: float, size: int, usd_override=None):
         if not usd_rate:
             return _money(mxn, currency)
         import fx_presentation
-        return Paragraph(f"<para alignment='right'><font size='{size}'><b>US${fx_presentation.usd(mxn, usd_rate):,.2f}</b></font>"
+        v = usd_override if usd_override is not None else fx_presentation.usd(mxn, usd_rate)
+        return Paragraph(f"<para alignment='right'><font size='{size}'><b>US${v:,.2f}</b></font>"
                          f"<br/>{small}{_money(mxn, currency)}</font></para>", st["soft"])
     rows = []
     if price_per_person > 0:
         rows.append(["Precio por persona", cell(price_per_person, 10)])
-    rows.append(["Total a pagar", cell(total, 13)])
+    rows.append(["Total a pagar", cell(total, 13, total_usd)])
     t = Table(rows, colWidths=[(width_cm - 4.5) * cm, 4.5 * cm])
     t.setStyle(TableStyle([
         ("ALIGN", (0, 0), (-1, -1), "RIGHT"), ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
@@ -892,8 +893,19 @@ def generate_booking_confirmation_pdf(company: dict, quotation: dict, confirmati
 
     import fx_presentation
     fx_rate = float(quotation.get("fx_rate_mxn_per_usd") or 0) if fx_presentation.is_international(quotation) else 0
+    conf_total = float(confirmation.get("total_amount", 0) or 0)
+    total_usd = None
+    if fx_rate:
+        # Mismo total USD que la cotización (Σ pp USD × pax) cuando el total MXN no cambió.
+        bd = None
+        if quotation.get("show_per_person"):
+            from pricing_breakdown import build_per_person_breakdown
+            bd = build_per_person_breakdown(quotation)
+        qusd = fx_presentation.build(quotation, bd) or {}
+        if qusd.get("available") and abs(float(qusd.get("total_mxn", 0)) - conf_total) < 0.01:
+            total_usd = qusd["total_usd"]
     story.append(build_booking_totals(float(confirmation.get("price_per_person", 0) or 0),
-                                      float(confirmation.get("total_amount", 0) or 0), ccy, W, usd_rate=fx_rate or None))
+                                      conf_total, ccy, W, usd_rate=fx_rate or None, total_usd=total_usd))
     if fx_rate:
         story.append(Spacer(1, 3))
         story.append(Paragraph(f"<font color='#475569'><i>{_xml_escape(fx_presentation.note(fx_rate))}</i></font>", s["soft"]))

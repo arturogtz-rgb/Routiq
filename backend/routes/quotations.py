@@ -202,7 +202,7 @@ def _fx_history_text(e: dict) -> str:
     return txt
 
 
-async def _apply_fx(db, q: dict, user: dict, rate, reason: str, source: str) -> dict:
+async def _apply_fx(db, q: dict, user: dict, rate, reason: str, source: str, dry: bool = False) -> dict:
     """Cambia el TC guardado en la cotización (solo presentación USD). Registra historial."""
     if not fx_presentation.is_international(q):
         raise HTTPException(status_code=400, detail="Solo aplica al canal Mayorista internacional")
@@ -220,6 +220,8 @@ async def _apply_fx(db, q: dict, user: dict, rate, reason: str, source: str) -> 
             raise HTTPException(status_code=403, detail=f"Tipo de cambio bloqueado: la cotización {lock}. Solo un admin puede cambiarlo.")
         if not reason:
             raise HTTPException(status_code=400, detail="El motivo es obligatorio para desbloquear el tipo de cambio.")
+    if dry:
+        return {"ok": True, "changed": True}
     entry = _fx_entry(user, old, rate, reason, source, unlocked=bool(lock))
     date = now_iso()
     await db.quotations.update_one({"id": q["id"]}, {"$set": {"fx_rate_mxn_per_usd": rate, "fx_rate_date": date},
@@ -478,7 +480,7 @@ async def update_quotation(quotation_id: str, payload: QuotationUpdate, user: di
     fx_rate = updates.pop("fx_rate_mxn_per_usd", None)
     fx_reason = updates.pop("fx_reason", None) or ""
     if fx_rate is not None:
-        await _apply_fx(db, q, user, fx_rate, fx_reason, "manual")
+        await _apply_fx(db, q, user, fx_rate, fx_reason, "manual", dry=True)  # valida antes de guardar nada
     # H1: diff real — registrar SOLO los campos que efectivamente cambiaron (payload del usuario).
     changed_fields = [k for k in updates if q.get(k) != updates[k]]
     if q.get("type") == "personalizado":
@@ -553,6 +555,8 @@ async def update_quotation(quotation_id: str, payload: QuotationUpdate, user: di
             updates["final_total"] = final_total
     updates["last_activity_at"] = now_iso()
     await db.quotations.update_one({"id": quotation_id, "tenant_id": user["tenant_id"]}, {"$set": updates})
+    if fx_rate is not None:
+        await _apply_fx(db, q, user, fx_rate, fx_reason, "manual")
     if changed_fields:
         FIELD_ES = {
             "dates": "fechas", "pax": "habitaciones/pax", "services": "servicios",

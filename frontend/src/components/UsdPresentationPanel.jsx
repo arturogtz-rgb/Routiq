@@ -53,7 +53,7 @@ function RateEditor({ q, p, draft, setDraft, onDone }) {
   const vErr = fxError(draft);
   return (
     <div className="space-y-1.5 border-t border-ink-100 pt-2" data-testid="fx-editor">
-      <label className="label-text flex items-center gap-1 mb-0">Tipo de cambio (MXN por 1 USD)<HelpTip text={FX_HELP} testid="fx-detail-help" /></label>
+      <label className="label-text"><span className="inline-flex items-center gap-1">Tipo de cambio (MXN por 1 USD)<HelpTip text={FX_HELP} testid="fx-detail-help" /></span></label>
       <div className="flex flex-wrap items-center gap-2">
         <input type="number" step="0.0001" min="0" className="input-field w-36 py-1.5 text-sm" value={draft} disabled={!editable}
           onChange={(e) => setDraft(e.target.value)} data-testid="fx-detail-input" />
@@ -86,7 +86,9 @@ export function UsdPresentationPanel({ q, onRefreshed }) {
   const [draft, setDraft] = useState(p?.rate ?? '');
   useEffect(() => { setDraft(p?.rate ?? ''); }, [p?.rate]);
   if (!p) return null;
-  const live = draft !== '' && !fxError(draft) ? compute(q, draft) : null;
+  const draftOk = draft !== '' && !fxError(draft);
+  const shownRate = draftOk ? draft : (p.available ? p.rate : null);
+  const live = shownRate ? compute(q, shownRate) : null;
   return (
     <div className="mt-4 rounded-xl border border-brand-100 bg-brand-50/40 p-4 space-y-2 text-sm" data-testid="usd-presentation-panel">
       <p className="flex items-center gap-1.5 font-semibold text-ink-900"><DollarSign className="w-4 h-4 text-brand-500" /> Mayorista internacional · USD</p>
@@ -96,7 +98,7 @@ export function UsdPresentationPanel({ q, onRefreshed }) {
       ) : (
         <>
           <p className="text-xs text-ink-500" data-testid="usd-rate">TC guardado: <b>{p.available ? `$${p.rate_label} MXN por USD` : '—'}</b>{p.available ? ` · ${day(p.rate_date)}` : ''}{p.company_rate && Number(p.company_rate) !== Number(p.rate) ? ` · Sugerido en Ajustes: $${p.company_rate_label}` : ''}
-            {Number(draft) !== Number(p.rate || 0) && <span className="text-brand-600 font-semibold" data-testid="usd-draft-flag"> · Vista previa con ${draft} (sin guardar)</span>}</p>
+            {draftOk && Number(draft) !== Number(p.rate || 0) && <span className="text-brand-600 font-semibold" data-testid="usd-draft-flag"> · Vista previa con ${draft} (sin guardar)</span>}</p>
           {live.rows.map((r) => (
             <div key={r.key} className="flex justify-between gap-3" data-testid={`usd-row-${r.key}`}>
               <span className="text-ink-600 whitespace-nowrap">{r.label} · {r.pax} pers.</span>

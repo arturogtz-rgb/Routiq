@@ -121,14 +121,14 @@ def test_07_pdf(s):
     assert "US$" in txt
     assert "(detalle en MXN)" in txt
     flat = " ".join(txt.split())
-    assert "Montos en dólares de referencia al tipo de cambio de $18.50 MXN por USD" in flat
+    assert "Montos en dólares solo como referencia, al tipo de cambio de $18.50 MXN por USD" in flat
 
 
 def test_08_pdf_directo_no_usd(s):
     r = s.get(f"{API}/quotations/{S['q_dir']}/pdf")
     from pypdf import PdfReader
     txt = "\n".join(p.extract_text() for p in PdfReader(io.BytesIO(r.content)).pages)
-    assert "US$" not in txt and "Montos en dólares de referencia" not in txt
+    assert "US$" not in txt and "Montos en dólares solo como referencia" not in txt
 
 
 def test_09_settings_change_snapshot_kept_then_refresh(s):

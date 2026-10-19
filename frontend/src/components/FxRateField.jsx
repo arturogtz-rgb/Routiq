@@ -37,7 +37,7 @@ export function FxRateField({ client, company, fx, setFx, totalMxn, pax }) {
   const changed = fx.orig === null ? v !== '' : Number(v) !== Number(fx.orig);
   return (
     <div className="rounded-xl border border-brand-100 bg-brand-50/50 p-4 space-y-2" data-testid="fx-rate-field">
-      <label className="label-text flex items-center gap-1"><DollarSign className="w-3.5 h-3.5" /> Tipo de cambio (MXN por 1 USD)<HelpTip text={FX_HELP} testid="fx-rate-help" /></label>
+      <label className="label-text"><span className="inline-flex items-center gap-1"><DollarSign className="w-3.5 h-3.5" /> Tipo de cambio (MXN por 1 USD)<HelpTip text={FX_HELP} testid="fx-rate-help" /></span></label>
       <input type="number" step="0.0001" min="0" className="input-field md:w-52" placeholder="Ej. 18.50" value={v ?? ''}
         disabled={locked && !canUnlock}
         onChange={(e) => setFx((f) => ({ ...f, rate: e.target.value }))} data-testid="fx-rate-input" />

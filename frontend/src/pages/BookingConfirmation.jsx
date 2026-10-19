@@ -6,6 +6,7 @@ import { useConfirm } from '@/components/ConfirmDialog';
 import { formatDateEs } from '@/lib/dates';
 import { Popover, PopoverTrigger, PopoverContent } from '@/components/ui/popover';
 import { Calendar } from '@/components/ui/calendar';
+import { es } from 'date-fns/locale';
 import {
   DndContext, PointerSensor, KeyboardSensor, useSensor, useSensors, closestCenter,
 } from '@dnd-kit/core';
@@ -38,6 +39,7 @@ function DateField({ value, onChange, testid, fallback }) {
           mode="single"
           selected={selected}
           defaultMonth={selected || toDate(fallback)}
+          locale={es}
           onSelect={(d) => {
             if (d) {
               const iso = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;

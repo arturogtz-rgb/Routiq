@@ -1,0 +1,41 @@
+{
+  "summary": "Iter 72 feature (per-quotation FX rate, lock, legend, confirmation PDF USD, search-icon padding, date min) tested end-to-end. Backend: new suite test_iteration73_fx_per_quote.py 17/17 pass (create with custom/omitted/non-mayorista TC, invalid 0/-1/18.12345 -> 400 on POST and PUT /fx, PUT /fx changes only target quotation + fx_history{old,new,reason,user,source} + history action 'fx', PATCH fx, settings change does not alter existing quotations, refresh source='refresh', 'ganada' alone not locked, lock by mark-paid and by booking confirmation: executive 403 on PUT/refresh/PATCH, admin w/o reason 400, admin with reason 200 unlocked=true and lock persists (next change requires reason again), fx_lock in GET, public usd note and quotation PDF use stored rate (not Ajustes), confirmation PDF mayorista shows US$290.61 / US$1,582.84 + MXN small + legend, itinerary page has no $/USD/MXN, directo confirmation PDF has no US$). Regression suites iter67/69/70(stripe)/71/72: 75 pass + 1 skipped after updating the old legend string in test_iteration71_api.py (legend wording changed by design). Case C TC 18.50 still total_usd 1,582.86, MXN 29,282.50. Frontend (Playwright 1920x1080): QuotationDetail live recalculation (18.5->20: US$1,652.54->US$1,528.58), 4-decimal error hides Guardar, save + history + refresh button; locked: admin editable with Guardar disabled until reason, executive input disabled + 'Solo un admin puede desbloquearlo', no reason/refresh. Builder review fx-rate-field in Paquete, Servicios and Personalizado (prefilled 18.5, live total/pp, error at 0, reason input on change); saved quotation got TC 19.50. Search inputs: padding-left 40px (QuotationsList 44px) and the icon right edge at 28/32px in all 6 → no overlap. Date mins: date-end 2027-01-04, servicios-date-end 2027-01-03, custom-date-end 2027-01-04, concept-checkout-0 2027-01-04 (none when checkin empty), trip-to 2027-01-03, season-0-end-0 = start, no min when start empty. BookingConfirmation calendar opens on selected month (Oct 2026) and on trip start month (Nov 2026) for an empty service date. The public page shows public-usd-note with the stored TC.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "GET /api/booking-confirmations/{id}/pdf", "issue": "The mayorista 'Total a pagar' USD is round(MXN/TC) = US$1,582.84, while the quotation PDF, public page and panel show total_usd = Σ pp USD × pax = US$1,582.86 for the same trip. This follows the spec, but the client sees two different USD totals. Consider showing the same total, or the rounding note."},
+      {"endpoint": "PATCH /api/quotations/{id}", "issue": "_apply_fx is saved before the rest of the update is validated and applied. If a later step fails, the TC change (plus its history entries) is already committed. Not atomic."},
+      {"endpoint": "POST /api/quotations/{id}/fx/refresh", "issue": "When the suggested rate equals the stored rate, it returns 200 {changed:false} even for an executive on a locked quotation, because the no-op check runs before the lock check. Harmless, but tests must expect it."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [
+      {"component": "FxRateField / UsdPresentationPanel label", "issue": ".label-text (and .btn-primary/.btn-ghost/.pill) are still unlayered CSS in index.css, so Tailwind utilities on them are overridden. Result: in fx-rate-field the DollarSign icon renders on its own line above 'Tipo de cambio (MXN por 1 USD)' ('flex' is ignored), 'mb-0' on the detail label is ignored, and 'py-1.5 text-xs' on fx-detail-save / fx-refresh-btn has no effect. Fix: move these classes into @layer components, as was done for .input-field.", "selector": "[data-testid=fx-rate-field] label.label-text", "priority": "LOW"},
+      {"component": "UsdPresentationPanel", "issue": "While the typed draft is invalid (e.g. 0 or 5 decimals), the USD block is replaced by the misleading text 'Esta cotización no tiene tipo de cambio guardado…' even though a TC is saved. It should keep showing the saved values.", "selector": "[data-testid=usd-missing-warning]", "priority": "LOW"}
+    ],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "BookingConfirmation DateField (shadcn Calendar)", "issues": ["Month and weekday names are in English ('November 2026', 'Su Mo Tu') in a Spanish UI. Pass locale es to the Calendar."]},
+      {"screen": "BookingConfirmation Hospedaje", "issues": ["Check-in/Check-out show the raw ISO value '2026-11-04' in text inputs, unlike the DD MMM YYYY format used elsewhere."]}
+    ]
+  },
+  "test_report_links": ["/app/backend/tests/test_iteration73_fx_per_quote.py", "/app/backend/tests/scripts/ui_setup_iter73.py", "/app/test_reports/pytest/pytest_iter73.xml"],
+  "action_items": [
+    "Move .label-text/.btn-primary/.btn-ghost/.btn-secondary/.pill into @layer components (or drop the conflicting utilities). This fixes the FX label icon layout and the button sizing.",
+    "Decide whether the confirmation PDF USD total should match the quotation's total_usd (Σ pp) to avoid a US$0.02 difference between documents.",
+    "UsdPresentationPanel: when the draft is invalid, keep the saved USD values instead of the 'no tiene tipo de cambio guardado' text.",
+    "Optional: Calendar locale es; make the PATCH fx + update atomic."
+  ],
+  "critical_code_review_comments": [
+    "pages/custom-builder/CustomItemCard.jsx is not imported anywhere; the custom builder uses components/concepts/ConceptCard.jsx. The custom-item-checkout min change is dead code. Remove the file or confirm it is unused.",
+    "lib/dates.js addDays() uses toISOString() after local midnight, so it is off by one day in UTC+ timezones (pre-existing). nextDay() is TZ-safe; use the same approach.",
+    "routes/quotations.py (880 lines) and pdf_generator.py (949 lines) exceed 700 lines. Consider extracting the fx routes into routes/quotation_fx.py.",
+    "Quotation delete is a soft delete. Booking confirmations of deleted quotations remain (by design), but _fx_lock_reason does not filter by tenant_id (ids are UUIDs, so this is low risk)."
+  ],
+  "updated_files": ["/app/backend/tests/test_iteration73_fx_per_quote.py (new)", "/app/backend/tests/scripts/ui_setup_iter73.py (new)", "/app/backend/tests/test_iteration71_api.py (legend string updated to the new wording)"],
+  "success_rate": {"backend": "100% (17/17 new + 75 regression)", "frontend": "~95% (all functional flows pass; minor CSS/label issues)"},
+  "seed_data_creation": "TEST73*/TEST73UI* clients and quotations were created and deleted (quotations are soft-deleted). Company pricing_config was restored to the original (fx_mayorista_mxn_per_usd = null). The agent's quotation d8f4726a is untouched (TC 18.5).",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Run: cd /app/backend && python -m pytest tests/test_iteration73_fx_per_quote.py tests/test_iteration71_api.py tests/test_iteration71_usd.py tests/test_iteration72_pdf_layout.py -q -W ignore. UI data: python tests/scripts/ui_setup_iter73.py setup (writes /tmp/it73ui.json with open + locked (mark-paid) mayorista quotations, sets suggested TC 18.5), then cleanup. The custom builder uses concept-* testids (ConceptCard), not custom-item-*. Lock tests: refresh only returns 403 when the Ajustes rate differs from the stored rate."
+}
