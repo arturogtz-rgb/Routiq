@@ -8,7 +8,7 @@ export const UNITS = [
   { v: 'per_day', label: 'Por día' },
   { v: 'per_vehicle', label: 'Por vehículo' },
 ];
-export const UNIT_ES = Object.fromEntries(UNITS.map((u) => [u.v, u.label]));
+export const UNIT_ES = { ...Object.fromEntries(UNITS.map((u) => [u.v, u.label])), per_stay: 'Por estancia' };
 
 // Texto de ayuda discreto: qué multiplica cada unidad de cobro en el subtotal.
 export const UNIT_HINT = {

@@ -56,10 +56,13 @@ def _lodging_from_quotation(q: dict) -> list:
     out = []
     for ci in (q.get("custom_items") or []):
         if ci.get("category") == "hospedaje":
+            rows = [r for r in (ci.get("occupancy_rows") or []) if int(r.get("rooms", 0) or 0) > 0]
+            room_type = " + ".join(f"{int(r['rooms'])} {OCC_LABEL.get(r.get('ocupacion'), '')}" for r in rows) if rows \
+                else OCC_LABEL.get(ci.get("ocupacion", ""), "")
             out.append({
                 "hotel": (ci.get("name") or "").strip(),
                 "checkin": ci.get("checkin", "") or "", "checkout": ci.get("checkout", "") or "",
-                "nights": str(ci.get("nights", "") or ""), "room_type": OCC_LABEL.get(ci.get("ocupacion", ""), ""),
+                "nights": str(ci.get("nights", "") or ""), "room_type": room_type,
             })
     return out
 

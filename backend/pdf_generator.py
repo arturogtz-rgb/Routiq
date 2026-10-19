@@ -494,11 +494,12 @@ def generate_quotation_pdf(company: dict, quotation: dict, package: dict, client
         if bd and bd.get("rows"):
             story.append(Spacer(1, 12))
             story.append(Paragraph("Precio por persona según ocupación", s["h2"]))
-            pp_rows = [["Ocupación", "Personas", "Precio por persona", "Subtotal"]]
+            pp_rows = [["Concepto", "Personas", "Subtotal"]]
             for r in bd["rows"]:
-                pp_rows.append([r["label"], str(r["pax"]), _money(r["price_per_person"], currency), _money(r["subtotal"], currency)])
-            pp_rows.append(["Gran total", str(bd["total_pax"]), "", _money(bd["total"], currency)])
-            ppt = Table(pp_rows, colWidths=[(CONTENT_W - 9.5) * cm, 2.5 * cm, 3.5 * cm, 3.5 * cm])
+                txt = f"{r.get('title') or r['label']}: <b>{_money(r['price_per_person'], currency)}</b> ({r['pax']} personas)"
+                pp_rows.append([Paragraph(txt, concept_style), str(r["pax"]), _money(r["subtotal"], currency)])
+            pp_rows.append(["Total", str(bd["total_pax"]), _money(bd["total"], currency)])
+            ppt = Table(pp_rows, colWidths=[(CONTENT_W - 6) * cm, 2.5 * cm, 3.5 * cm])
             ppt.setStyle(TableStyle([
                 ("FONTSIZE", (0, 0), (-1, -1), 9),
                 ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#EAF1FA")),
@@ -510,6 +511,9 @@ def generate_quotation_pdf(company: dict, quotation: dict, package: dict, client
                 ("TOPPADDING", (0, 0), (-1, -1), 3), ("BOTTOMPADDING", (0, 0), (-1, -1), 3),
             ]))
             story.append(ppt)
+            if bd.get("note"):
+                story.append(Spacer(1, 3))
+                story.append(Paragraph(f"<font color='#475569'><i>{_xml_escape(bd['note'])}</i></font>", s["soft"]))
 
     price_note = (quotation.get("price_note") or "").strip()
     if price_note:

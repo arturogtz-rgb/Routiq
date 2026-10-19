@@ -121,9 +121,17 @@ async def _build_package_from_custom(db, tenant_id: str, src: dict, margin: floa
     def _hotel_from(item: dict) -> dict:
         net = float(item.get("net_price", 0) or 0)
         public = round(net / margin, 2) if margin > 0 else round(net, 2)
+        prices = {"sencilla": public, "doble": public, "triple": public, "cuadruple": public}
+        rows = item.get("occupancy_rows") or []
+        if rows:  # tabla de ocupación: precio por persona (× noches si es por noche)
+            mult = int(item.get("nights", 0) or 0) if item.get("unit", "per_night") == "per_night" else 1
+            prices = {"sencilla": 0.0, "doble": 0.0, "triple": 0.0, "cuadruple": 0.0}
+            for r in rows:
+                v = float(r.get("price", 0) or 0) * max(1, mult)
+                prices[r.get("ocupacion", "doble")] = round(v / margin, 2) if margin > 0 else round(v, 2)
         return {
             "name": item.get("name") or "Hotel", "category": "",
-            "prices_by_occupancy": {"sencilla": public, "doble": public, "triple": public, "cuadruple": public},
+            "prices_by_occupancy": prices,
             "minor_price": 0.0, "season_prices": {},
         }
 

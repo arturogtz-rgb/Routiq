@@ -353,15 +353,16 @@ export default function PublicQuotation() {
                 <h3 className="font-display text-base font-semibold text-ink-900 mb-2">Precio por persona según ocupación</h3>
                 <div className="space-y-1.5">
                   {q.per_person_breakdown.rows.map((r) => (
-                    <div key={r.key} className="flex items-center justify-between text-sm" data-testid={`public-pp-row-${r.key}`}>
-                      <span className="text-ink-600">{r.label} <span className="text-ink-400">· {r.pax} pax</span></span>
-                      <span className="font-medium text-ink-900">{money(r.price_per_person, q.currency)} <span className="text-ink-400 font-normal">/persona</span></span>
+                    <div key={r.key} className="flex items-center justify-between gap-3 text-sm" data-testid={`public-pp-row-${r.key}`}>
+                      <span className="text-ink-600">{r.title || r.label}: <b className="text-ink-900">{money(r.price_per_person, q.currency)}</b> <span className="text-ink-400">({r.pax} personas)</span></span>
+                      <span className="font-medium text-ink-900">{money(r.subtotal, q.currency)}</span>
                     </div>
                   ))}
                   <div className="flex items-center justify-between pt-1.5 border-t border-ink-100">
-                    <span className="font-semibold text-ink-900">Gran total ({q.per_person_breakdown.total_pax} pax)</span>
-                    <span className="font-display font-bold" style={{ color: primary }}>{money(q.per_person_breakdown.total, q.currency)}</span>
+                    <span className="font-semibold text-ink-900">Total</span>
+                    <span className="font-display font-bold" style={{ color: primary }} data-testid="public-pp-total">{money(q.per_person_breakdown.total, q.currency)}</span>
                   </div>
+                  {q.per_person_breakdown.note && <p className="text-xs text-ink-400 italic" data-testid="public-pp-note">{q.per_person_breakdown.note}</p>}
                 </div>
               </div>
             )}

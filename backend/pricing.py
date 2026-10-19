@@ -25,6 +25,7 @@ CUSTOM_UNIT_ES = {
     "per_group": "por grupo",
     "per_day": "por día",
     "per_vehicle": "por vehículo",
+    "per_stay": "por estancia",
 }
 CUSTOM_CATEGORY_ES = {
     "hospedaje": "Hospedaje",
@@ -203,6 +204,61 @@ def _price_custom_item(ci: dict, total_pax: int, nights_total: int, rooms: int,
     }
 
 
+def _price_lodging_rows(ci: dict, client_channel: str, margin_divisor: float, commissions: dict) -> list:
+    """Hospedaje con tabla de ocupación (a la carta / personalizado): una línea por fila.
+    Precio por persona -> subtotal = precio × personas (hab × ocupación) × noches
+    (per_night) o × 1 (per_stay)."""
+    entered_type = ci.get("price_type", "neto") or "neto"
+    unit = ci.get("unit") if ci.get("unit") in ("per_night", "per_stay") else "per_night"
+    nights = int(ci.get("nights", 0) or 0)
+    mult = nights if unit == "per_night" else 1
+    name = (ci.get("name") or "").strip() or "Hospedaje"
+    out = []
+    for row in (ci.get("occupancy_rows") or []):
+        occ = row.get("ocupacion") or "doble"
+        rooms = int(row.get("rooms", 0) or 0)
+        price = float(row.get("price", 0) or 0)
+        if rooms <= 0 or price <= 0 or occ not in OCCUPANCY_COUNT:
+            continue
+        persons = OCCUPANCY_COUNT[occ] * rooms
+        if entered_type == "publico":
+            unit_price, public_ref = round(price, 2), round(price, 2)
+        else:
+            unit_price = channel_price(price, client_channel, margin_divisor, commissions)
+            public_ref = public_from_net(price, margin_divisor)
+        out.append({
+            "label": f"{name} · {_OCC_LABEL[occ]} ({rooms} hab × {OCCUPANCY_COUNT[occ]} pax) · {CUSTOM_UNIT_ES[unit]}",
+            "unit_price": unit_price, "qty": persons, "kind": "custom",
+            "category": "hospedaje", "unit": unit, "name": name,
+            "description": ci.get("description", "") or "",
+            "net_price": price, "public_price": public_ref, "price_type": entered_type,
+            "subtotal": round(unit_price * persons * mult, 2),
+            "ocupacion": occ, "rooms_count": rooms, "occ_row": True,
+            "service_date": "", "start_time": "", "end_time": "",
+            "checkin": ci.get("checkin", "") or "", "checkout": ci.get("checkout", "") or "",
+            "nights": nights,
+        })
+    return out
+
+
+def _price_custom_items(custom_items: list, total_pax: int, nights_total: int, rooms: int,
+                        client_channel: str, margin_divisor: float, commissions: dict,
+                        custom_engine: bool, lodging_rows: bool = True) -> list:
+    """Cotiza la lista de conceptos libres; cada línea lleva `ci_index` (concepto origen).
+    lodging_rows=True: hospedaje con tabla de ocupación usa precio × personas × noches."""
+    out = []
+    for idx, ci in enumerate(custom_items or []):
+        if lodging_rows and ci.get("category") == "hospedaje" and ci.get("occupancy_rows"):
+            lines = _price_lodging_rows(ci, client_channel, margin_divisor, commissions)
+        else:
+            lines = [_price_custom_item(ci, total_pax, nights_total, rooms, client_channel,
+                                        margin_divisor, commissions, custom_engine=custom_engine)]
+        for ln in lines:
+            ln["ci_index"] = idx
+        out.extend(lines)
+    return out
+
+
 def compute_quotation(pack: dict | None, hotel_name: str, pax: dict, nights: int,
                       client_channel: str, pricing_config: dict,
                       services_catalog: dict | None = None,
@@ -318,10 +374,12 @@ def compute_quotation(pack: dict | None, hotel_name: str, pax: dict, nights: int
             "service_id": svc["id"], "subtotal": round(price * qty, 2),
         })
 
-    # ---- Conceptos adicionales libres (extras del paquete / a la carta) ----
-    for ci in (custom_items or []):
-        items.append(_price_custom_item(ci, total_pax, nights_total, num_rooms,
-                                        client_channel, margin_divisor, commissions))
+    # ---- Conceptos adicionales libres ----
+    # Paquete armado: motor histórico intacto. A la carta: el hospedaje con tabla de
+    # ocupación usa el cálculo por persona; el resto de conceptos conserva su regla actual.
+    items.extend(_price_custom_items(custom_items, total_pax, nights_total, num_rooms,
+                                     client_channel, margin_divisor, commissions,
+                                     custom_engine=False, lodging_rows=pack is None))
 
     # Comisión por canal SOLO sobre servicios a la carta (los paquetes ya traen
     # el precio por canal incorporado y son "neto no comisionable").
@@ -384,11 +442,9 @@ def compute_custom_quotation(custom_items: list, pax: dict, custom_nights: int,
         nights_total = int(custom_nights or 0)
     rooms = int(custom_rooms or 0)
 
-    items: List[dict] = []
-    for ci in (custom_items or []):
-        items.append(_price_custom_item(ci, total_pax, nights_total, rooms,
-                                        client_channel, margin_divisor, commissions,
-                                        custom_engine=True))
+    items: List[dict] = _price_custom_items(custom_items, total_pax, nights_total, rooms,
+                                            client_channel, margin_divisor, commissions,
+                                            custom_engine=True)
 
     # Comisión por canal SOLO sobre conceptos de precio público (los netos ya traen el
     # precio por canal incorporado y son "no comisionables").

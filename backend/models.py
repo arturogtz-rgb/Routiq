@@ -435,8 +435,15 @@ class ExtraNights(BaseModel):
 
 
 # ---------- Custom / "Programa personalizado" (cotización a medida libre) ----------
-CustomUnit = Literal["per_person", "per_night", "per_room", "per_group", "per_day", "per_vehicle"]
+CustomUnit = Literal["per_person", "per_night", "per_room", "per_group", "per_day", "per_vehicle", "per_stay"]
 CustomCategory = Literal["hospedaje", "traslado", "tour", "acceso", "extra"]
+
+
+class LodgingOccupancyRow(BaseModel):
+    """Fila de la tabla de ocupación de un hospedaje: precio SIEMPRE por persona."""
+    ocupacion: Literal["sencilla", "doble", "triple", "cuadruple"] = "doble"
+    rooms: int = Field(default=1, ge=0)
+    price: float = Field(default=0.0, ge=0)
 
 
 class CustomItem(BaseModel):
@@ -454,6 +461,7 @@ class CustomItem(BaseModel):
     checkout: str = ""       # hospedaje: fecha de check-out (ISO)
     nights: int = Field(default=0, ge=0)  # hospedaje: noches (auto = checkout - checkin)
     ocupacion: Optional[Literal["sencilla", "doble", "triple", "cuadruple"]] = None  # solo hospedaje: tipo de habitación para el desglose por persona
+    occupancy_rows: List[LodgingOccupancyRow] = []  # hospedaje (a la carta / personalizado): precio por persona por ocupación
 
 
 class CustomDay(BaseModel):

@@ -650,15 +650,28 @@ export default function QuotationDetail() {
                 <p className="text-xs uppercase tracking-widest text-ink-400 font-bold mb-2">Precio por persona según ocupación</p>
                 <div className="space-y-1.5 text-sm">
                   {q.per_person_breakdown.rows.map((r) => (
-                    <div key={r.key} className="flex justify-between" data-testid={`pp-row-${r.key}`}>
-                      <span className="text-ink-500">{r.label} · {r.pax} pax</span>
-                      <span className="text-ink-900 font-medium">{money(r.price_per_person, q.currency)} /persona</span>
+                    <div key={r.key} data-testid={`pp-row-${r.key}`}>
+                      <div className="flex justify-between gap-3">
+                        <span className="text-ink-600">{r.title || r.label}: <b className="text-ink-900">{money(r.price_per_person, q.currency)}</b> ({r.pax} personas)</span>
+                        <span className="text-ink-900 font-medium">{money(r.subtotal, q.currency)}</span>
+                      </div>
+                      {(r.components || []).length > 1 && (
+                        <p className="text-[11px] text-ink-400 font-mono" data-testid={`pp-formula-${r.key}`}>
+                          {r.components.map((c) => `${c.label} ${money(c.amount, '').trim()}`).join(' + ')} = {money(r.price_per_person, '').trim()} × {r.pax}
+                        </p>
+                      )}
                     </div>
                   ))}
                   <div className="flex justify-between pt-2 border-t border-ink-100 mt-1">
-                    <span className="text-ink-700 font-semibold">Gran total ({q.per_person_breakdown.total_pax} pax)</span>
-                    <span className="text-brand-500 font-bold">{money(q.per_person_breakdown.total, q.currency)}</span>
+                    <span className="text-ink-700 font-semibold">Total ({q.per_person_breakdown.total_pax} personas)</span>
+                    <span className="text-brand-500 font-bold" data-testid="pp-total">{money(q.per_person_breakdown.total, q.currency)}</span>
                   </div>
+                  {q.per_person_breakdown.note && <p className="text-xs text-ink-400 italic" data-testid="pp-note">{q.per_person_breakdown.note}</p>}
+                  {(Math.abs(q.per_person_breakdown.rounding_adjustment || 0) >= 0.01 || Math.abs(q.per_person_breakdown.commission_adjustment || 0) >= 0.01) && (
+                    <p className="text-[11px] text-amber-700" data-testid="pp-adjustments">
+                      Ajuste interno por redondeo: {money(q.per_person_breakdown.rounding_adjustment || 0, q.currency)} · comisión: {money(q.per_person_breakdown.commission_adjustment || 0, q.currency)} (aplicado al concepto/fila de mayor monto)
+                    </p>
+                  )}
                 </div>
               </div>
             )}

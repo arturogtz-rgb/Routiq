@@ -4,17 +4,12 @@ import AppShell from '@/components/AppShell';
 import api, { formatApiError } from '@/lib/api';
 import { ArrowLeft, ArrowRight, Check, User, Package, CalendarDays, Calculator, FileText, Plus, Trash2, Sparkles, AlertTriangle, Moon, Briefcase, Users, Wand2, Star, Search } from 'lucide-react';
 import { sortByFavorite } from '@/lib/clients';
+import { CustomConceptsEditor } from '@/components/concepts/CustomConceptsEditor';
+import { conceptsTotals, cleanConcept, normalizeConcepts } from '@/components/concepts/conceptMath';
 import { formatDateEs, nightsBetween, addDays, weekdayMon0, WEEKDAYS_ES } from '@/lib/dates';
 
 const SERVICE_UNIT_ES = { per_person: 'por persona', per_group: 'por grupo', per_day: 'por día', per_access: 'por acceso' };
 const OCC_COUNT = { sencilla: 1, doble: 2, triple: 3, cuadruple: 4 };
-const CUSTOM_UNITS = [
-  { v: 'per_person', label: 'Por persona' },
-  { v: 'per_night', label: 'Por noche' },
-  { v: 'per_room', label: 'Por habitación' },
-  { v: 'per_group', label: 'Por grupo (precio único)' },
-  { v: 'per_day', label: 'Por día' },
-];
 
 function money(v, c = 'MXN') { return `$${Number(v || 0).toLocaleString('es-MX')} ${c}`; }
 
@@ -83,7 +78,7 @@ export default function QuotationBuilder() {
             show_all_occupancies: !!q.show_all_occupancies,
             show_price_breakdown: q.show_price_breakdown !== false,
             show_per_person: !!q.show_per_person,
-            custom_items: (q.custom_items || []).map((it) => ({ ...it })),
+            custom_items: normalizeConcepts(q.custom_items, q.type === 'servicios' ? 'carta' : 'package'),
           });
         } catch (e) { setError(formatApiError(e)); }
         return;
@@ -208,19 +203,12 @@ export default function QuotationBuilder() {
     if (minorNet > 0) s += channelPrice(minorNet) * (form.pax.menores || 0);
     return s;
   })();
-  const customUnitPrice = (it) => {
-    const amt = Number(it.net_price) || 0;
-    return (it.price_type || 'neto') === 'publico' ? amt : channelPrice(amt);
+  const conceptCtx = {
+    engine: isServices ? 'carta' : 'package',
+    pricing: { margin, channel, commissions, commissionRate },
+    totalPax, nights: tripNights || packNights, rooms: numRooms, defaultDates: form.dates,
   };
-  const customDefaultQty = (unit) => {
-    if (unit === 'per_person') return Math.max(1, totalPax);
-    if (unit === 'per_night' || unit === 'per_day') return Math.max(1, tripNights || packNights || 1);
-    if (unit === 'per_room') return Math.max(1, numRooms);
-    return 1;
-  };
-  const customItemSubtotal = (it) => customUnitPrice(it) * (Number(it.qty) > 0 ? Number(it.qty) : customDefaultQty(it.unit));
-  const customItemsSubtotal = (form.custom_items || []).reduce((s, it) => s + customItemSubtotal(it), 0);
-  const customPublicoSubtotal = (form.custom_items || []).filter((it) => (it.price_type || 'neto') === 'publico').reduce((s, it) => s + customItemSubtotal(it), 0);
+  const { subtotal: customItemsSubtotal, publico: customPublicoSubtotal } = conceptsTotals(form.custom_items, conceptCtx);
 
   const subtotal = isServices ? (servicesSubtotal + customItemsSubtotal) : (packageSubtotal + servicesSubtotal + customItemsSubtotal);
   const commission = Math.round((servicesSubtotal + customPublicoSubtotal) * commissionRate * 100) / 100;  // servicios + conceptos públicos
@@ -318,22 +306,8 @@ export default function QuotationBuilder() {
   const updateRoom = (idx, patch) => setForm((f) => ({ ...f, pax: { ...f.pax, rooms: f.pax.rooms.map((r, i) => i === idx ? { ...r, ...patch } : r) } }));
   const removeRoom = (idx) => setForm((f) => ({ ...f, pax: { ...f.pax, rooms: f.pax.rooms.filter((_, i) => i !== idx) } }));
 
-  // Conceptos adicionales libres (punto 6) — mismo shape que el Programa Personalizado.
-  const addConcept = () => setForm((f) => ({
-    ...f, custom_items: [...(f.custom_items || []), { category: 'extra', name: '', description: '', net_price: 0, price_type: 'neto', unit: 'per_person', qty: 0, service_date: '', start_time: '', end_time: '' }],
-  }));
-  const updateConcept = (idx, patch) => setForm((f) => ({
-    ...f, custom_items: f.custom_items.map((it, i) => {
-      if (i !== idx) return it;
-      const next = { ...it, ...patch };
-      if (patch.category && patch.category !== it.category) {
-        if (patch.category === 'hospedaje') { next.unit = 'per_night'; if (!next.ocupacion) next.ocupacion = 'doble'; }
-        else { next.ocupacion = null; if (it.unit === 'per_night') next.unit = 'per_person'; }
-      }
-      return next;
-    }),
-  }));
-  const removeConcept = (idx) => setForm((f) => ({ ...f, custom_items: f.custom_items.filter((_, i) => i !== idx) }));
+  const setConcepts = (fn) => setForm((f) => ({ ...f, custom_items: fn(f.custom_items || []) }));
+  const syncPax = (n) => setForm((f) => ({ ...f, pax: { ...f.pax, adultos: Math.max(0, n - (Number(f.pax.menores) || 0)) } }));
 
   const canNext = () => {
     if (cur === 'client') {
@@ -342,7 +316,7 @@ export default function QuotationBuilder() {
     if (cur === 'executive') return !!form.executive_id;
     if (cur === 'package') return !!form.package_id && !!form.hotel_name;
     if (cur === 'dates') return form.dates.start && form.dates.end && rooms.length > 0 && totalAdults > 0;
-    if (cur === 'servicios') return totalAdults > 0 && (form.services || []).length > 0;
+    if (cur === 'servicios') return totalAdults > 0 && ((form.services || []).length > 0 || (form.custom_items || []).length > 0);
     return true;
   };
 
@@ -379,14 +353,7 @@ export default function QuotationBuilder() {
 
   const submit = async () => {
     setError(''); setLoading(true);
-    const cleanCustom = (items) => (items || []).map((it) => ({
-      category: it.category || 'extra', name: it.name, description: it.description || '',
-      net_price: Number(it.net_price) || 0, price_type: it.price_type || 'neto',
-      unit: it.unit || 'per_group', qty: Number(it.qty) || 0,
-      service_date: it.service_date || '', start_time: it.start_time || '', end_time: it.end_time || '',
-      checkin: it.checkin || '', checkout: it.checkout || '', nights: Number(it.nights) || 0,
-      ocupacion: it.category === 'hospedaje' ? (it.ocupacion || 'doble') : null,
-    }));
+    const cleanCustom = (items) => (items || []).map((it) => cleanConcept(it, conceptCtx.engine));
     try {
       const contacts = (isB2B || ((client?.executives || []).length > 0)) ? form.contacts : null;
       if (editing) {
@@ -864,70 +831,9 @@ export default function QuotationBuilder() {
               </div>
             )}
 
-            {/* Conceptos adicionales libres (punto 6) */}
-            <div className="border-t border-ink-100 pt-5" data-testid="custom-concepts-section">
-              <div className="flex items-center justify-between mb-1">
-                <h3 className="font-display text-lg font-semibold text-ink-900">Conceptos adicionales</h3>
-                <button type="button" className="btn-ghost text-xs border border-brand-200 text-brand-600" onClick={addConcept} data-testid="add-concept-btn">
-                  <Plus className="w-3.5 h-3.5" /> Agregar concepto
-                </button>
-              </div>
-              <p className="text-ink-500 text-sm mb-3">Tours, traslados, accesos o extras que no están en el catálogo. Aparecen en el desglose del PDF y del enlace.</p>
-              {(form.custom_items || []).length === 0 && <p className="text-ink-400 text-sm italic">Sin conceptos adicionales.</p>}
-              <div className="space-y-3">
-                {(form.custom_items || []).map((it, idx) => (
-                  <div key={idx} className="rounded-xl border border-ink-100 p-3 space-y-2" data-testid={`concept-row-${idx}`}>
-                    <div className="flex items-center gap-2">
-                      <input className="input-field flex-1" placeholder="Nombre del concepto (ej. Traslado aeropuerto)" value={it.name}
-                        onChange={(e) => updateConcept(idx, { name: e.target.value })} data-testid={`concept-name-${idx}`} />
-                      <button type="button" className="text-ink-300 hover:text-red-500 p-2" onClick={() => removeConcept(idx)} data-testid={`concept-remove-${idx}`}><Trash2 className="w-4 h-4" /></button>
-                    </div>
-                    <input className="input-field" placeholder="Detalle (opcional)" value={it.description || ''}
-                      onChange={(e) => updateConcept(idx, { description: e.target.value })} data-testid={`concept-detail-${idx}`} />
-                    <div className="flex gap-2">
-                      <button type="button" onClick={() => updateConcept(idx, { price_type: 'neto' })}
-                        className={`flex-1 rounded-lg border px-3 py-2 text-xs font-medium ${(it.price_type || 'neto') === 'neto' ? 'border-brand-500 bg-brand-50 text-brand-700' : 'border-ink-100 text-ink-500'}`} data-testid={`concept-type-neto-${idx}`}>Tarifa neta</button>
-                      <button type="button" onClick={() => updateConcept(idx, { price_type: 'publico' })}
-                        className={`flex-1 rounded-lg border px-3 py-2 text-xs font-medium ${it.price_type === 'publico' ? 'border-emerald-500 bg-mint-100 text-emerald-700' : 'border-ink-100 text-ink-500'}`} data-testid={`concept-type-publico-${idx}`}>Precio público</button>
-                    </div>
-                    <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
-                      <div><label className="label-text text-xs">Categoría</label>
-                        <select className="input-field" value={it.category || 'extra'} onChange={(e) => updateConcept(idx, { category: e.target.value })} data-testid={`concept-category-${idx}`}>
-                          <option value="extra">Extra</option>
-                          <option value="hospedaje">Hospedaje</option>
-                          <option value="tour">Tour</option>
-                          <option value="traslado">Traslado</option>
-                          <option value="acceso">Acceso</option>
-                        </select></div>
-                      {it.category === 'hospedaje' && (
-                        <div><label className="label-text text-xs">Ocupación</label>
-                          <select className="input-field" value={it.ocupacion || 'doble'} onChange={(e) => updateConcept(idx, { ocupacion: e.target.value })} data-testid={`concept-ocupacion-${idx}`}>
-                            <option value="sencilla">Sencilla</option>
-                            <option value="doble">Doble</option>
-                            <option value="triple">Triple</option>
-                            <option value="cuadruple">Cuádruple</option>
-                          </select></div>
-                      )}
-                      <div><label className="label-text text-xs">{(it.price_type || 'neto') === 'publico' ? 'Precio público' : 'Tarifa neta'}</label>
-                        <input type="number" min="0" step="0.01" className="input-field" value={it.net_price} onChange={(e) => updateConcept(idx, { net_price: +e.target.value || 0 })} data-testid={`concept-price-${idx}`} /></div>
-                      <div><label className="label-text text-xs">Unidad</label>
-                        <select className="input-field" value={it.unit} onChange={(e) => updateConcept(idx, { unit: e.target.value, qty: 0 })} data-testid={`concept-unit-${idx}`}>
-                          {CUSTOM_UNITS.map((u) => <option key={u.v} value={u.v}>{u.label}</option>)}
-                        </select></div>
-                      <div><label className="label-text text-xs">Cantidad (0 = auto)</label>
-                        <input type="number" min="0" className="input-field" value={it.qty} onChange={(e) => updateConcept(idx, { qty: +e.target.value || 0 })} data-testid={`concept-qty-${idx}`} /></div>
-                      <div><label className="label-text text-xs">Fecha (opcional)</label>
-                        <input type="date" className="input-field" value={it.service_date || ''} onChange={(e) => updateConcept(idx, { service_date: e.target.value })} data-testid={`concept-date-${idx}`} /></div>
-                    </div>
-                    <p className="text-xs text-ink-500 text-right">Subtotal estimado: {money(customItemSubtotal(it))}</p>
-                  </div>
-                ))}
-              </div>
-              {customItemsSubtotal > 0 && (
-                <div className="rounded-xl bg-brand-50 text-brand-700 px-4 py-3 text-sm font-medium mt-3" data-testid="concepts-subtotal">
-                  Conceptos adicionales: {money(customItemsSubtotal)}
-                </div>
-              )}
+            <div className="border-t border-ink-100 pt-5">
+              <CustomConceptsEditor items={form.custom_items} setItems={setConcepts} ctx={conceptCtx} money={money}
+                subtitle="Tours, traslados, accesos o extras que no están en el catálogo. Aparecen en el desglose del PDF y del enlace." />
             </div>
           </div>
         )}
@@ -968,70 +874,9 @@ export default function QuotationBuilder() {
                 Servicios seleccionados: {money(servicesSubtotal)}
               </div>
             )}
-            {/* Conceptos adicionales libres (replicado del flujo Paquete — punto 2 Iter3) */}
-            <div className="border-t border-ink-100 pt-5" data-testid="custom-concepts-section">
-              <div className="flex items-center justify-between mb-1">
-                <h3 className="font-display text-lg font-semibold text-ink-900">Conceptos adicionales</h3>
-                <button type="button" className="btn-ghost text-xs border border-brand-200 text-brand-600" onClick={addConcept} data-testid="add-concept-btn">
-                  <Plus className="w-3.5 h-3.5" /> Agregar concepto
-                </button>
-              </div>
-              <p className="text-ink-500 text-sm mb-3">Tours, traslados, accesos o extras que no están en el catálogo. Aparecen en el desglose del PDF y del enlace.</p>
-              {(form.custom_items || []).length === 0 && <p className="text-ink-400 text-sm italic">Sin conceptos adicionales.</p>}
-              <div className="space-y-3">
-                {(form.custom_items || []).map((it, idx) => (
-                  <div key={idx} className="rounded-xl border border-ink-100 p-3 space-y-2" data-testid={`concept-row-${idx}`}>
-                    <div className="flex items-center gap-2">
-                      <input className="input-field flex-1" placeholder="Nombre del concepto (ej. Traslado aeropuerto)" value={it.name}
-                        onChange={(e) => updateConcept(idx, { name: e.target.value })} data-testid={`concept-name-${idx}`} />
-                      <button type="button" className="text-ink-300 hover:text-red-500 p-2" onClick={() => removeConcept(idx)} data-testid={`concept-remove-${idx}`}><Trash2 className="w-4 h-4" /></button>
-                    </div>
-                    <input className="input-field" placeholder="Detalle (opcional)" value={it.description || ''}
-                      onChange={(e) => updateConcept(idx, { description: e.target.value })} data-testid={`concept-detail-${idx}`} />
-                    <div className="flex gap-2">
-                      <button type="button" onClick={() => updateConcept(idx, { price_type: 'neto' })}
-                        className={`flex-1 rounded-lg border px-3 py-2 text-xs font-medium ${(it.price_type || 'neto') === 'neto' ? 'border-brand-500 bg-brand-50 text-brand-700' : 'border-ink-100 text-ink-500'}`} data-testid={`concept-type-neto-${idx}`}>Tarifa neta</button>
-                      <button type="button" onClick={() => updateConcept(idx, { price_type: 'publico' })}
-                        className={`flex-1 rounded-lg border px-3 py-2 text-xs font-medium ${it.price_type === 'publico' ? 'border-emerald-500 bg-mint-100 text-emerald-700' : 'border-ink-100 text-ink-500'}`} data-testid={`concept-type-publico-${idx}`}>Precio público</button>
-                    </div>
-                    <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
-                      <div><label className="label-text text-xs">Categoría</label>
-                        <select className="input-field" value={it.category || 'extra'} onChange={(e) => updateConcept(idx, { category: e.target.value })} data-testid={`concept-category-${idx}`}>
-                          <option value="extra">Extra</option>
-                          <option value="hospedaje">Hospedaje</option>
-                          <option value="tour">Tour</option>
-                          <option value="traslado">Traslado</option>
-                          <option value="acceso">Acceso</option>
-                        </select></div>
-                      {it.category === 'hospedaje' && (
-                        <div><label className="label-text text-xs">Ocupación</label>
-                          <select className="input-field" value={it.ocupacion || 'doble'} onChange={(e) => updateConcept(idx, { ocupacion: e.target.value })} data-testid={`concept-ocupacion-${idx}`}>
-                            <option value="sencilla">Sencilla</option>
-                            <option value="doble">Doble</option>
-                            <option value="triple">Triple</option>
-                            <option value="cuadruple">Cuádruple</option>
-                          </select></div>
-                      )}
-                      <div><label className="label-text text-xs">{(it.price_type || 'neto') === 'publico' ? 'Precio público' : 'Tarifa neta'}</label>
-                        <input type="number" min="0" step="0.01" className="input-field" value={it.net_price} onChange={(e) => updateConcept(idx, { net_price: +e.target.value || 0 })} data-testid={`concept-price-${idx}`} /></div>
-                      <div><label className="label-text text-xs">Unidad</label>
-                        <select className="input-field" value={it.unit} onChange={(e) => updateConcept(idx, { unit: e.target.value, qty: 0 })} data-testid={`concept-unit-${idx}`}>
-                          {CUSTOM_UNITS.map((u) => <option key={u.v} value={u.v}>{u.label}</option>)}
-                        </select></div>
-                      <div><label className="label-text text-xs">Cantidad (0 = auto)</label>
-                        <input type="number" min="0" className="input-field" value={it.qty} onChange={(e) => updateConcept(idx, { qty: +e.target.value || 0 })} data-testid={`concept-qty-${idx}`} /></div>
-                      <div><label className="label-text text-xs">Fecha (opcional)</label>
-                        <input type="date" className="input-field" value={it.service_date || ''} onChange={(e) => updateConcept(idx, { service_date: e.target.value })} data-testid={`concept-date-${idx}`} /></div>
-                    </div>
-                    <p className="text-xs text-ink-500 text-right">Subtotal estimado: {money(customItemSubtotal(it))}</p>
-                  </div>
-                ))}
-              </div>
-              {customItemsSubtotal > 0 && (
-                <div className="rounded-xl bg-brand-50 text-brand-700 px-4 py-3 text-sm font-medium mt-3" data-testid="concepts-subtotal">
-                  Conceptos adicionales: {money(customItemsSubtotal)}
-                </div>
-              )}
+            <div className="border-t border-ink-100 pt-5">
+              <CustomConceptsEditor items={form.custom_items} setItems={setConcepts} ctx={conceptCtx} money={money} onSyncPax={syncPax}
+                subtitle="Hospedaje con tabla de ocupación, tours, traslados, accesos o extras fuera del catálogo. Aparecen en el desglose del PDF y del enlace." />
             </div>
             <div>
               <label className="label-text">Notas internas</label>

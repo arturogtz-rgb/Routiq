@@ -188,8 +188,8 @@ async def create_quotation(payload: QuotationCreate, user: dict = Depends(requir
             if not pack:
                 raise HTTPException(status_code=404, detail="Paquete no encontrado")
             package_snapshot = {"name": pack["name"], "code": pack["code"], "nights": pack["nights"]}
-        elif not services_sel:
-            raise HTTPException(status_code=400, detail="Agrega al menos un servicio para una cotización a la carta")
+        elif not services_sel and not payload.custom_items:
+            raise HTTPException(status_code=400, detail="Agrega al menos un servicio o concepto para una cotización a la carta")
         extra_cfg = payload.extra_nights.model_dump() if payload.extra_nights else None
         pack_nights = pack["nights"] if pack else 0
         calc = compute_quotation(pack, payload.hotel_name, payload.pax.model_dump(),

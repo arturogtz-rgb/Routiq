@@ -1,20 +1,21 @@
 import { Calculator, Percent, Save } from 'lucide-react';
+import { HelpTip } from '@/components/HelpTip';
 
 const CHANNELS = [
-  { k: 'directo', label: 'Directo' },
-  { k: 'agencia', label: 'Agencia' },
-  { k: 'mayorista', label: 'Mayorista' },
-  { k: 'operador', label: 'Mayorista Preferencial' },
+  { k: 'directo', label: 'Directo', tip: 'Cliente final. Ve el precio público (neto ÷ divisor). Normalmente 0%.' },
+  { k: 'agencia', label: 'Agencia', tip: 'Las tarifas netas se muestran a precio público (no se comisionan). Los conceptos de precio público llevan este % de descuento.' },
+  { k: 'mayorista', label: 'Mayorista', tip: 'Precio público menos este %, tanto en tarifas netas como en conceptos de precio público. Precio neto no comisionable.' },
+  { k: 'operador', label: 'Mayorista Preferencial', tip: 'Las tarifas netas se muestran sin divisor (neto original). Los conceptos de precio público llevan este % de descuento.' },
 ];
 
 export const PricingSettings = ({ pricing, setPricing, save, marginPct }) => (
   <>
     <div>
-      <h2 className="font-display font-semibold text-lg text-ink-900 flex items-center gap-2"><Calculator className="w-5 h-5 text-brand-500" /> Fórmula base</h2>
+      <h2 className="font-display font-semibold text-lg text-ink-900 flex items-center gap-2"><Calculator className="w-5 h-5 text-brand-500" /> Fórmula base<HelpTip text="El divisor convierte la tarifa neta en precio público: público = neto ÷ divisor. Ej. $700 ÷ 0.80 = $875 (margen 20%)." testid="help-margin-formula" /></h2>
       <p className="text-sm text-ink-500 mt-1">Costo total ÷ divisor = precio público. Ej: 0.76 ⇒ margen del 24%.</p>
       <div className="grid md:grid-cols-2 gap-4 mt-4">
         <div>
-          <label className="label-text">Divisor de margen</label>
+          <label className="label-text">Divisor de margen<HelpTip text="Valor entre 0.1 y 1. Margen equivalente = 1 − divisor. 0.80 ⇒ 20% de margen." testid="help-margin-divisor" /></label>
           <input type="number" step="0.01" min="0.1" max="1" className="input-field" value={pricing.margin_divisor}
             onChange={(e) => setPricing((p) => ({ ...p, margin_divisor: +e.target.value }))} data-testid="margin-divisor-input" />
         </div>
@@ -28,11 +29,11 @@ export const PricingSettings = ({ pricing, setPricing, save, marginPct }) => (
     </div>
 
     <div>
-      <h2 className="font-display font-semibold text-lg text-ink-900 flex items-center gap-2"><Percent className="w-5 h-5 text-brand-500" /> Comisiones por canal</h2>
+      <h2 className="font-display font-semibold text-lg text-ink-900 flex items-center gap-2"><Percent className="w-5 h-5 text-brand-500" /> Comisiones por canal<HelpTip text="La comisión se aplica concepto por concepto antes de armar el precio por persona: las tarifas netas ya traen su precio de canal; los conceptos de precio público llevan el % del canal." testid="help-commissions" /></h2>
       <div className="grid md:grid-cols-2 gap-4 mt-4">
-        {CHANNELS.map(({ k, label }) => (
+        {CHANNELS.map(({ k, label, tip }) => (
           <div key={k}>
-            <label className="label-text">{label} (decimal, ej. 0.10 = 10%)</label>
+            <label className="label-text">{label} (decimal, ej. 0.10 = 10%)<HelpTip text={tip} testid={`help-commission-${k}`} /></label>
             <input type="number" step="0.01" min="0" max="1" className="input-field"
               value={pricing.commissions[k]}
               onChange={(e) => setPricing((p) => ({ ...p, commissions: { ...p.commissions, [k]: +e.target.value } }))}
